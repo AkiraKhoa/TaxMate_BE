@@ -1,0 +1,26 @@
+## .NET
+bin/
+obj/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.nupkg
+project.lock.json
+packages/
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## Secrets
+appsettings.Production.json
+
+## OS
+Thumbs.db
+.DS_Store
+
+README_LOCAL.md
