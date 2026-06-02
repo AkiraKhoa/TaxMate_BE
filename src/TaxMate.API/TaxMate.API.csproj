@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TaxMate.Service\TaxMate.Service.csproj" />
+    <ProjectReference Include="..\TaxMate.Repository\TaxMate.Repository.csproj" />
     <ProjectReference Include="..\TaxMate.Infrastructure\TaxMate.Infrastructure.csproj" />
   </ItemGroup>
 

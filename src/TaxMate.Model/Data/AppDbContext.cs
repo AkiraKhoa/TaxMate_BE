@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Entities;
 
-namespace TaxMate.Infrastructure.Data;
+namespace TaxMate.Model.Data;
 
 public class AppDbContext : DbContext
 {
@@ -39,6 +39,8 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+    
+    public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -336,6 +338,16 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<UserSubscription>()
             .HasIndex(x => x.EndDate);
         
+        // Legal Document
+        modelBuilder.Entity<LegalDocument>()
+            .HasIndex(x => x.DocumentCode)
+            .IsUnique();
+
+        modelBuilder.Entity<LegalDocument>()
+            .HasIndex(x => x.DocumentType);
+
+        modelBuilder.Entity<LegalDocument>()
+            .HasIndex(x => x.Status);
         
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }

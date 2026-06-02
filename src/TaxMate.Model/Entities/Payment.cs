@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Payment
+public class Payment : BaseEntity
 {
     public Guid PaymentId { get; set; }
 
@@ -24,8 +25,6 @@ public class Payment
     public string? ReferenceNumber { get; set; }
 
     public DateTime? PaidAt { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
+    
     public Transaction Transaction { get; set; } = null!;
 }

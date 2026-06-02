@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Transaction
+public class Transaction : BaseEntity
 {
     public Guid TransactionId { get; set; }
 
@@ -25,10 +26,6 @@ public class Transaction
 
     [MaxLength(2000)]
     public string? Note { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public Invoice? Invoice { get; set; }
 

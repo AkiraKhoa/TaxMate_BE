@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using TaxMate.Service.Interfaces;
+using TaxMate.Service.Services;
 
 namespace TaxMate.Service;
 
@@ -8,7 +10,8 @@ public static class DependencyInjection
     {
         // Register your services here, e.g.:
         // services.AddScoped<IAuthService, AuthService>();
-
+        services.AddScoped<ILegalDocumentService, LegalDocumentService>();
+        
         return services;
     }
 }

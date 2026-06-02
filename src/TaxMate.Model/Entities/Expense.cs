@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Expense
+public class Expense : BaseEntity
 {
     public Guid ExpenseId { get; set; }
 
@@ -31,15 +32,11 @@ public class Expense
 
     [MaxLength(1000)]
     public string? FileUrl { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
+    
     public DateTime? DueDate { get; set; }
 
     public DateTime? PaidDate { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
-
+    
     public BusinessProfile Business { get; set; } = null!;
 
     public ExpenseCategory ExpenseCategory { get; set; } = null!;

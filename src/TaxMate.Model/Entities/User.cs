@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class User
+public class User : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -35,10 +36,6 @@ public class User
     public string? AvatarUrl { get; set; }
 
     public bool IsActive { get; set; } = true;
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();

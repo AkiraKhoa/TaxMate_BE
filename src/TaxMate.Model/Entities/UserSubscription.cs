@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class UserSubscription
+public class UserSubscription : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -23,10 +24,6 @@ public class UserSubscription
     public string BillingCycle { get; set; } = "Monthly";
 
     public bool AutoRenew { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public User User { get; set; } = null!;
 

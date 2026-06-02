@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using TaxMate.Model.Common;
 
-namespace TaxMate.Infrastructure.Data;
+namespace TaxMate.Model.Data;
 
 public class AuditInterceptor : SaveChangesInterceptor
 {

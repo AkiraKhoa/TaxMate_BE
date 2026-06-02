@@ -1,8 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class ProductPrice
+public class ProductPrice : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -12,10 +13,6 @@ public class ProductPrice
     public decimal Price { get; set; }
 
     public DateTime ApplyDate { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public Product Product { get; set; } = null!;
 }
