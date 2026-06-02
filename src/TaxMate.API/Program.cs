@@ -2,6 +2,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using TaxMate.API.Middlewares;
 using TaxMate.Infrastructure;
+using TaxMate.Model;
 using TaxMate.Repository;
 using TaxMate.Service;
 
@@ -13,6 +14,7 @@ builder.Host.UseSerilog((context, config) =>
 
 // ── Layers DI ──────────────────────────────────────────────
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddModel(builder.Configuration);
 builder.Services.AddRepository();
 builder.Services.AddServices();
 
@@ -41,6 +43,10 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaxMate API V1");
+    });
     app.MapScalarApiReference();
 }
 
