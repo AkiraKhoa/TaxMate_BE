@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Product
+public class Product : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -27,10 +28,6 @@ public class Product
     [Required]
     [MaxLength(50)]
     public string Status { get; set; } = "Active";
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public BusinessProfile Business { get; set; } = null!;
 

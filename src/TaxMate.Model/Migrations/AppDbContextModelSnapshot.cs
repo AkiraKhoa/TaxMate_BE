@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using TaxMate.Infrastructure.Data;
+using TaxMate.Model.Data;
 
 #nullable disable
 
-namespace TaxMate.Infrastructure.Migrations
+namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
@@ -48,6 +48,9 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<decimal>("PitRate")
                         .HasPrecision(5, 2)
                         .HasColumnType("numeric(5,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("VatRate")
                         .HasPrecision(5, 2)
@@ -94,7 +97,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("WardCode")
@@ -159,7 +162,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ExpenseId");
@@ -196,7 +199,7 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("ExpenseCategoryId");
@@ -299,7 +302,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("InvoiceNumber");
@@ -348,6 +351,78 @@ namespace TaxMate.Infrastructure.Migrations
                     b.ToTable("InvoiceDetails");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.LegalDocument", b =>
+                {
+                    b.Property<Guid>("LegalDocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthorityLevel")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentType")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("EffectiveDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiredDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsIndexed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SourceFileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("TotalChunks")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TotalPages")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("LegalDocumentId");
+
+                    b.HasIndex("DocumentCode")
+                        .IsUnique();
+
+                    b.HasIndex("DocumentType");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("LegalDocuments");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -385,6 +460,9 @@ namespace TaxMate.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -430,6 +508,9 @@ namespace TaxMate.Infrastructure.Migrations
 
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("PaymentId");
 
@@ -507,7 +588,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
@@ -559,7 +640,7 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
@@ -630,7 +711,7 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<Guid>("TaxPeriodId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
@@ -692,7 +773,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Year")
@@ -743,7 +824,7 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<DateTime>("TransactionDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("TransactionId");
@@ -808,7 +889,7 @@ namespace TaxMate.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
@@ -852,7 +933,7 @@ namespace TaxMate.Infrastructure.Migrations
                     b.Property<Guid>("SubscriptionPlanId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("UpdatedAt")
+                    b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UserId")

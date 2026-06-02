@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class BusinessCategory
+public class BusinessCategory : BaseEntity
 {
     public Guid BusinessCategoryId { get; set; }
 
@@ -23,9 +24,7 @@ public class BusinessCategory
 
     [Precision(5,2)]
     public decimal PitRate { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
+    
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();
 }

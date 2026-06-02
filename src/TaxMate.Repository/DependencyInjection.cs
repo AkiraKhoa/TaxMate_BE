@@ -10,6 +10,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+        services.AddScoped<ILegalDocumentRepository, LegalDocumentRepository>();
 
         return services;
     }

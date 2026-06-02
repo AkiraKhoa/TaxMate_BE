@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class BusinessProfile
+public class BusinessProfile : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -24,10 +25,6 @@ public class BusinessProfile
     public Guid? MainCategoryId { get; set; }
 
     public bool PreferElectronicInvoice { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public User Owner { get; set; } = null!;
 

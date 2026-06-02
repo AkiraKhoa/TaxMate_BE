@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class ExpenseCategory
+public class ExpenseCategory : BaseEntity
 {
     public Guid ExpenseCategoryId { get; set; }
 
@@ -14,10 +15,6 @@ public class ExpenseCategory
     public string? Description { get; set; }
 
     public bool IsDefault { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public ICollection<Expense> Expenses { get; set; }
         = new List<Expense>();

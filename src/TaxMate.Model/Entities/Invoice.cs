@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Invoice
+public class Invoice : BaseEntity
 {
     [Key]
     [MaxLength(50)]
@@ -28,10 +29,6 @@ public class Invoice
 
     [MaxLength(1000)]
     public string? PdfUrl { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public BusinessProfile Business { get; set; } = null!;
 

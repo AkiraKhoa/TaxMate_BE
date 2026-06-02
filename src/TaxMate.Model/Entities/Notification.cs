@@ -1,8 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class Notification
+public class Notification : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -29,8 +30,6 @@ public class Notification
 
     [MaxLength(100)]
     public string? ReferenceType { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
+    
     public User User { get; set; } = null!;
 }

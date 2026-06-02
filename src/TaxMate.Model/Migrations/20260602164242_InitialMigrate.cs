@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TaxMate.Infrastructure.Migrations
+namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialMigrate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -21,7 +21,8 @@ namespace TaxMate.Infrastructure.Migrations
                     Description = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     VatRate = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: false),
                     PitRate = table.Column<decimal>(type: "numeric(5,2)", precision: 5, scale: 2, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -37,7 +38,7 @@ namespace TaxMate.Infrastructure.Migrations
                     Description = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     IsDefault = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -57,6 +58,33 @@ namespace TaxMate.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Ingredients", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "LegalDocuments",
+                columns: table => new
+                {
+                    LegalDocumentId = table.Column<Guid>(type: "uuid", nullable: false),
+                    DocumentCode = table.Column<string>(type: "text", nullable: false),
+                    DocumentName = table.Column<string>(type: "text", nullable: false),
+                    DocumentType = table.Column<string>(type: "text", nullable: true),
+                    AuthorityLevel = table.Column<string>(type: "text", nullable: true),
+                    EffectiveDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    ExpiredDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    SourceFileName = table.Column<string>(type: "text", nullable: false),
+                    StoragePath = table.Column<string>(type: "text", nullable: false),
+                    FileSize = table.Column<long>(type: "bigint", nullable: false),
+                    FileHash = table.Column<string>(type: "text", nullable: false),
+                    IsIndexed = table.Column<bool>(type: "boolean", nullable: false),
+                    TotalPages = table.Column<int>(type: "integer", nullable: true),
+                    TotalChunks = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_LegalDocuments", x => x.LegalDocumentId);
                 });
 
             migrationBuilder.CreateTable(
@@ -93,7 +121,7 @@ namespace TaxMate.Infrastructure.Migrations
                     AvatarUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -155,7 +183,7 @@ namespace TaxMate.Infrastructure.Migrations
                     MainCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
                     PreferElectronicInvoice = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -187,7 +215,8 @@ namespace TaxMate.Infrastructure.Migrations
                     ReadAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     ReferenceId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     ReferenceType = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -213,7 +242,7 @@ namespace TaxMate.Infrastructure.Migrations
                     BillingCycle = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     AutoRenew = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -246,10 +275,10 @@ namespace TaxMate.Infrastructure.Migrations
                     ReceiptImageUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     Note = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
                     FileUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     DueDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     PaidDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -281,7 +310,7 @@ namespace TaxMate.Infrastructure.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     PdfUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -307,7 +336,7 @@ namespace TaxMate.Infrastructure.Migrations
                     ImageUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -338,7 +367,7 @@ namespace TaxMate.Infrastructure.Migrations
                     DueDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     PaidDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -363,7 +392,7 @@ namespace TaxMate.Infrastructure.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     Note = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -438,7 +467,7 @@ namespace TaxMate.Infrastructure.Migrations
                     Price = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     ApplyDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -460,7 +489,7 @@ namespace TaxMate.Infrastructure.Migrations
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     PaidDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -484,7 +513,8 @@ namespace TaxMate.Infrastructure.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     ReferenceNumber = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     PaidAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -577,6 +607,22 @@ namespace TaxMate.Infrastructure.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Invoices_Status",
                 table: "Invoices",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LegalDocuments_DocumentCode",
+                table: "LegalDocuments",
+                column: "DocumentCode",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LegalDocuments_DocumentType",
+                table: "LegalDocuments",
+                column: "DocumentType");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LegalDocuments_Status",
+                table: "LegalDocuments",
                 column: "Status");
 
             migrationBuilder.CreateIndex(
@@ -723,6 +769,9 @@ namespace TaxMate.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "InvoiceDetails");
+
+            migrationBuilder.DropTable(
+                name: "LegalDocuments");
 
             migrationBuilder.DropTable(
                 name: "Notifications");

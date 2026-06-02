@@ -1,9 +1,10 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
 
-public class TaxPeriod
+public class TaxPeriod : BaseEntity
 {
     public Guid Id { get; set; }
 
@@ -38,10 +39,6 @@ public class TaxPeriod
     public DateTime? DueDate { get; set; }
 
     public DateTime? PaidDate { get; set; }
-
-    public DateTime CreatedAt { get; set; }
-
-    public DateTime? UpdatedAt { get; set; }
 
     public BusinessProfile Business { get; set; } = null!;
 
