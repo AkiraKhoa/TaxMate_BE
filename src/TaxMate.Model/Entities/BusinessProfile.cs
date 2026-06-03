@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -41,4 +41,10 @@ public class BusinessProfile : BaseEntity
 
     public ICollection<Expense> Expenses { get; set; }
         = new List<Expense>();
+
+    public ICollection<PaymentAccount> PaymentAccounts { get; set; }
+        = new List<PaymentAccount>();
+
+    public ICollection<Transaction> Transactions { get; set; }
+        = new List<Transaction>();
 }

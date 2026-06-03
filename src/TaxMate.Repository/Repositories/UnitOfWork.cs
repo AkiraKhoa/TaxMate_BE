@@ -10,13 +10,22 @@ public class UnitOfWork : IUnitOfWork
     private readonly Dictionary<Type, object> _repositories = new();
     private IDbContextTransaction? _transaction;
     public ILegalDocumentRepository LegalDocuments { get; }
+    public IPaymentAccountRepository PaymentAccounts { get; }
+    public ITransactionRepository Transactions { get; }
+    public IInvoiceRepository Invoices { get; }
     
     public UnitOfWork(
         DbContext context,
-        ILegalDocumentRepository legalDocumentRepository)
+        ILegalDocumentRepository legalDocumentRepository,
+        IPaymentAccountRepository paymentAccountRepository,
+        ITransactionRepository transactionRepository,
+        IInvoiceRepository invoiceRepository)
     {
         _context = context;
         LegalDocuments = legalDocumentRepository;
+        PaymentAccounts = paymentAccountRepository;
+        Transactions = transactionRepository;
+        Invoices = invoiceRepository;
     }
 
     public IGenericRepository<T> Repository<T>() where T : class

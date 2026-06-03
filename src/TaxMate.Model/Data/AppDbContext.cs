@@ -42,6 +42,9 @@ public class AppDbContext : DbContext
     
     public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
 
+    public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
+    public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -110,6 +113,14 @@ public class AppDbContext : DbContext
             });
         // Transaction
         modelBuilder.Entity<Transaction>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Transactions)
+            .HasForeignKey(x => x.BusinessId);
+
+        modelBuilder.Entity<Transaction>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Transaction>()
             .HasIndex(x => x.TransactionCode)
             .IsUnique();
 
@@ -122,13 +133,48 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.InvoiceId)
             .HasPrincipalKey(x => x.InvoiceNumber)
             .OnDelete(DeleteBehavior.SetNull);
-        
+
+        // TransactionItem
+        modelBuilder.Entity<TransactionItem>()
+            .HasOne(x => x.Transaction)
+            .WithMany(x => x.TransactionItems)
+            .HasForeignKey(x => x.TransactionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TransactionItem>()
+            .HasOne(x => x.Product)
+            .WithMany()
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<TransactionItem>()
+            .HasIndex(x => x.TransactionId);
+
+        // PaymentAccount
+        modelBuilder.Entity<PaymentAccount>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.PaymentAccounts)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PaymentAccount>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<PaymentAccount>()
+            .HasIndex(x => new { x.BusinessId, x.IsDefault });
+
         // Payment
         modelBuilder.Entity<Payment>()
             .HasOne(x => x.Transaction)
             .WithMany(x => x.Payments)
             .HasForeignKey(x => x.TransactionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Payment>()
+            .HasOne(x => x.PaymentAccount)
+            .WithMany(x => x.Payments)
+            .HasForeignKey(x => x.PaymentAccountId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Payment>()
             .HasIndex(x => x.TransactionId);

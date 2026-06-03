@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260603154900_AddPaymentAccountAndOrders")]
+    partial class AddPaymentAccountAndOrders
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -500,6 +503,15 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid");
 
@@ -525,18 +537,18 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<string>("AccountName")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
-                    b.Property<string>("AccountNumber")
+                    b.Property<string>("AccountNo")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
                     b.Property<string>("BankName")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("BankShortName")
                         .IsRequired()
@@ -549,12 +561,13 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -562,8 +575,6 @@ namespace TaxMate.Model.Migrations
                     b.HasKey("PaymentAccountId");
 
                     b.HasIndex("BusinessId");
-
-                    b.HasIndex("BusinessId", "IsDefault");
 
                     b.ToTable("PaymentAccounts");
                 });
@@ -854,10 +865,10 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("DiscountType")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
-                    b.Property<decimal?>("DiscountValue")
+                    b.Property<decimal>("DiscountValue")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -885,14 +896,6 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("SurchargeName")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<string>("SurchargeType")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<decimal?>("SurchargeValue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(18, 2)
@@ -934,33 +937,12 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<decimal>("DiscountAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<string>("DiscountType")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<decimal?>("DiscountValue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
                     b.Property<decimal>("LineTotal")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<string>("Note")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid?>("ProductId")
+                    b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("ProductName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
@@ -968,10 +950,6 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<Guid>("TransactionId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("Unit")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
 
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
@@ -1192,7 +1170,7 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.Payment", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.PaymentAccount", "PaymentAccount")
-                        .WithMany("Payments")
+                        .WithMany()
                         .HasForeignKey("PaymentAccountId")
                         .OnDelete(DeleteBehavior.SetNull);
 
@@ -1315,7 +1293,8 @@ namespace TaxMate.Model.Migrations
                     b.HasOne("TaxMate.Model.Entities.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("TaxMate.Model.Entities.Transaction", "Transaction")
                         .WithMany("TransactionItems")
@@ -1382,11 +1361,6 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.Invoice", b =>
                 {
                     b.Navigation("InvoiceDetails");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.PaymentAccount", b =>
-                {
-                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
