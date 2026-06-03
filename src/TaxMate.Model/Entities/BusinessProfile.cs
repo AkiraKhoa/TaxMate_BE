@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -25,6 +25,8 @@ public class BusinessProfile : BaseEntity
     public Guid? MainCategoryId { get; set; }
 
     public bool PreferElectronicInvoice { get; set; }
+
+    public bool IsActive { get; set; } = true;
 
     public User Owner { get; set; } = null!;
 
