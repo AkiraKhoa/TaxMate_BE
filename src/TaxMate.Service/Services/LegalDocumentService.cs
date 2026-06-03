@@ -1,7 +1,9 @@
 ﻿using System.Security.Cryptography;
-using TaxMate.Model.DTO;
+using AutoMapper;
+using TaxMate.Model.DTO.LegalDocument;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -10,11 +12,16 @@ public class LegalDocumentService : ILegalDocumentService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IFileStorageService _fileStorageService;
+    private readonly IMapper _mapper;
 
-    public LegalDocumentService(IUnitOfWork unitOfWork, IFileStorageService fileStorageService)
+    public LegalDocumentService(
+        IUnitOfWork unitOfWork, 
+        IFileStorageService fileStorageService,
+        IMapper mapper)
     {
         _unitOfWork = unitOfWork;
         _fileStorageService = fileStorageService;
+        _mapper = mapper;
     }
     
     public async Task<Guid> UploadAsync(
@@ -26,7 +33,7 @@ public class LegalDocumentService : ILegalDocumentService
 
         if (exists)
         {
-            throw new Exception(
+            throw new ConflictException(
                 $"Document code '{request.DocumentCode}' already exists.");
         }
         
@@ -44,8 +51,8 @@ public class LegalDocumentService : ILegalDocumentService
 
         if (duplicatedFile)
         {
-            throw new Exception(
-                "This document already exists.");
+            throw new ConflictException(
+                $"File '{request.DocumentName}' content already exists.");
         }
         
         // Upload file
@@ -91,7 +98,97 @@ public class LegalDocumentService : ILegalDocumentService
 
         return document.LegalDocumentId;
     }
+
+    public async Task<List<LegalDocumentResponse>> GetAllAsync()
+    {
+        var documents =
+            await _unitOfWork.LegalDocuments
+                .GetAllAsync();
+
+        return _mapper.Map<
+            List<LegalDocumentResponse>>(
+            documents);
+    }
+
+    public async Task<LegalDocumentResponse> GetByIdAsync(Guid id)
+    {
+        var document =
+            await _unitOfWork.LegalDocuments
+                .GetByIdAsync(id);
+
+        if (document == null)
+        {
+            throw new NotFoundException(
+                "Legal document not found.");
+        }
+
+        return _mapper.Map<LegalDocumentResponse>(
+            document);
+    }
     
+    public async Task DeactivateAsync(Guid id)
+    {
+        var document =
+            await _unitOfWork.LegalDocuments
+                .GetByIdAsync(id);
+
+        if (document == null)
+        {
+            throw new NotFoundException(
+                "Legal document not found.");
+        }
+
+        if (document.Status == "Inactive")
+        {
+            throw new ConflictException(
+                "Document already inactive.");
+        }
+
+        document.Status = "Inactive";
+
+        _unitOfWork.LegalDocuments
+            .Update(document);
+
+        await _unitOfWork.SaveChangesAsync();
+    }
+    
+    public async Task ActivateAsync(Guid id)
+    {
+        var document =
+            await _unitOfWork.LegalDocuments
+                .GetByIdAsync(id);
+
+        if (document == null)
+        {
+            throw new NotFoundException(
+                "Legal document not found.");
+        }
+
+        if (document.Status == "Active")
+        {
+            throw new ConflictException(
+                "Document already active.");
+        }
+
+        document.Status = "Active";
+
+        _unitOfWork.LegalDocuments
+            .Update(document);
+
+        await _unitOfWork.SaveChangesAsync();
+    }
+
+    public async Task<List<LegalDocumentResponse>> GetActiveAsync()
+    {
+        var documents =
+            await _unitOfWork.LegalDocuments
+                .GetActiveAsync();
+
+        return _mapper.Map<
+            List<LegalDocumentResponse>>(
+            documents);   
+    }
+
     // Helper method to calculate hash
     private static async Task<string> CalculateHashAsync(
         Stream stream)

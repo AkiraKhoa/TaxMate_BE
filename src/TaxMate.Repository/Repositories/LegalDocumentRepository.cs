@@ -19,12 +19,20 @@ public class LegalDocumentRepository : GenericRepository<LegalDocument>, ILegalD
     {
         return await _context.LegalDocuments
             .AnyAsync(x =>
-                x.DocumentCode == documentCode);    }
+                x.DocumentCode == documentCode);    
+    }
 
     public async Task<bool> ExistsByFileHashAsync(
         string fileHash)
     {
         return await _dbSet.AnyAsync(x =>
             x.FileHash == fileHash);
+    }
+    
+    public async Task<List<LegalDocument>> GetActiveAsync()
+    {
+        return await _dbSet
+            .Where(x => x.Status == "Active")
+            .ToListAsync();
     }
 }

@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 
-namespace TaxMate.Model.DTO;
+namespace TaxMate.Model.DTO.LegalDocument;
 
 public class UploadLegalDocumentRequest
 {
