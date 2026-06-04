@@ -4,7 +4,7 @@ using TaxMate.Service.Interfaces;
 namespace TaxMate.API.Controllers;
 
 [Controller]
-[Route("api/invoice")]
+[Route("api/[controller]")]
 public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _invoiceService;

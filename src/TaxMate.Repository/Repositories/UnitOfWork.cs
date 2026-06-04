@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
 
 namespace TaxMate.Repository.Repositories;
@@ -13,6 +14,11 @@ public class UnitOfWork : IUnitOfWork
     public IPaymentAccountRepository PaymentAccounts { get; }
     public ITransactionRepository Transactions { get; }
     public IInvoiceRepository Invoices { get; }
+    public IGenericRepository<BusinessProfile> BusinessProfiles => Repository<BusinessProfile>();
+    public IGenericRepository<Product> Products => Repository<Product>();
+    public IGenericRepository<ProductPrice> ProductPrices => Repository<ProductPrice>();
+    public IGenericRepository<TransactionItem> TransactionItems => Repository<TransactionItem>();
+    public IGenericRepository<Payment> Payments => Repository<Payment>();
     
     public UnitOfWork(
         DbContext context,

@@ -5,7 +5,7 @@ using TaxMate.Service.Interfaces;
 namespace TaxMate.API.Controllers;
 
 [Controller]
-[Route("api/payment-account")]
+[Route("api/[controller]")]
 public class PaymentAccountController : ControllerBase
 {
     private readonly IPaymentAccountService _paymentAccountService;

@@ -5,7 +5,7 @@ using TaxMate.Service.Interfaces;
 namespace TaxMate.API.Controllers;
 
 [Controller]
-[Route("api/order")]
+[Route("api/[controller]")]
 public class OrderController : ControllerBase
 {
     private readonly IOrderService _orderService;

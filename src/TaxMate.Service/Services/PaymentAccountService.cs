@@ -16,7 +16,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task<Guid> CreateAsync(Guid businessId, CreatePaymentAccountRequest request)
     {
-        var business = await _unitOfWork.Repository<BusinessProfile>().GetByIdAsync(businessId);
+        var business = await _unitOfWork.BusinessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
             throw new Exception("Business profile not found.");
@@ -119,14 +119,12 @@ public class PaymentAccountService : IPaymentAccountService
             account.AccountNumber = request.AccountNumber;
             account.AccountName = request.AccountName.ToUpper();
             account.Description = request.Description;
-            account.UpdatedAt = DateTime.UtcNow;
 
             if (request.IsDefault)
             {
                 account.IsDefault = true;
             }
 
-            _unitOfWork.PaymentAccounts.Update(account);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
         }
@@ -161,7 +159,6 @@ public class PaymentAccountService : IPaymentAccountService
                 if (first != null)
                 {
                     first.IsDefault = true;
-                    _unitOfWork.PaymentAccounts.Update(first);
                     await _unitOfWork.SaveChangesAsync();
                 }
             }
@@ -190,7 +187,6 @@ public class PaymentAccountService : IPaymentAccountService
         {
             await _unitOfWork.PaymentAccounts.UnsetAllDefaultAsync(businessId);
             account.IsDefault = true;
-            _unitOfWork.PaymentAccounts.Update(account);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
         }

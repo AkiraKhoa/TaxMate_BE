@@ -63,9 +63,8 @@ public class InvoiceService : IInvoiceService
         }
 
         order.InvoiceId = invoiceNumber;
-        _unitOfWork.Transactions.Update(order);
 
-        await _unitOfWork.Repository<Invoice>().AddAsync(invoice);
+        await _unitOfWork.Invoices.AddAsync(invoice);
         await _unitOfWork.SaveChangesAsync();
 
         return invoiceNumber;
@@ -79,7 +78,7 @@ public class InvoiceService : IInvoiceService
             throw new Exception("Invoice not found.");
         }
 
-        var transaction = await _unitOfWork.Repository<Transaction>().FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
+        var transaction = await _unitOfWork.Transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
         if (transaction == null)
         {
             throw new Exception("Associated transaction not found for this invoice.");
@@ -104,7 +103,7 @@ public class InvoiceService : IInvoiceService
             DiscountAmount = transaction.DiscountAmount,
             SurchargeAmount = transaction.SurchargeAmount,
             TotalAmount = invoice.TotalAmount,
-            PdfUrl = $"/api/invoice/{invoice.InvoiceNumber}/pdf"
+            PdfUrl = $"/api/Invoice/{invoice.InvoiceNumber}/pdf"
         };
     }
 
@@ -116,7 +115,7 @@ public class InvoiceService : IInvoiceService
             throw new Exception("Invoice not found.");
         }
 
-        var transaction = await _unitOfWork.Repository<Transaction>().FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
+        var transaction = await _unitOfWork.Transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
         if (transaction == null)
         {
             throw new Exception("Associated transaction not found for this invoice.");

@@ -20,7 +20,7 @@ public class OrderService : IOrderService
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
     {
-        var business = await _unitOfWork.Repository<BusinessProfile>().GetByIdAsync(businessId);
+        var business = await _unitOfWork.BusinessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
             throw new Exception("Business profile not found.");
@@ -126,11 +126,11 @@ public class OrderService : IOrderService
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify items of a non-draft order.");
 
-        var product = await _unitOfWork.Repository<Product>().GetByIdAsync(request.ProductId);
+        var product = await _unitOfWork.Products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
         if (product == null || product.BusinessId != order.BusinessId)
             throw new Exception("Product not found or does not belong to this business.");
 
-        var prices = await _unitOfWork.Repository<ProductPrice>().FindAsync(x => x.ProductId == request.ProductId);
+        var prices = await _unitOfWork.ProductPrices.FindAsync(x => x.ProductId == request.ProductId);
         var now = DateTime.UtcNow;
         var unitPrice = prices
             .Where(p => p.ApplyDate <= now)
@@ -151,7 +151,6 @@ public class OrderService : IOrderService
                 existing.DiscountType = request.DiscountType;
                 existing.DiscountValue = request.DiscountValue;
             }
-            existing.UpdatedAt = DateTime.UtcNow;
         }
         else
         {
@@ -169,11 +168,11 @@ public class OrderService : IOrderService
                 Note = request.Note,
                 CreatedAt = DateTime.UtcNow
             };
+            await _unitOfWork.TransactionItems.AddAsync(item);
             order.TransactionItems.Add(item);
         }
 
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -209,10 +208,7 @@ public class OrderService : IOrderService
             item.Note = string.IsNullOrEmpty(request.Note) ? null : request.Note;
         }
 
-        item.UpdatedAt = DateTime.UtcNow;
-
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -228,7 +224,6 @@ public class OrderService : IOrderService
         order.TransactionItems.Remove(item);
         
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -240,10 +235,8 @@ public class OrderService : IOrderService
 
         order.DiscountType = request.DiscountType;
         order.DiscountValue = request.DiscountValue;
-        order.UpdatedAt = DateTime.UtcNow;
 
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -256,10 +249,8 @@ public class OrderService : IOrderService
         order.DiscountType = null;
         order.DiscountValue = null;
         order.DiscountAmount = 0;
-        order.UpdatedAt = DateTime.UtcNow;
 
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -272,10 +263,8 @@ public class OrderService : IOrderService
         order.SurchargeName = request.SurchargeName;
         order.SurchargeType = request.SurchargeType;
         order.SurchargeValue = request.SurchargeValue;
-        order.UpdatedAt = DateTime.UtcNow;
 
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -289,10 +278,8 @@ public class OrderService : IOrderService
         order.SurchargeType = null;
         order.SurchargeValue = null;
         order.SurchargeAmount = 0;
-        order.UpdatedAt = DateTime.UtcNow;
 
         RecalculateOrder(order);
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 
@@ -347,13 +334,12 @@ public class OrderService : IOrderService
                     CreatedAt = paidAt
                 };
 
+                await _unitOfWork.Payments.AddAsync(payment);
                 order.Payments.Add(payment);
             }
 
             order.Status = "Completed";
-            order.UpdatedAt = paidAt;
 
-            _unitOfWork.Transactions.Update(order);
             await _unitOfWork.SaveChangesAsync();
 
             var invoiceNumber = await _invoiceService.GenerateFromOrderAsync(order.TransactionId);
@@ -383,8 +369,6 @@ public class OrderService : IOrderService
         }
 
         order.Status = "Cancelled";
-        order.UpdatedAt = DateTime.UtcNow;
-        _unitOfWork.Transactions.Update(order);
         await _unitOfWork.SaveChangesAsync();
     }
 

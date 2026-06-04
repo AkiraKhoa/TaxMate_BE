@@ -17,11 +17,10 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
     public async Task<Transaction?> GetByIdWithDetailsAsync(Guid id)
     {
         return await _dbSet
+            .AsSplitQuery()
             .Include(x => x.TransactionItems)
             .Include(x => x.Payments)
                 .ThenInclude(p => p.PaymentAccount)
-            .Include(x => x.Invoice)
-            .Include(x => x.Business)
             .FirstOrDefaultAsync(x => x.TransactionId == id);
     }
 
