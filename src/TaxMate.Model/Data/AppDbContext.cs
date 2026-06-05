@@ -55,6 +55,11 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>()
             .HasIndex(x => x.TaxCode);
 
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.GoogleId)
+            .IsUnique()
+            .HasFilter("\"GoogleId\" IS NOT NULL");
+
         // BusinessProfile
         modelBuilder.Entity<BusinessProfile>()
             .HasOne(x => x.Owner)

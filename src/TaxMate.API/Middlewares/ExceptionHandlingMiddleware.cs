@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using TaxMate.Service.Exceptions;
 
 namespace TaxMate.API.Middlewares;
 
@@ -32,7 +33,8 @@ public class ExceptionHandlingMiddleware
         var (statusCode, message) = exception switch
         {
             KeyNotFoundException => (HttpStatusCode.NotFound, exception.Message),
-            UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Không có quyền truy cập"),
+            UnauthorizedAccessException => (HttpStatusCode.Unauthorized, exception.Message),
+            AccountPendingException => (HttpStatusCode.Forbidden, exception.Message),
             ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
             InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Đã xảy ra lỗi hệ thống")

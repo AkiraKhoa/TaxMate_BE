@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialMigrate : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -113,13 +113,15 @@ namespace TaxMate.Model.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Email = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     TaxCode = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
-                    PasswordHash = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
+                    PasswordHash = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     GoogleId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     FullName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Phone = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     Role = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     AvatarUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    IsActive = table.Column<bool>(type: "boolean", nullable: false),
+                    AccountStatus = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    EmailVerificationToken = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    EmailVerificationTokenExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
@@ -731,6 +733,13 @@ namespace TaxMate.Model.Migrations
                 table: "Users",
                 column: "Email",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_GoogleId",
+                table: "Users",
+                column: "GoogleId",
+                unique: true,
+                filter: "\"GoogleId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_TaxCode",

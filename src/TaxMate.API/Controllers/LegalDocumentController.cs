@@ -1,10 +1,13 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
-[Controller]
+[ApiController]
+[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 [Route("api/[controller]")]
 public class LegalDocumentController : ControllerBase
 {
