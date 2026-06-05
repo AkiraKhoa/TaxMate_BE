@@ -8,8 +8,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddServices(this IServiceCollection services)
     {
-        // Register your services here, e.g.:
-        // services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ILegalDocumentService, LegalDocumentService>();
         
         return services;
