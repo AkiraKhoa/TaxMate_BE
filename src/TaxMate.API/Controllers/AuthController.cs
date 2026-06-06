@@ -66,21 +66,21 @@ public class AuthController : ControllerBase
         if (!string.IsNullOrWhiteSpace(error))
         {
             return Content(
-                BuildHtmlPage("Đăng nhập Google thất bại", error),
+                BuildHtmlPage("Google login failed", error),
                 "text/html; charset=utf-8");
         }
 
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
         {
             return Content(
-                BuildHtmlPage("Đăng nhập Google thất bại", "Thiếu mã xác thực từ Google."),
+                BuildHtmlPage("Google login failed", "Missing authentication code or state."),
                 "text/html; charset=utf-8");
         }
 
         if (!_cache.TryGetValue(GetOAuthStateCacheKey(state), out _))
         {
             return Content(
-                BuildHtmlPage("Đăng nhập Google thất bại", "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."),
+                BuildHtmlPage("Google login failed", "login session expired or invalid."),
                 "text/html; charset=utf-8");
         }
 
@@ -97,7 +97,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             return Content(
-                BuildHtmlPage("Đăng nhập Google thất bại", ex.Message),
+                BuildHtmlPage("Google login failed", ex.Message),
                 "text/html; charset=utf-8");
         }
     }
@@ -113,8 +113,8 @@ public class AuthController : ControllerBase
             var email = await _authService.ConfirmEmailVerificationAsync(token, cancellationToken);
             return Content(
                 BuildHtmlPage(
-                    "Xác minh email thành công",
-                    $"Email {email} đã được kích hoạt. Đăng nhập lại bằng Google để nhận access token."),
+                    "Email verified successfully",
+                    $"Email {email} has been activated. Login again with Google to receive access token."),
                 "text/html; charset=utf-8");
         }
         catch (ArgumentException ex)
@@ -141,7 +141,7 @@ public class AuthController : ControllerBase
     {
         var userId = GetUserId();
         await _authService.ResendVerificationEmailAsync(userId, cancellationToken);
-        return Ok(new { message = "Email xác minh đã được gửi lại." });
+        return Ok(new { message = "Email verification has been resend." });
     }
 
     [HttpGet("me")]
@@ -160,7 +160,7 @@ public class AuthController : ControllerBase
 
         if (sub is null || !Guid.TryParse(sub, out var userId))
         {
-            throw new UnauthorizedAccessException("Token không hợp lệ.");
+            throw new UnauthorizedAccessException("Token invalid.");
         }
 
         return userId;
@@ -186,18 +186,35 @@ public class AuthController : ControllerBase
     private static string BuildTokenPage(string idToken)
     {
         var encodedToken = WebUtility.HtmlEncode(idToken);
-        var requestBody = $"{{\"idToken\":\"{encodedToken}\"}}";
-        return $"""
+        var requestBody = $$"""
+            {
+              "idToken": "{{encodedToken}}"
+            }
+            """;
+        return $$"""
             <!DOCTYPE html>
-            <html lang="vi">
+            <html lang="en">
             <head>
                 <meta charset="utf-8" />
-                <title>Đăng nhập Google thành công</title>
+                <title>Google login successful</title>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.5; margin: 2rem; }
+                    pre {
+                        background: #f6f8fa;
+                        border: 1px solid #d0d7de;
+                        border-radius: 6px;
+                        max-width: 100%;
+                        overflow-wrap: anywhere;
+                        padding: 1rem;
+                        white-space: pre-wrap;
+                        word-break: break-word;
+                    }
+                </style>
             </head>
             <body>
-                <h1>Đăng nhập Google thành công</h1>
-                <p>Gửi token sau trong POST /api/auth/google:</p>
-                <pre>{requestBody}</pre>
+                <h1>Google login successful</h1>
+                
+                <pre>{{requestBody}}</pre>
             </body>
             </html>
             """;
