@@ -8,21 +8,28 @@ namespace TaxMate.Service.Services;
 public class PaymentAccountService : IPaymentAccountService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IPaymentAccountRepository _paymentAccounts;
+    private readonly IGenericRepository<BusinessProfile> _businessProfiles;
 
-    public PaymentAccountService(IUnitOfWork unitOfWork)
+    public PaymentAccountService(
+        IUnitOfWork unitOfWork,
+        IPaymentAccountRepository paymentAccounts,
+        IGenericRepository<BusinessProfile> businessProfiles)
     {
         _unitOfWork = unitOfWork;
+        _paymentAccounts = paymentAccounts;
+        _businessProfiles = businessProfiles;
     }
 
     public async Task<Guid> CreateAsync(Guid businessId, CreatePaymentAccountRequest request)
     {
-        var business = await _unitOfWork.BusinessProfiles.GetByIdAsync(businessId);
+        var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
             throw new Exception("Business profile not found.");
         }
 
-        var count = await _unitOfWork.PaymentAccounts.CountAsync(x => x.BusinessId == businessId);
+        var count = await _paymentAccounts.CountAsync(x => x.BusinessId == businessId);
         var isDefault = request.IsDefault || count == 0;
 
         await _unitOfWork.BeginTransactionAsync();
@@ -30,7 +37,7 @@ public class PaymentAccountService : IPaymentAccountService
         {
             if (isDefault)
             {
-                await _unitOfWork.PaymentAccounts.UnsetAllDefaultAsync(businessId);
+                await _paymentAccounts.UnsetAllDefaultAsync(businessId);
             }
 
             var account = new PaymentAccount
@@ -46,7 +53,7 @@ public class PaymentAccountService : IPaymentAccountService
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _unitOfWork.PaymentAccounts.AddAsync(account);
+            await _paymentAccounts.AddAsync(account);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
 
@@ -61,7 +68,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task<IEnumerable<PaymentAccountResponse>> GetByBusinessIdAsync(Guid businessId)
     {
-        var accounts = await _unitOfWork.PaymentAccounts.GetAllByBusinessIdAsync(businessId);
+        var accounts = await _paymentAccounts.GetAllByBusinessIdAsync(businessId);
         return accounts.Select(x => new PaymentAccountResponse
         {
             PaymentAccountId = x.PaymentAccountId,
@@ -78,7 +85,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task<PaymentAccountResponse> GetByIdAsync(Guid id)
     {
-        var x = await _unitOfWork.PaymentAccounts.GetByIdAsync(id);
+        var x = await _paymentAccounts.GetByIdAsync(id);
         if (x == null)
         {
             throw new Exception("Payment account not found.");
@@ -100,7 +107,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task UpdateAsync(Guid id, UpdatePaymentAccountRequest request)
     {
-        var account = await _unitOfWork.PaymentAccounts.GetByIdAsync(id);
+        var account = await _paymentAccounts.GetByIdAsync(id);
         if (account == null)
         {
             throw new Exception("Payment account not found.");
@@ -111,7 +118,7 @@ public class PaymentAccountService : IPaymentAccountService
         {
             if (request.IsDefault && !account.IsDefault)
             {
-                await _unitOfWork.PaymentAccounts.UnsetAllDefaultAsync(account.BusinessId);
+                await _paymentAccounts.UnsetAllDefaultAsync(account.BusinessId);
             }
 
             account.BankShortName = request.BankShortName;
@@ -137,7 +144,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task DeleteAsync(Guid id)
     {
-        var account = await _unitOfWork.PaymentAccounts.GetByIdAsync(id);
+        var account = await _paymentAccounts.GetByIdAsync(id);
         if (account == null)
         {
             throw new Exception("Payment account not found.");
@@ -149,12 +156,12 @@ public class PaymentAccountService : IPaymentAccountService
             var businessId = account.BusinessId;
             var wasDefault = account.IsDefault;
 
-            _unitOfWork.PaymentAccounts.Remove(account);
+            _paymentAccounts.Remove(account);
             await _unitOfWork.SaveChangesAsync();
 
             if (wasDefault)
             {
-                var remaining = await _unitOfWork.PaymentAccounts.GetAllByBusinessIdAsync(businessId);
+                var remaining = await _paymentAccounts.GetAllByBusinessIdAsync(businessId);
                 var first = remaining.FirstOrDefault();
                 if (first != null)
                 {
@@ -174,7 +181,7 @@ public class PaymentAccountService : IPaymentAccountService
 
     public async Task SetDefaultAsync(Guid businessId, Guid paymentAccountId)
     {
-        var account = await _unitOfWork.PaymentAccounts.GetByIdAsync(paymentAccountId);
+        var account = await _paymentAccounts.GetByIdAsync(paymentAccountId);
         if (account == null || account.BusinessId != businessId)
         {
             throw new Exception("Payment account not found.");
@@ -185,7 +192,7 @@ public class PaymentAccountService : IPaymentAccountService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            await _unitOfWork.PaymentAccounts.UnsetAllDefaultAsync(businessId);
+            await _paymentAccounts.UnsetAllDefaultAsync(businessId);
             account.IsDefault = true;
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();

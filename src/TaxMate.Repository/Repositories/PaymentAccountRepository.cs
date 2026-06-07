@@ -7,11 +7,8 @@ namespace TaxMate.Repository.Repositories;
 
 public class PaymentAccountRepository : GenericRepository<PaymentAccount>, IPaymentAccountRepository
 {
-    private readonly AppDbContext _context;
-
     public PaymentAccountRepository(AppDbContext context) : base(context)
     {
-        _context = context;
     }
 
     public async Task<PaymentAccount?> GetDefaultByBusinessIdAsync(Guid businessId)

@@ -10,23 +10,46 @@ namespace TaxMate.Service.Services;
 public class OrderService : IOrderService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITransactionRepository _transactions;
+    private readonly IPaymentAccountRepository _paymentAccounts;
+    private readonly IGenericRepository<BusinessProfile> _businessProfiles;
+    private readonly IGenericRepository<Product> _products;
+    private readonly IGenericRepository<ProductPrice> _productPrices;
+    private readonly IGenericRepository<TransactionItem> _transactionItems;
+    private readonly IGenericRepository<Payment> _payments;
     private readonly IInvoiceService _invoiceService;
 
-    public OrderService(IUnitOfWork unitOfWork, IInvoiceService invoiceService)
+    public OrderService(
+        IUnitOfWork unitOfWork,
+        ITransactionRepository transactions,
+        IPaymentAccountRepository paymentAccounts,
+        IGenericRepository<BusinessProfile> businessProfiles,
+        IGenericRepository<Product> products,
+        IGenericRepository<ProductPrice> productPrices,
+        IGenericRepository<TransactionItem> transactionItems,
+        IGenericRepository<Payment> payments,
+        IInvoiceService invoiceService)
     {
         _unitOfWork = unitOfWork;
+        _transactions = transactions;
+        _paymentAccounts = paymentAccounts;
+        _businessProfiles = businessProfiles;
+        _products = products;
+        _productPrices = productPrices;
+        _transactionItems = transactionItems;
+        _payments = payments;
         _invoiceService = invoiceService;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
     {
-        var business = await _unitOfWork.BusinessProfiles.GetByIdAsync(businessId);
+        var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
             throw new Exception("Business profile not found.");
         }
 
-        var code = await _unitOfWork.Transactions.GenerateTransactionCodeAsync(businessId);
+        var code = await _transactions.GenerateTransactionCodeAsync(businessId);
         var order = new Transaction
         {
             TransactionId = Guid.NewGuid(),
@@ -38,14 +61,14 @@ public class OrderService : IOrderService
             CreatedAt = DateTime.UtcNow
         };
 
-        await _unitOfWork.Transactions.AddAsync(order);
+        await _transactions.AddAsync(order);
         await _unitOfWork.SaveChangesAsync();
         return order.TransactionId;
     }
 
     public async Task<OrderDetailResponse> GetOrderDetailAsync(Guid transactionId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
             throw new Exception("Order not found.");
@@ -97,8 +120,8 @@ public class OrderService : IOrderService
     public async Task<PagedResult<OrderSummaryResponse>> GetOrdersByBusinessAsync(
         Guid businessId, int page, int pageSize)
     {
-        var count = await _unitOfWork.Transactions.CountByBusinessIdAsync(businessId);
-        var transactions = await _unitOfWork.Transactions.GetByBusinessIdAsync(businessId, page, pageSize);
+        var count = await _transactions.CountByBusinessIdAsync(businessId);
+        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize);
 
         var items = transactions.Select(x => new OrderSummaryResponse
         {
@@ -122,15 +145,15 @@ public class OrderService : IOrderService
 
     public async Task AddItemAsync(Guid transactionId, AddOrderItemRequest request)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify items of a non-draft order.");
 
-        var product = await _unitOfWork.Products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
+        var product = await _products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
         if (product == null || product.BusinessId != order.BusinessId)
             throw new Exception("Product not found or does not belong to this business.");
 
-        var prices = await _unitOfWork.ProductPrices.FindAsync(x => x.ProductId == request.ProductId);
+        var prices = await _productPrices.FindAsync(x => x.ProductId == request.ProductId);
         var now = DateTime.UtcNow;
         var unitPrice = prices
             .Where(p => p.ApplyDate <= now)
@@ -168,7 +191,7 @@ public class OrderService : IOrderService
                 Note = request.Note,
                 CreatedAt = DateTime.UtcNow
             };
-            await _unitOfWork.TransactionItems.AddAsync(item);
+            await _transactionItems.AddAsync(item);
             order.TransactionItems.Add(item);
         }
 
@@ -178,7 +201,7 @@ public class OrderService : IOrderService
 
     public async Task UpdateItemAsync(Guid transactionId, Guid itemId, UpdateOrderItemRequest request)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify items of a non-draft order.");
 
@@ -214,7 +237,7 @@ public class OrderService : IOrderService
 
     public async Task RemoveItemAsync(Guid transactionId, Guid itemId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify items of a non-draft order.");
 
@@ -229,7 +252,7 @@ public class OrderService : IOrderService
 
     public async Task ApplyDiscountAsync(Guid transactionId, ApplyDiscountRequest request)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify discount of a non-draft order.");
 
@@ -242,7 +265,7 @@ public class OrderService : IOrderService
 
     public async Task RemoveDiscountAsync(Guid transactionId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify discount of a non-draft order.");
 
@@ -256,7 +279,7 @@ public class OrderService : IOrderService
 
     public async Task ApplySurchargeAsync(Guid transactionId, ApplySurchargeRequest request)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify surcharge of a non-draft order.");
 
@@ -270,7 +293,7 @@ public class OrderService : IOrderService
 
     public async Task RemoveSurchargeAsync(Guid transactionId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new Exception("Order not found.");
         if (order.Status != "Draft") throw new Exception("Cannot modify surcharge of a non-draft order.");
 
@@ -285,7 +308,7 @@ public class OrderService : IOrderService
 
     public async Task<InvoiceDetailResponse> CheckoutAsync(Guid transactionId, CheckoutRequest request)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
             throw new Exception("Order not found.");
@@ -316,7 +339,7 @@ public class OrderService : IOrderService
             {
                 if (paymentEntry.PaymentAccountId.HasValue)
                 {
-                    var account = await _unitOfWork.PaymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
+                    var account = await _paymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
                     if (account == null || account.BusinessId != order.BusinessId)
                     {
                         throw new Exception($"Payment account '{paymentEntry.PaymentAccountId}' not found or does not belong to this business.");
@@ -334,7 +357,7 @@ public class OrderService : IOrderService
                     CreatedAt = paidAt
                 };
 
-                await _unitOfWork.Payments.AddAsync(payment);
+                await _payments.AddAsync(payment);
                 order.Payments.Add(payment);
             }
 
@@ -357,7 +380,7 @@ public class OrderService : IOrderService
 
     public async Task CancelOrderAsync(Guid transactionId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdAsync(transactionId);
+        var order = await _transactions.GetByIdAsync(transactionId);
         if (order == null)
         {
             throw new Exception("Order not found.");

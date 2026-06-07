@@ -4,6 +4,7 @@ using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
+/// <summary>Upload và quản lý văn bản pháp lý.</summary>
 [Controller]
 [Route("api/[controller]")]
 public class LegalDocumentController : ControllerBase
@@ -15,6 +16,8 @@ public class LegalDocumentController : ControllerBase
         _legalDocumentService = legalDocumentService;
     }
     
+    /// <summary>Upload văn bản pháp lý (multipart/form-data).</summary>
+    /// <param name="request">Metadata và file văn bản.</param>
     [HttpPost]
     public async Task<IActionResult> Upload(
         [FromForm] UploadLegalDocumentRequest request)

@@ -9,17 +9,28 @@ namespace TaxMate.Service.Services;
 public class InvoiceService : IInvoiceService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ITransactionRepository _transactions;
+    private readonly IInvoiceRepository _invoices;
+    private readonly IPaymentAccountRepository _paymentAccounts;
     private readonly IVietQRService _vietQRService;
 
-    public InvoiceService(IUnitOfWork unitOfWork, IVietQRService vietQRService)
+    public InvoiceService(
+        IUnitOfWork unitOfWork,
+        ITransactionRepository transactions,
+        IInvoiceRepository invoices,
+        IPaymentAccountRepository paymentAccounts,
+        IVietQRService vietQRService)
     {
         _unitOfWork = unitOfWork;
+        _transactions = transactions;
+        _invoices = invoices;
+        _paymentAccounts = paymentAccounts;
         _vietQRService = vietQRService;
     }
 
     public async Task<string> GenerateFromOrderAsync(Guid transactionId)
     {
-        var order = await _unitOfWork.Transactions.GetByIdWithDetailsAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
             throw new Exception("Order not found.");
@@ -29,7 +40,7 @@ public class InvoiceService : IInvoiceService
         var localIssueDate = issueDate.AddHours(7);
         var dateStr = localIssueDate.ToString("yyyyMMdd");
 
-        var count = await _unitOfWork.Invoices.CountByBusinessAndDateAsync(order.BusinessId, localIssueDate);
+        var count = await _invoices.CountByBusinessAndDateAsync(order.BusinessId, localIssueDate);
         var sequence = count + 1;
         var invoiceNumber = $"HD-{dateStr}-{sequence:D3}";
 
@@ -64,7 +75,7 @@ public class InvoiceService : IInvoiceService
 
         order.InvoiceId = invoiceNumber;
 
-        await _unitOfWork.Invoices.AddAsync(invoice);
+        await _invoices.AddAsync(invoice);
         await _unitOfWork.SaveChangesAsync();
 
         return invoiceNumber;
@@ -72,13 +83,13 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDetailResponse> GetInvoiceDetailAsync(string invoiceNumber)
     {
-        var invoice = await _unitOfWork.Invoices.GetByNumberWithDetailsAsync(invoiceNumber);
+        var invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
         if (invoice == null)
         {
             throw new Exception("Invoice not found.");
         }
 
-        var transaction = await _unitOfWork.Transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
+        var transaction = await _transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
         if (transaction == null)
         {
             throw new Exception("Associated transaction not found for this invoice.");
@@ -107,32 +118,29 @@ public class InvoiceService : IInvoiceService
         };
     }
 
-    public async Task<InvoicePdfData> GetInvoicePdfDataAsync(string invoiceNumber, Guid? paymentAccountId, bool useDefault)
+    public async Task<InvoicePdfData> GetInvoicePdfDataAsync(string invoiceNumber)
     {
-        var invoice = await _unitOfWork.Invoices.GetByNumberWithDetailsAsync(invoiceNumber);
+        var invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
         if (invoice == null)
         {
             throw new Exception("Invoice not found.");
         }
 
-        var transaction = await _unitOfWork.Transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
+        var transaction = await _transactions.GetByInvoiceNumberWithDetailsAsync(invoiceNumber);
         if (transaction == null)
         {
             throw new Exception("Associated transaction not found for this invoice.");
         }
 
         PaymentAccount? paymentAccount = null;
-        if (paymentAccountId.HasValue)
+        var checkoutPaymentAccountId = transaction.Payments
+            .Where(p => p.PaymentAccountId.HasValue)
+            .Select(p => p.PaymentAccountId)
+            .FirstOrDefault();
+
+        if (checkoutPaymentAccountId.HasValue)
         {
-            paymentAccount = await _unitOfWork.PaymentAccounts.GetByIdAsync(paymentAccountId.Value);
-            if (paymentAccount == null || paymentAccount.BusinessId != invoice.BusinessId)
-            {
-                throw new Exception("Selected payment account not found or does not belong to this business.");
-            }
-        }
-        else if (useDefault)
-        {
-            paymentAccount = await _unitOfWork.PaymentAccounts.GetDefaultByBusinessIdAsync(invoice.BusinessId);
+            paymentAccount = await _paymentAccounts.GetByIdAsync(checkoutPaymentAccountId.Value);
         }
 
         string? qrCodeUrl = null;

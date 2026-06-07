@@ -7,11 +7,8 @@ namespace TaxMate.Repository.Repositories;
 
 public class TransactionRepository : GenericRepository<Transaction>, ITransactionRepository
 {
-    private readonly AppDbContext _context;
-
     public TransactionRepository(AppDbContext context) : base(context)
     {
-        _context = context;
     }
 
     public async Task<Transaction?> GetByIdWithDetailsAsync(Guid id)
@@ -22,6 +19,13 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
             .Include(x => x.Payments)
                 .ThenInclude(p => p.PaymentAccount)
             .FirstOrDefaultAsync(x => x.TransactionId == id);
+    }
+
+    public async Task<Transaction?> GetByInvoiceNumberWithDetailsAsync(string invoiceNumber)
+    {
+        return await _dbSet
+            .Include(x => x.Payments)
+            .FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
     }
 
     public async Task<IEnumerable<Transaction>> GetByBusinessIdAsync(Guid businessId, int page, int pageSize)

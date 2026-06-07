@@ -6,5 +6,5 @@ public interface IInvoiceService
 {
     Task<string> GenerateFromOrderAsync(Guid transactionId);
     Task<InvoiceDetailResponse> GetInvoiceDetailAsync(string invoiceNumber);
-    Task<InvoicePdfData> GetInvoicePdfDataAsync(string invoiceNumber, Guid? paymentAccountId, bool useDefault);
+    Task<InvoicePdfData> GetInvoicePdfDataAsync(string invoiceNumber);
 }

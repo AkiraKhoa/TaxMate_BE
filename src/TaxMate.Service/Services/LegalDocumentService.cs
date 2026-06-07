@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
@@ -9,18 +9,23 @@ namespace TaxMate.Service.Services;
 public class LegalDocumentService : ILegalDocumentService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ILegalDocumentRepository _legalDocuments;
     private readonly IFileStorageService _fileStorageService;
 
-    public LegalDocumentService(IUnitOfWork unitOfWork, IFileStorageService fileStorageService)
+    public LegalDocumentService(
+        IUnitOfWork unitOfWork,
+        ILegalDocumentRepository legalDocuments,
+        IFileStorageService fileStorageService)
     {
         _unitOfWork = unitOfWork;
+        _legalDocuments = legalDocuments;
         _fileStorageService = fileStorageService;
     }
     
     public async Task<Guid> UploadAsync(
         UploadLegalDocumentRequest request)
     {
-        var exists = await _unitOfWork.LegalDocuments
+        var exists = await _legalDocuments
             .ExistsByDocumentCodeAsync(
                 request.DocumentCode);
 
@@ -39,7 +44,7 @@ public class LegalDocumentService : ILegalDocumentService
 
         // Check for duplicates content
         var duplicatedFile =
-            await _unitOfWork.LegalDocuments
+            await _legalDocuments
                 .ExistsByFileHashAsync(fileHash);
 
         if (duplicatedFile)
@@ -84,7 +89,7 @@ public class LegalDocumentService : ILegalDocumentService
             CreatedAt = DateTime.UtcNow
         };
 
-        await _unitOfWork.LegalDocuments
+        await _legalDocuments
             .AddAsync(document);
 
         await _unitOfWork.SaveChangesAsync();

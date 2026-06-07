@@ -7,11 +7,8 @@ namespace TaxMate.Repository.Repositories;
 
 public class InvoiceRepository : GenericRepository<Invoice>, IInvoiceRepository
 {
-    private readonly AppDbContext _context;
-
     public InvoiceRepository(AppDbContext context) : base(context)
     {
-        _context = context;
     }
 
     public async Task<Invoice?> GetByNumberWithDetailsAsync(string invoiceNumber)
