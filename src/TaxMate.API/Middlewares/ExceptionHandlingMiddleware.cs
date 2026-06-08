@@ -37,18 +37,32 @@ public class ExceptionHandlingMiddleware
             AccountPendingException => (HttpStatusCode.Forbidden, exception.Message),
             ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
             InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),
+            ResendCooldownException => (HttpStatusCode.TooManyRequests, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Đã xảy ra lỗi hệ thống")
         };
 
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        var response = new
+        if (exception is ResendCooldownException cooldown)
         {
-            status = (int)statusCode,
-            message,
-            traceId = context.TraceIdentifier
-        };
+            context.Response.Headers.RetryAfter = cooldown.RetryAfterSeconds.ToString();
+        }
+
+        object response = exception is ResendCooldownException resendCooldown
+            ? new
+            {
+                status = (int)statusCode,
+                message,
+                retryAfterSeconds = resendCooldown.RetryAfterSeconds,
+                traceId = context.TraceIdentifier
+            }
+            : new
+            {
+                status = (int)statusCode,
+                message,
+                traceId = context.TraceIdentifier
+            };
 
         var json = JsonSerializer.Serialize(response, new JsonSerializerOptions
         {

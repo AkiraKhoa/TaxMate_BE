@@ -232,6 +232,10 @@ public class AuthService : IAuthService
         FullName = user.FullName,
         AvatarUrl = user.AvatarUrl,
         AccountStatus = user.AccountStatus,
-        Role = user.Role
+        Role = user.Role,
+        TaxCode = user.TaxCode,
+        Phone = user.Phone,
+        HasProfileInfo = !string.IsNullOrWhiteSpace(user.TaxCode)
+            && !string.IsNullOrWhiteSpace(user.Phone)
     };
 }

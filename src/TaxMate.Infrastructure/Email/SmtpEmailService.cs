@@ -67,4 +67,45 @@ public class SmtpEmailService : IEmailService
         await client.SendAsync(message, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
     }
+
+    public async Task SendProfileOtpEmailAsync(
+        string toEmail,
+        string fullName,
+        string otp,
+        CancellationToken cancellationToken = default)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(_smtpOptions.FromName, _smtpOptions.FromEmail));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = "Mã xác minh cập nhật thông tin TaxMate";
+
+        var body = new BodyBuilder
+        {
+            HtmlBody = $"""
+                <p>Xin chào {fullName},</p>
+                <p>Mã xác minh cập nhật số căn cước và số điện thoại của bạn là:</p>
+                <p style="font-size:24px;font-weight:bold;letter-spacing:4px;">{otp}</p>
+                <p>Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.</p>
+                """
+        };
+        message.Body = body.ToMessageBody();
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync(
+            _smtpOptions.Host,
+            _smtpOptions.Port,
+            _smtpOptions.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
+            cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(_smtpOptions.Username))
+        {
+            await client.AuthenticateAsync(
+                _smtpOptions.Username,
+                _smtpOptions.Password,
+                cancellationToken);
+        }
+
+        await client.SendAsync(message, cancellationToken);
+        await client.DisconnectAsync(true, cancellationToken);
+    }
 }

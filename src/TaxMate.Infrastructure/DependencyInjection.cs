@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using TaxMate.Infrastructure.Auth;
 using TaxMate.Infrastructure.Email;
 using TaxMate.Infrastructure.Options;
+using TaxMate.Infrastructure.Sms;
 using TaxMate.Infrastructure.Storage;
 using TaxMate.Service.Interfaces;
 
@@ -22,6 +23,8 @@ public static class DependencyInjection
             configuration.GetSection(SmtpOptions.SectionName));
         services.Configure<AppOptions>(
             configuration.GetSection(AppOptions.SectionName));
+        services.Configure<TwilioOptions>(
+            configuration.GetSection(TwilioOptions.SectionName));
 
         services.AddHttpClient();
         services.AddMemoryCache();
@@ -31,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
         services.AddScoped<IJwtService, JwtService>();
         services.AddScoped<IEmailService, SmtpEmailService>();
+        services.AddScoped<ISmsService, TwilioSmsService>();
 
         return services;
     }

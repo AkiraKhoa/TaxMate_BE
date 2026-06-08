@@ -7,4 +7,10 @@ public interface IEmailService
         string fullName,
         string verificationToken,
         CancellationToken cancellationToken = default);
+
+    Task SendProfileOtpEmailAsync(
+        string toEmail,
+        string fullName,
+        string otp,
+        CancellationToken cancellationToken = default);
 }

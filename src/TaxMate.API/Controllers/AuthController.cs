@@ -17,15 +17,18 @@ public class AuthController : ControllerBase
     private static readonly TimeSpan OAuthStateLifetime = TimeSpan.FromMinutes(10);
 
     private readonly IAuthService _authService;
+    private readonly IUserProfileService _userProfileService;
     private readonly IGoogleOAuthService _googleOAuthService;
     private readonly IMemoryCache _cache;
 
     public AuthController(
         IAuthService authService,
+        IUserProfileService userProfileService,
         IGoogleOAuthService googleOAuthService,
         IMemoryCache cache)
     {
         _authService = authService;
+        _userProfileService = userProfileService;
         _googleOAuthService = googleOAuthService;
         _cache = cache;
     }
@@ -151,6 +154,44 @@ public class AuthController : ControllerBase
         var userId = GetUserId();
         var user = await _authService.GetCurrentUserAsync(userId, cancellationToken);
         return Ok(user);
+    }
+
+    [HttpPut("profile")]
+    [Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
+    public async Task<IActionResult> UpdateProfile(
+        [FromBody] UpdateProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var response = await _userProfileService.InitiateProfileUpdateAsync(
+            userId,
+            request.TaxCode,
+            request.Phone,
+            cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("profile/verify-email")]
+    [Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
+    public async Task<IActionResult> VerifyProfileEmail(
+        [FromBody] VerifyProfileEmailRequest request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var response = await _userProfileService.VerifyAndUpdateProfileAsync(
+            userId,
+            request.Otp,
+            cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("profile/resend-email")]
+    [Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
+    public async Task<IActionResult> ResendProfileEmail(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var response = await _userProfileService.ResendProfileOtpAsync(userId, cancellationToken);
+        return Ok(response);
     }
 
     private Guid GetUserId()
