@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IGoogleOAuthService, GoogleOAuthService>();
         services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
         services.AddScoped<IJwtService, JwtService>();
+        services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISmsService, TwilioSmsService>();
 

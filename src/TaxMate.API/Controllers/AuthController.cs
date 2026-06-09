@@ -33,6 +33,26 @@ public class AuthController : ControllerBase
         _cache = cache;
     }
 
+    [HttpPost("register")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Register(
+        [FromBody] RegisterRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _authService.RegisterAsync(request, cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Login(
+        [FromBody] LoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _authService.LoginWithPasswordAsync(request, cancellationToken);
+        return Ok(response);
+    }
+
     [HttpPost("google")]
     [AllowAnonymous]
     public async Task<IActionResult> GoogleLogin(

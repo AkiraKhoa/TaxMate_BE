@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using TaxMate.Model.DTO.Auth;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
 using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
@@ -39,8 +40,8 @@ public partial class UserProfileService : IUserProfileService
         string phone,
         CancellationToken cancellationToken = default)
     {
-        ValidateTaxCode(taxCode);
-        ValidatePhone(phone);
+        UserInputValidator.ValidateTaxCode(taxCode);
+        UserInputValidator.ValidatePhone(phone);
 
         var userRepo = _unitOfWork.Repository<User>();
         var user = await userRepo.GetByIdAsync(userId)
@@ -196,22 +197,6 @@ public partial class UserProfileService : IUserProfileService
             ResendAvailableAt = lastSentAt.AddSeconds(ResendCooldownSeconds)
         };
 
-    private static void ValidateTaxCode(string taxCode)
-    {
-        if (string.IsNullOrWhiteSpace(taxCode) || !TaxCodeRegex().IsMatch(taxCode))
-        {
-            throw new ArgumentException("Số căn cước công dân phải gồm đúng 12 chữ số.");
-        }
-    }
-
-    private static void ValidatePhone(string phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone) || !PhoneRegex().IsMatch(phone))
-        {
-            throw new ArgumentException("Số điện thoại phải gồm đúng 10 chữ số.");
-        }
-    }
-
     private static void EnsureProfileNotYetSet(User user)
     {
         if (!string.IsNullOrWhiteSpace(user.TaxCode) || !string.IsNullOrWhiteSpace(user.Phone))
@@ -267,12 +252,6 @@ public partial class UserProfileService : IUserProfileService
         string OtpHash,
         DateTime ExpiresAt,
         DateTime LastSentAt);
-
-    [GeneratedRegex(@"^\d{12}$")]
-    private static partial Regex TaxCodeRegex();
-
-    [GeneratedRegex(@"^\d{10}$")]
-    private static partial Regex PhoneRegex();
 
     [GeneratedRegex(@"^\d{6}$")]
     private static partial Regex OtpRegex();

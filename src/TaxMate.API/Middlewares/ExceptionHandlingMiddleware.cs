@@ -34,6 +34,7 @@ public class ExceptionHandlingMiddleware
         {
             KeyNotFoundException => (HttpStatusCode.NotFound, exception.Message),
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, exception.Message),
+            InvalidCredentialsException => (HttpStatusCode.Unauthorized, exception.Message),
             AccountPendingException => (HttpStatusCode.Forbidden, exception.Message),
             ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
             InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),

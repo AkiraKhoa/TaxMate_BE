@@ -4,6 +4,8 @@ using TaxMate.Model.Common;
 using TaxMate.Model.DTO.Auth;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -15,6 +17,7 @@ public class AuthService : IAuthService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGoogleTokenValidator _googleTokenValidator;
     private readonly IJwtService _jwtService;
+    private readonly IPasswordHasher _passwordHasher;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthService> _logger;
 
@@ -22,14 +25,105 @@ public class AuthService : IAuthService
         IUnitOfWork unitOfWork,
         IGoogleTokenValidator googleTokenValidator,
         IJwtService jwtService,
+        IPasswordHasher passwordHasher,
         IEmailService emailService,
         ILogger<AuthService> logger)
     {
         _unitOfWork = unitOfWork;
         _googleTokenValidator = googleTokenValidator;
         _jwtService = jwtService;
+        _passwordHasher = passwordHasher;
         _emailService = emailService;
         _logger = logger;
+    }
+
+    public async Task<AuthResponse> RegisterAsync(
+        RegisterRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        UserInputValidator.ValidateTaxCode(request.TaxCode);
+        UserInputValidator.ValidatePhone(request.Phone);
+        UserInputValidator.ValidateEmail(request.Email);
+        UserInputValidator.ValidatePassword(request.Password);
+
+        var userRepo = _unitOfWork.Repository<User>();
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+        var normalizedPhone = request.Phone.Trim();
+
+        await EnsureEmailAvailableAsync(userRepo, normalizedEmail, cancellationToken);
+        await EnsurePhoneAvailableAsync(userRepo, normalizedPhone, cancellationToken);
+        await EnsureTaxCodeAvailableAsync(userRepo, request.TaxCode, cancellationToken);
+
+        var (token, expiresAt) = CreateVerificationToken();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = normalizedEmail,
+            FullName = request.FullName.Trim(),
+            TaxCode = request.TaxCode,
+            Phone = normalizedPhone,
+            PasswordHash = _passwordHasher.Hash(request.Password),
+            AccountStatus = AccountStatus.Pending,
+            Role = "Owner",
+            EmailVerificationToken = token,
+            EmailVerificationTokenExpiresAt = expiresAt
+        };
+
+        await userRepo.AddAsync(user);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await TrySendVerificationEmailAsync(user, cancellationToken);
+
+        var (accessToken, jwtExpiresAt) = _jwtService.GenerateToken(user);
+
+        return new AuthResponse
+        {
+            AccessToken = accessToken,
+            ExpiresAt = jwtExpiresAt,
+            User = MapToDto(user),
+            RequiresEmailVerification = true
+        };
+    }
+
+    public async Task<AuthResponse> LoginWithPasswordAsync(
+        LoginRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Login) || string.IsNullOrWhiteSpace(request.Password))
+        {
+            throw new InvalidCredentialsException();
+        }
+
+        var userRepo = _unitOfWork.Repository<User>();
+        var login = request.Login.Trim();
+        var user = login.Contains('@')
+            ? await userRepo.FirstOrDefaultAsync(u => u.Email == login.ToLowerInvariant())
+            : await userRepo.FirstOrDefaultAsync(u => u.Phone == login);
+
+        if (user is null || string.IsNullOrEmpty(user.PasswordHash))
+        {
+            throw new InvalidCredentialsException();
+        }
+
+        if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            throw new InvalidCredentialsException();
+        }
+
+        if (user.AccountStatus == AccountStatus.Pending)
+        {
+            throw new AccountPendingException();
+        }
+
+        var (accessToken, jwtExpiresAt) = _jwtService.GenerateToken(user);
+
+        return new AuthResponse
+        {
+            AccessToken = accessToken,
+            ExpiresAt = jwtExpiresAt,
+            User = MapToDto(user),
+            RequiresEmailVerification = false
+        };
     }
 
     public async Task<AuthResponse> LoginWithGoogleAsync(
@@ -212,6 +306,50 @@ public class AuthService : IAuthService
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return user;
+    }
+
+    private static async Task EnsureEmailAvailableAsync(
+        IGenericRepository<User> userRepo,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var existing = await userRepo.FirstOrDefaultAsync(u => u.Email == email);
+        if (existing is null)
+        {
+            return;
+        }
+
+        if (existing.PasswordHash is null)
+        {
+            throw new InvalidOperationException(
+                "Email đã được đăng ký qua Google. Vui lòng đăng nhập bằng Google.");
+        }
+
+        throw new InvalidOperationException("Email đã được sử dụng.");
+    }
+
+    private static async Task EnsurePhoneAvailableAsync(
+        IGenericRepository<User> userRepo,
+        string phone,
+        CancellationToken cancellationToken)
+    {
+        var existing = await userRepo.FirstOrDefaultAsync(u => u.Phone == phone);
+        if (existing is not null)
+        {
+            throw new InvalidOperationException("Số điện thoại đã được sử dụng.");
+        }
+    }
+
+    private static async Task EnsureTaxCodeAvailableAsync(
+        IGenericRepository<User> userRepo,
+        string taxCode,
+        CancellationToken cancellationToken)
+    {
+        var existing = await userRepo.FirstOrDefaultAsync(u => u.TaxCode == taxCode);
+        if (existing is not null)
+        {
+            throw new InvalidOperationException("Số căn cước công dân đã được sử dụng.");
+        }
     }
 
     private static (string Token, DateTime ExpiresAt) CreateVerificationToken()
