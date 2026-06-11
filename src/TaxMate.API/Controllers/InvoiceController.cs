@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using TaxMate.Model.DTO;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
@@ -23,7 +24,11 @@ public class InvoiceController : ControllerBase
     public async Task<IActionResult> GetInvoice(string invoiceNumber)
     {
         var result = await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
-        return Ok(result);
+        return Ok(
+            ApiResponse<InvoiceDetailResponse>.Ok(
+                result,
+                "Get invoice successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Tải file PDF hóa đơn. Mã VietQR lấy từ tài khoản đã ghi nhận lúc checkout.</summary>

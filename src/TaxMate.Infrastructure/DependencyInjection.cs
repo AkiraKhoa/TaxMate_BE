@@ -14,6 +14,9 @@ public static class DependencyInjection
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
+        // Register infrastructure services here, e.g.:
+        // services.AddScoped<IJwtService, JwtService>();
+
         services.Configure<SupabaseStorageOptions>(
             configuration.GetSection("SupabaseStorage"));
 

@@ -1,6 +1,7 @@
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -26,7 +27,7 @@ public class PaymentAccountService : IPaymentAccountService
         var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
-            throw new Exception("Business profile not found.");
+            throw new NotFoundException("Business profile not found.");
         }
 
         var count = await _paymentAccounts.CountAsync(x => x.BusinessId == businessId);
@@ -88,7 +89,7 @@ public class PaymentAccountService : IPaymentAccountService
         var x = await _paymentAccounts.GetByIdAsync(id);
         if (x == null)
         {
-            throw new Exception("Payment account not found.");
+            throw new NotFoundException("Payment account not found.");
         }
 
         return new PaymentAccountResponse
@@ -110,7 +111,7 @@ public class PaymentAccountService : IPaymentAccountService
         var account = await _paymentAccounts.GetByIdAsync(id);
         if (account == null)
         {
-            throw new Exception("Payment account not found.");
+            throw new NotFoundException("Payment account not found.");
         }
 
         await _unitOfWork.BeginTransactionAsync();
@@ -147,7 +148,7 @@ public class PaymentAccountService : IPaymentAccountService
         var account = await _paymentAccounts.GetByIdAsync(id);
         if (account == null)
         {
-            throw new Exception("Payment account not found.");
+            throw new NotFoundException("Payment account not found.");
         }
 
         await _unitOfWork.BeginTransactionAsync();
@@ -184,7 +185,7 @@ public class PaymentAccountService : IPaymentAccountService
         var account = await _paymentAccounts.GetByIdAsync(paymentAccountId);
         if (account == null || account.BusinessId != businessId)
         {
-            throw new Exception("Payment account not found.");
+            throw new NotFoundException("Payment account not found.");
         }
 
         if (account.IsDefault) return;

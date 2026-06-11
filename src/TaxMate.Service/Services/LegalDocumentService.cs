@@ -43,9 +43,11 @@ public class LegalDocumentService : ILegalDocumentService
         await using var stream =
             request.File.OpenReadStream();
 
+        // Calculate hash
         var fileHash =
             await CalculateHashAsync(stream);
 
+        // Check for duplicates content
         var duplicatedFile =
             await _legalDocuments
                 .ExistsByFileHashAsync(fileHash);
@@ -56,6 +58,7 @@ public class LegalDocumentService : ILegalDocumentService
                 $"File '{request.DocumentName}' content already exists.");
         }
         
+        // Upload file
         var storagePath =
             await _fileStorageService.UploadAsync(
                 stream,
@@ -177,6 +180,7 @@ public class LegalDocumentService : ILegalDocumentService
         return _mapper.Map<List<LegalDocumentResponse>>(documents);
     }
 
+    // Helper method to calculate hash
     private static async Task<string> CalculateHashAsync(
         Stream stream)
     {

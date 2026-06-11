@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
 /// <summary>Quản lý đơn hàng POS (tạo, sửa item, checkout).</summary>
-[Controller]
+[ApiController]
 [Route("api/[controller]")]
 public class OrderController : ControllerBase
 {
@@ -24,7 +25,12 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         var id = await _orderService.CreateOrderAsync(businessId, request);
-        return Ok(id);
+        return Created(
+            $"api/Order/{id}",
+            ApiResponse<Guid>.Ok(
+                id,
+                "Order created successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Lấy chi tiết đơn hàng.</summary>
@@ -33,7 +39,11 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> GetOrderDetail(Guid id)
     {
         var result = await _orderService.GetOrderDetailAsync(id);
-        return Ok(result);
+        return Ok(
+            ApiResponse<OrderDetailResponse>.Ok(
+                result,
+                "Get order detail successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Danh sách đơn hàng theo cửa hàng (phân trang).</summary>
@@ -44,7 +54,11 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> GetOrders(Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var result = await _orderService.GetOrdersByBusinessAsync(businessId, page, pageSize);
-        return Ok(result);
+        return Ok(
+            ApiResponse<PagedResult<OrderSummaryResponse>>.Ok(
+                result,
+                "Get orders successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Thêm sản phẩm vào đơn nháp.</summary>
@@ -55,7 +69,11 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         await _orderService.AddItemAsync(id, request);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Item added successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Cập nhật dòng hàng trong đơn nháp.</summary>
@@ -67,7 +85,11 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         await _orderService.UpdateItemAsync(id, itemId, request);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Item updated successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Xóa dòng hàng khỏi đơn nháp.</summary>
@@ -77,7 +99,11 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> RemoveItem(Guid id, Guid itemId)
     {
         await _orderService.RemoveItemAsync(id, itemId);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Item removed successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Áp dụng giảm giá toàn đơn.</summary>
@@ -88,7 +114,11 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         await _orderService.ApplyDiscountAsync(id, request);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Discount applied successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Xóa giảm giá toàn đơn.</summary>
@@ -97,7 +127,11 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> RemoveDiscount(Guid id)
     {
         await _orderService.RemoveDiscountAsync(id);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Discount removed successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Áp dụng phụ thu toàn đơn.</summary>
@@ -108,7 +142,11 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         await _orderService.ApplySurchargeAsync(id, request);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Surcharge applied successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Xóa phụ thu toàn đơn.</summary>
@@ -117,7 +155,11 @@ public class OrderController : ControllerBase
     public async Task<IActionResult> RemoveSurcharge(Guid id)
     {
         await _orderService.RemoveSurchargeAsync(id);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Surcharge removed successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Thanh toán và phát hành hóa đơn.</summary>
@@ -128,7 +170,11 @@ public class OrderController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
         var result = await _orderService.CheckoutAsync(id, request);
-        return Ok(result);
+        return Ok(
+            ApiResponse<InvoiceDetailResponse>.Ok(
+                result,
+                "Checkout successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Hủy đơn hàng nháp.</summary>
