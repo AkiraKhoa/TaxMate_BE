@@ -20,6 +20,17 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <LaunchProfile>https</LaunchProfile>
   </PropertyGroup>
+
+  <Target Name="CopyModelXmlDocumentation" AfterTargets="Build">
+    <Copy
+      SourceFiles="..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml"
+      DestinationFolder="$(OutputPath)"
+      SkipUnchangedFiles="true"
+      Condition="Exists('..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml')" />
+  </Target>
 
 </Project>

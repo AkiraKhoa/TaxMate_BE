@@ -21,7 +21,16 @@ builder.Services.AddServices();
 // ── API ────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    var apiXml = Path.Combine(AppContext.BaseDirectory, "TaxMate.API.xml");
+    if (File.Exists(apiXml))
+        c.IncludeXmlComments(apiXml);
+
+    var modelXml = Path.Combine(AppContext.BaseDirectory, "TaxMate.Model.xml");
+    if (File.Exists(modelXml))
+        c.IncludeXmlComments(modelXml);
+});
 
 // ── CORS ───────────────────────────────────────────────────
 builder.Services.AddCors(options =>

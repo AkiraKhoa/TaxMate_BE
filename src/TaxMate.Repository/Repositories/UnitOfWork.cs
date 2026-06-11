@@ -7,28 +7,11 @@ namespace TaxMate.Repository.Repositories;
 public class UnitOfWork : IUnitOfWork
 {
     private readonly DbContext _context;
-    private readonly Dictionary<Type, object> _repositories = new();
     private IDbContextTransaction? _transaction;
-    public ILegalDocumentRepository LegalDocuments { get; }
-    
-    public UnitOfWork(
-        DbContext context,
-        ILegalDocumentRepository legalDocumentRepository)
+
+    public UnitOfWork(DbContext context)
     {
         _context = context;
-        LegalDocuments = legalDocumentRepository;
-    }
-
-    public IGenericRepository<T> Repository<T>() where T : class
-    {
-        var type = typeof(T);
-
-        if (!_repositories.ContainsKey(type))
-        {
-            _repositories[type] = new GenericRepository<T>(_context);
-        }
-
-        return (IGenericRepository<T>)_repositories[type];
     }
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
