@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 
-namespace TaxMate.Model.DTO;
+namespace TaxMate.Model.DTO.LegalDocument;
 
 /// <summary>Yêu cầu upload văn bản pháp lý (multipart/form-data).</summary>
 public class UploadLegalDocumentRequest
