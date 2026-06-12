@@ -43,7 +43,7 @@ db.Users.Add(new User
     PasswordHash = "not-used",
     FullName = "POS Test User",
     Role = "Owner",
-    IsActive = true,
+    AccountStatus = TaxMate.Model.Common.AccountStatus.Active,
     CreatedAt = now
 });
 

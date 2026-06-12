@@ -14,9 +14,8 @@ public class User : BaseEntity
     [MaxLength(20)]
     public string? TaxCode { get; set; }
 
-    [Required]
     [MaxLength(500)]
-    public string PasswordHash { get; set; } = null!;
+    public string? PasswordHash { get; set; }
 
     [MaxLength(100)]
     public string? GoogleId { get; set; }
@@ -35,7 +34,14 @@ public class User : BaseEntity
     [MaxLength(1000)]
     public string? AvatarUrl { get; set; }
 
-    public bool IsActive { get; set; } = true;
+    [Required]
+    [MaxLength(20)]
+    public string AccountStatus { get; set; } = Common.AccountStatus.Active;
+
+    [MaxLength(128)]
+    public string? EmailVerificationToken { get; set; }
+
+    public DateTime? EmailVerificationTokenExpiresAt { get; set; }
 
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();

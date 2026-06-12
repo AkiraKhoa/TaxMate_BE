@@ -98,49 +98,45 @@ public class ExceptionHandlingMiddleware
     {
         var (statusCode, message) = exception switch
         {
-            BadRequestException => (
-                HttpStatusCode.BadRequest,
-                exception.Message),
-
-            NotFoundException => (
-                HttpStatusCode.NotFound,
-                exception.Message),
-
-            ConflictException => (
-                HttpStatusCode.Conflict,
-                exception.Message),
-
-            KeyNotFoundException => (
-                HttpStatusCode.NotFound,
-                exception.Message),
-
-            UnauthorizedAccessException => (
-                HttpStatusCode.Unauthorized,
-                "Không có quyền truy cập"),
-
-            ArgumentException => (
-                HttpStatusCode.BadRequest,
-                exception.Message),
-
-            InvalidOperationException => (
-                HttpStatusCode.Conflict,
-                exception.Message),
-
-            _ => (
-                HttpStatusCode.InternalServerError,
-                "Đã xảy ra lỗi hệ thống")
+            BadRequestException => (HttpStatusCode.BadRequest, exception.Message),
+            NotFoundException => (HttpStatusCode.NotFound, exception.Message),
+            ConflictException => (HttpStatusCode.Conflict, exception.Message),
+            KeyNotFoundException => (HttpStatusCode.NotFound, exception.Message),
+            UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Không có quyền truy cập"),
+            InvalidCredentialsException => (HttpStatusCode.Unauthorized, exception.Message),
+            AccountPendingException => (HttpStatusCode.Forbidden, exception.Message),
+            ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
+            InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),
+            ResendCooldownException => (HttpStatusCode.TooManyRequests, exception.Message),
+            _ => (HttpStatusCode.InternalServerError, "Đã xảy ra lỗi hệ thống")
         };
 
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        var response = new
+        if (exception is ResendCooldownException cooldown)
         {
-            success = false,
-            status = (int)statusCode,
-            message,
-            traceId = context.TraceIdentifier
-        };
+            context.Response.Headers.RetryAfter = cooldown.RetryAfterSeconds.ToString();
+        }
+
+        // Format response: luôn có success = false (từ dev/khoa)
+        // Thêm retryAfterSeconds cho ResendCooldownException (từ dev/thinh)
+        object response = exception is ResendCooldownException resendCooldown
+            ? new
+            {
+                success = false,
+                status = (int)statusCode,
+                message,
+                retryAfterSeconds = resendCooldown.RetryAfterSeconds,
+                traceId = context.TraceIdentifier
+            }
+            : new
+            {
+                success = false,
+                status = (int)statusCode,
+                message,
+                traceId = context.TraceIdentifier
+            };
 
         var json = JsonSerializer.Serialize(
             response,
