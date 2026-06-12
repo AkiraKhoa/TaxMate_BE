@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Model.DTO.LegalDocument;
 using TaxMate.Service.Interfaces;
@@ -6,7 +8,8 @@ using TaxMate.Service.Interfaces;
 namespace TaxMate.API.Controllers;
 
 /// <summary>Upload và quản lý văn bản pháp lý.</summary>
-[Controller]
+[ApiController]
+[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 [Route("api/[controller]")]
 public class LegalDocumentController : ControllerBase
 {

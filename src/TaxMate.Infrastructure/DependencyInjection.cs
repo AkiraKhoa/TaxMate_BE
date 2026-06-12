@@ -1,8 +1,11 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using QuestPDF.Infrastructure;
 using TaxMate.Infrastructure.Pdf;
+using TaxMate.Infrastructure.Auth;
+using TaxMate.Infrastructure.Email;
+using TaxMate.Infrastructure.Options;
+using TaxMate.Infrastructure.Sms;
 using TaxMate.Infrastructure.Storage;
 using TaxMate.Service.Interfaces;
 
@@ -19,11 +22,28 @@ public static class DependencyInjection
 
         services.Configure<SupabaseStorageOptions>(
             configuration.GetSection("SupabaseStorage"));
+        services.Configure<GoogleAuthOptions>(
+            configuration.GetSection(GoogleAuthOptions.SectionName));
+        services.Configure<JwtOptions>(
+            configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<SmtpOptions>(
+            configuration.GetSection(SmtpOptions.SectionName));
+        services.Configure<AppOptions>(
+            configuration.GetSection(AppOptions.SectionName));
+        services.Configure<TwilioOptions>(
+            configuration.GetSection(TwilioOptions.SectionName));
 
         services.AddHttpClient();
+        services.AddMemoryCache();
 
         services.AddScoped<IFileStorageService, SupabaseStorageService>();
         services.AddScoped<IInvoicePdfService, InvoicePdfService>();
+        services.AddScoped<IGoogleOAuthService, GoogleOAuthService>();
+        services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
+        services.AddScoped<IJwtService, JwtService>();
+        services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
+        services.AddScoped<IEmailService, SmtpEmailService>();
+        services.AddScoped<ISmsService, TwilioSmsService>();
 
         return services;
     }

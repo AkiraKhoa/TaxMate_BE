@@ -1,12 +1,36 @@
+using System.Text;
+using DotNetEnv;
+
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Serilog;
+using TaxMate.API.Authorization;
 using TaxMate.API.Middlewares;
 using TaxMate.Infrastructure;
+using TaxMate.Infrastructure.Options;
 using TaxMate.Model;
+using TaxMate.Model.Common;
 using TaxMate.Repository;
 using TaxMate.Service;
 
+var envFile = Path.Combine(AppContext.BaseDirectory, ".env");
+if (!File.Exists(envFile))
+{
+    envFile = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+}
+
+if (File.Exists(envFile))
+{
+    Env.Load(envFile);
+}
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Configuration.AddEnvironmentVariables();
 
 // ── Serilog ────────────────────────────────────────────────
 builder.Host.UseSerilog((context, config) =>
@@ -18,28 +42,78 @@ builder.Services.AddModel(builder.Configuration);
 builder.Services.AddRepository();
 builder.Services.AddServices();
 
+// ── JWT Authentication ─────────────────────────────────────
+var jwtOptions = builder.Configuration
+    .GetSection(JwtOptions.SectionName)
+    .Get<JwtOptions>() ?? new JwtOptions();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthPolicies.ActiveAccountOnly, policy =>
+        policy.RequireClaim("account_status", AccountStatus.Active));
+});
+
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenAuthorizationResultHandler>();
+
 // ── API ────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddSwaggerGen(options =>
 {
     var apiXml = Path.Combine(AppContext.BaseDirectory, "TaxMate.API.xml");
     if (File.Exists(apiXml))
-        c.IncludeXmlComments(apiXml);
+        options.IncludeXmlComments(apiXml);
 
     var modelXml = Path.Combine(AppContext.BaseDirectory, "TaxMate.Model.xml");
     if (File.Exists(modelXml))
-        c.IncludeXmlComments(modelXml);
+        options.IncludeXmlComments(modelXml);
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "JWT Authorization header. Example: \"Bearer {accessToken}\"",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT"
+    });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
 });
 
 // ── CORS ───────────────────────────────────────────────────
+var frontendBaseUrl = builder.Configuration
+    .GetSection(AppOptions.SectionName)
+    .Get<AppOptions>()?.FrontendBaseUrl ?? "http://localhost:3000";
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("Frontend", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(frontendBaseUrl.TrimEnd('/'))
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
 });
 
@@ -59,7 +133,7 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-app.UseCors("AllowAll");
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

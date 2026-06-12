@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -33,7 +34,7 @@ public class InvoiceService : IInvoiceService
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
-            throw new Exception("Order not found.");
+            throw new NotFoundException("Order not found.");
         }
 
         var issueDate = DateTime.UtcNow;
@@ -58,7 +59,7 @@ public class InvoiceService : IInvoiceService
         {
             if (!item.ProductId.HasValue)
             {
-                throw new Exception($"Cannot checkout item '{item.ProductName}' as its associated product no longer exists.");
+                throw new ConflictException($"Cannot checkout item '{item.ProductName}' as its associated product no longer exists.");
             }
 
             var detail = new InvoiceDetail
@@ -86,13 +87,13 @@ public class InvoiceService : IInvoiceService
         var invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
         if (invoice == null)
         {
-            throw new Exception("Invoice not found.");
+            throw new NotFoundException("Invoice not found.");
         }
 
         var transaction = await _transactions.FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
         if (transaction == null)
         {
-            throw new Exception("Associated transaction not found for this invoice.");
+            throw new NotFoundException("Associated transaction not found for this invoice.");
         }
 
         return new InvoiceDetailResponse
@@ -123,13 +124,13 @@ public class InvoiceService : IInvoiceService
         var invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
         if (invoice == null)
         {
-            throw new Exception("Invoice not found.");
+            throw new NotFoundException("Invoice not found.");
         }
 
         var transaction = await _transactions.GetByInvoiceNumberWithDetailsAsync(invoiceNumber);
         if (transaction == null)
         {
-            throw new Exception("Associated transaction not found for this invoice.");
+            throw new NotFoundException("Associated transaction not found for this invoice.");
         }
 
         PaymentAccount? paymentAccount = null;

@@ -18,6 +18,8 @@ packages/
 *~
 
 ## Secrets
+.env
+**/.env
 appsettings.Production.json
 **/appsettings.Development.json
 

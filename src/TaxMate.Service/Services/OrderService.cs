@@ -3,6 +3,7 @@ using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -46,7 +47,7 @@ public class OrderService : IOrderService
         var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
-            throw new Exception("Business profile not found.");
+            throw new NotFoundException("Business profile not found.");
         }
 
         var code = await _transactions.GenerateTransactionCodeAsync(businessId);
@@ -71,7 +72,7 @@ public class OrderService : IOrderService
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
-            throw new Exception("Order not found.");
+            throw new NotFoundException("Order not found.");
         }
 
         return new OrderDetailResponse
@@ -146,12 +147,12 @@ public class OrderService : IOrderService
     public async Task AddItemAsync(Guid transactionId, AddOrderItemRequest request)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
-        if (order == null) throw new Exception("Order not found.");
-        if (order.Status != "Draft") throw new Exception("Cannot modify items of a non-draft order.");
+        if (order == null) throw new NotFoundException("Order not found.");
+        if (order.Status != "Draft") throw new ConflictException("Cannot modify items of a non-draft order.");
 
         var product = await _products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
         if (product == null || product.BusinessId != order.BusinessId)
-            throw new Exception("Product not found or does not belong to this business.");
+            throw new NotFoundException("Product not found or does not belong to this business.");
 
         var prices = await _productPrices.FindAsync(x => x.ProductId == request.ProductId);
         var now = DateTime.UtcNow;
@@ -253,8 +254,8 @@ public class OrderService : IOrderService
     public async Task ApplyDiscountAsync(Guid transactionId, ApplyDiscountRequest request)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
-        if (order == null) throw new Exception("Order not found.");
-        if (order.Status != "Draft") throw new Exception("Cannot modify discount of a non-draft order.");
+        if (order == null) throw new NotFoundException("Order not found.");
+        if (order.Status != "Draft") throw new ConflictException("Cannot modify discount of a non-draft order.");
 
         order.DiscountType = request.DiscountType;
         order.DiscountValue = request.DiscountValue;
@@ -266,8 +267,8 @@ public class OrderService : IOrderService
     public async Task RemoveDiscountAsync(Guid transactionId)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
-        if (order == null) throw new Exception("Order not found.");
-        if (order.Status != "Draft") throw new Exception("Cannot modify discount of a non-draft order.");
+        if (order == null) throw new NotFoundException("Order not found.");
+        if (order.Status != "Draft") throw new ConflictException("Cannot modify discount of a non-draft order.");
 
         order.DiscountType = null;
         order.DiscountValue = null;
@@ -280,8 +281,8 @@ public class OrderService : IOrderService
     public async Task ApplySurchargeAsync(Guid transactionId, ApplySurchargeRequest request)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
-        if (order == null) throw new Exception("Order not found.");
-        if (order.Status != "Draft") throw new Exception("Cannot modify surcharge of a non-draft order.");
+        if (order == null) throw new NotFoundException("Order not found.");
+        if (order.Status != "Draft") throw new ConflictException("Cannot modify surcharge of a non-draft order.");
 
         order.SurchargeName = request.SurchargeName;
         order.SurchargeType = request.SurchargeType;
@@ -294,8 +295,8 @@ public class OrderService : IOrderService
     public async Task RemoveSurchargeAsync(Guid transactionId)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
-        if (order == null) throw new Exception("Order not found.");
-        if (order.Status != "Draft") throw new Exception("Cannot modify surcharge of a non-draft order.");
+        if (order == null) throw new NotFoundException("Order not found.");
+        if (order.Status != "Draft") throw new ConflictException("Cannot modify surcharge of a non-draft order.");
 
         order.SurchargeName = null;
         order.SurchargeType = null;
@@ -311,23 +312,23 @@ public class OrderService : IOrderService
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
-            throw new Exception("Order not found.");
+            throw new NotFoundException("Order not found.");
         }
 
         if (order.Status != "Draft")
         {
-            throw new Exception($"Cannot checkout order with status '{order.Status}'. Only 'Draft' orders can be checked out.");
+            throw new ConflictException($"Cannot checkout order with status '{order.Status}'. Only 'Draft' orders can be checked out.");
         }
 
         if (!order.TransactionItems.Any())
         {
-            throw new Exception("Cannot checkout an empty order. Please add at least one product.");
+            throw new BadRequestException("Cannot checkout an empty order. Please add at least one product.");
         }
 
         var totalPaidAmount = request.Payments.Sum(x => x.Amount);
         if (Math.Round(totalPaidAmount, 2) < Math.Round(order.TotalAmount, 2))
         {
-            throw new Exception($"Paid amount ({totalPaidAmount}) is less than total order amount ({order.TotalAmount}).");
+            throw new BadRequestException($"Paid amount ({totalPaidAmount}) is less than total order amount ({order.TotalAmount}).");
         }
 
         await _unitOfWork.BeginTransactionAsync();
@@ -342,7 +343,7 @@ public class OrderService : IOrderService
                     var account = await _paymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
                     if (account == null || account.BusinessId != order.BusinessId)
                     {
-                        throw new Exception($"Payment account '{paymentEntry.PaymentAccountId}' not found or does not belong to this business.");
+                        throw new NotFoundException($"Payment account '{paymentEntry.PaymentAccountId}' not found or does not belong to this business.");
                     }
                 }
 
@@ -383,12 +384,12 @@ public class OrderService : IOrderService
         var order = await _transactions.GetByIdAsync(transactionId);
         if (order == null)
         {
-            throw new Exception("Order not found.");
+            throw new NotFoundException("Order not found.");
         }
 
         if (order.Status != "Draft")
         {
-            throw new Exception($"Cannot cancel order with status '{order.Status}'. Only 'Draft' orders can be cancelled.");
+            throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' orders can be cancelled.");
         }
 
         order.Status = "Cancelled";
