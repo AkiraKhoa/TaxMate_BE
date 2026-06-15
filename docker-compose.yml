@@ -6,7 +6,7 @@ services:
     container_name: taxmate-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: 12345
       POSTGRES_DB: taxmate_db
     ports:
       - "5432:5432"
