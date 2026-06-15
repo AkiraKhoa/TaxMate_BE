@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IPasswordResetService, PasswordResetService>();
         services.AddScoped<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IVietQRService, VietQRService>();
         services.AddScoped<IPaymentAccountService, PaymentAccountService>();

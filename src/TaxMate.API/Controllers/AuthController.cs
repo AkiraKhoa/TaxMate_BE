@@ -18,17 +18,20 @@ public class AuthController : ControllerBase
 
     private readonly IAuthService _authService;
     private readonly IUserProfileService _userProfileService;
+    private readonly IPasswordResetService _passwordResetService;
     private readonly IGoogleOAuthService _googleOAuthService;
     private readonly IMemoryCache _cache;
 
     public AuthController(
         IAuthService authService,
         IUserProfileService userProfileService,
+        IPasswordResetService passwordResetService,
         IGoogleOAuthService googleOAuthService,
         IMemoryCache cache)
     {
         _authService = authService;
         _userProfileService = userProfileService;
+        _passwordResetService = passwordResetService;
         _googleOAuthService = googleOAuthService;
         _cache = cache;
     }
@@ -211,6 +214,57 @@ public class AuthController : ControllerBase
     {
         var userId = GetUserId();
         var response = await _userProfileService.ResendProfileOtpAsync(userId, cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _passwordResetService.InitiateResetAsync(
+            request.Email,
+            cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("forgot-password/verify")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyForgotPasswordOtp(
+        [FromBody] VerifyResetPasswordOtpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _passwordResetService.VerifyResetOtpAsync(
+            request.Email,
+            request.Otp,
+            cancellationToken);
+        return Ok(response);
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var message = await _passwordResetService.ResetPasswordAsync(
+            request.Email,
+            request.NewPassword,
+            request.ConfirmPassword,
+            cancellationToken);
+        return Ok(new { message });
+    }
+
+    [HttpPost("forgot-password/resend")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResendForgotPasswordOtp(
+        [FromBody] ForgotPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _passwordResetService.ResendResetOtpAsync(
+            request.Email,
+            cancellationToken);
         return Ok(response);
     }
 
