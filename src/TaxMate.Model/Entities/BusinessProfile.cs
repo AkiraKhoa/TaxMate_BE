@@ -26,6 +26,8 @@ public class BusinessProfile : BaseEntity
 
     public bool PreferElectronicInvoice { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public User Owner { get; set; } = null!;
 
     public BusinessCategory? MainCategory { get; set; }

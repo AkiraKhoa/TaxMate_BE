@@ -53,7 +53,9 @@ namespace TaxMate.Model.Migrations
                     Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Unit = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     EstimatedPrice = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
-                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false)
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -184,6 +186,7 @@ namespace TaxMate.Model.Migrations
                     Address = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     MainCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
                     PreferElectronicInvoice = table.Column<bool>(type: "boolean", nullable: false),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },

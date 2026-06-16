@@ -19,7 +19,7 @@ public class PaymentAccountController : ControllerBase
     /// <summary>Tạo tài khoản thanh toán mới.</summary>
     /// <param name="businessId">ID cửa hàng. Chạy SeedTestData để lấy ID thật.</param>
     /// <param name="request">Thông tin tài khoản ngân hàng.</param>
-    [HttpPost("business/{businessId}")]
+    [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> Create(Guid businessId, [FromBody] CreatePaymentAccountRequest request)
     {
         var id = await _paymentAccountService.CreateAsync(businessId, request);
@@ -33,7 +33,7 @@ public class PaymentAccountController : ControllerBase
 
     /// <summary>Danh sách tài khoản theo cửa hàng.</summary>
     /// <param name="businessId">ID cửa hàng.</param>
-    [HttpGet("business/{businessId}")]
+    [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetByBusiness(Guid businessId)
     {
         var result = await _paymentAccountService.GetByBusinessIdAsync(businessId);
@@ -46,7 +46,7 @@ public class PaymentAccountController : ControllerBase
 
     /// <summary>Lấy chi tiết tài khoản.</summary>
     /// <param name="id">ID tài khoản thanh toán.</param>
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
         var result = await _paymentAccountService.GetByIdAsync(id);
@@ -60,7 +60,7 @@ public class PaymentAccountController : ControllerBase
     /// <summary>Cập nhật tài khoản thanh toán.</summary>
     /// <param name="id">ID tài khoản thanh toán.</param>
     /// <param name="request">Thông tin cập nhật.</param>
-    [HttpPut("{id}")]
+    [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePaymentAccountRequest request)
     {
         await _paymentAccountService.UpdateAsync(id, request);
@@ -73,7 +73,7 @@ public class PaymentAccountController : ControllerBase
 
     /// <summary>Xóa tài khoản thanh toán.</summary>
     /// <param name="id">ID tài khoản thanh toán.</param>
-    [HttpDelete("{id}")]
+    [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
         await _paymentAccountService.DeleteAsync(id);
@@ -87,7 +87,7 @@ public class PaymentAccountController : ControllerBase
     /// <summary>Đặt tài khoản làm mặc định.</summary>
     /// <param name="id">ID tài khoản thanh toán.</param>
     /// <param name="businessId">ID cửa hàng sở hữu tài khoản.</param>
-    [HttpPatch("{id}/set-default")]
+    [HttpPatch("{id:guid}/set-default")]
     public async Task<IActionResult> SetDefault(Guid id, [FromQuery] Guid businessId)
     {
         await _paymentAccountService.SetDefaultAsync(businessId, id);

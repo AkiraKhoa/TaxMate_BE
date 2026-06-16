@@ -5,7 +5,7 @@ using TaxMate.Service.Interfaces;
 namespace TaxMate.API.Controllers;
 
 /// <summary>Xem chi tiết và tải PDF hóa đơn.</summary>
-[Controller]
+[ApiController]
 [Route("api/[controller]")]
 public class InvoiceController : ControllerBase
 {
