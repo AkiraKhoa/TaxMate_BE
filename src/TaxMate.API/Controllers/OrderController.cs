@@ -20,7 +20,7 @@ public class OrderController : ControllerBase
     /// <summary>Tạo đơn hàng nháp mới.</summary>
     /// <param name="businessId">ID cửa hàng. Chạy SeedTestData để lấy ID thật.</param>
     /// <param name="request">Thông tin đơn hàng.</param>
-    [HttpPost("business/{businessId}")]
+    [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> CreateOrder(Guid businessId, [FromBody] CreateOrderRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -35,7 +35,7 @@ public class OrderController : ControllerBase
 
     /// <summary>Lấy chi tiết đơn hàng.</summary>
     /// <param name="id">ID đơn hàng (transactionId).</param>
-    [HttpGet("{id}")]
+    [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetOrderDetail(Guid id)
     {
         var result = await _orderService.GetOrderDetailAsync(id);
@@ -50,7 +50,7 @@ public class OrderController : ControllerBase
     /// <param name="businessId">ID cửa hàng.</param>
     /// <param name="page">Trang hiện tại (bắt đầu từ 1).</param>
     /// <param name="pageSize">Số bản ghi mỗi trang.</param>
-    [HttpGet("business/{businessId}")]
+    [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetOrders(Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         var result = await _orderService.GetOrdersByBusinessAsync(businessId, page, pageSize);
@@ -64,7 +64,7 @@ public class OrderController : ControllerBase
     /// <summary>Thêm sản phẩm vào đơn nháp.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Thông tin sản phẩm và số lượng.</param>
-    [HttpPost("{id}/items")]
+    [HttpPost("{id:guid}/items")]
     public async Task<IActionResult> AddItem(Guid id, [FromBody] AddOrderItemRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -80,7 +80,7 @@ public class OrderController : ControllerBase
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="itemId">ID dòng hàng.</param>
     /// <param name="request">Thông tin cập nhật.</param>
-    [HttpPut("{id}/items/{itemId}")]
+    [HttpPut("{id:guid}/items/{itemId:guid}")]
     public async Task<IActionResult> UpdateItem(Guid id, Guid itemId, [FromBody] UpdateOrderItemRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -95,7 +95,7 @@ public class OrderController : ControllerBase
     /// <summary>Xóa dòng hàng khỏi đơn nháp.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="itemId">ID dòng hàng.</param>
-    [HttpDelete("{id}/items/{itemId}")]
+    [HttpDelete("{id:guid}/items/{itemId:guid}")]
     public async Task<IActionResult> RemoveItem(Guid id, Guid itemId)
     {
         await _orderService.RemoveItemAsync(id, itemId);
@@ -109,7 +109,7 @@ public class OrderController : ControllerBase
     /// <summary>Áp dụng giảm giá toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Loại và giá trị giảm giá.</param>
-    [HttpPost("{id}/discount")]
+    [HttpPost("{id:guid}/discount")]
     public async Task<IActionResult> ApplyDiscount(Guid id, [FromBody] ApplyDiscountRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -123,7 +123,7 @@ public class OrderController : ControllerBase
 
     /// <summary>Xóa giảm giá toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
-    [HttpDelete("{id}/discount")]
+    [HttpDelete("{id:guid}/discount")]
     public async Task<IActionResult> RemoveDiscount(Guid id)
     {
         await _orderService.RemoveDiscountAsync(id);
@@ -137,7 +137,7 @@ public class OrderController : ControllerBase
     /// <summary>Áp dụng phụ thu toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Thông tin phụ thu.</param>
-    [HttpPost("{id}/surcharge")]
+    [HttpPost("{id:guid}/surcharge")]
     public async Task<IActionResult> ApplySurcharge(Guid id, [FromBody] ApplySurchargeRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -151,7 +151,7 @@ public class OrderController : ControllerBase
 
     /// <summary>Xóa phụ thu toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
-    [HttpDelete("{id}/surcharge")]
+    [HttpDelete("{id:guid}/surcharge")]
     public async Task<IActionResult> RemoveSurcharge(Guid id)
     {
         await _orderService.RemoveSurchargeAsync(id);
@@ -165,7 +165,7 @@ public class OrderController : ControllerBase
     /// <summary>Thanh toán và phát hành hóa đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Danh sách khoản thanh toán.</param>
-    [HttpPost("{id}/checkout")]
+    [HttpPost("{id:guid}/checkout")]
     public async Task<IActionResult> Checkout(Guid id, [FromBody] CheckoutRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -179,7 +179,7 @@ public class OrderController : ControllerBase
 
     /// <summary>Hủy đơn hàng nháp.</summary>
     /// <param name="id">ID đơn hàng.</param>
-    [HttpPost("{id}/cancel")]
+    [HttpPost("{id:guid}/cancel")]
     public async Task<IActionResult> CancelOrder(Guid id)
     {
         await _orderService.CancelOrderAsync(id);
