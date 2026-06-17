@@ -408,5 +408,102 @@ public class AppDbContext : DbContext
             .HasIndex(x => x.Status);
         
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        
+        //==========================================Seed Data==========================================
+        var freePlanId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var smallBusinessPlanId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var premiumPlanId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+
+        // Seed subscription plans
+        modelBuilder.Entity<SubscriptionPlan>().HasData(
+            new SubscriptionPlan
+            {
+                Id = freePlanId,
+                Name = "Free",
+                Description = "Basic features for small household businesses.",
+                MonthlyPrice = 0,
+                AnnualPrice = 0,
+                MaxProducts = 50,
+                MaxTransactionsPerMonth = 300,
+                IsActive = true,
+                SortOrder = 1
+            },
+            new SubscriptionPlan
+            {
+                Id = smallBusinessPlanId,
+                Name = "Small Business",
+                Description = "Expense tracking, profitability dashboard, AI tax guidance and RAG legal retrieval.",
+                MonthlyPrice = 99000,
+                AnnualPrice = 999000,
+                MaxProducts = 500,
+                MaxTransactionsPerMonth = 5000,
+                IsActive = true,
+                SortOrder = 2
+            },
+            new SubscriptionPlan
+            {
+                Id = premiumPlanId,
+                Name = "Premium Business",
+                Description = "Electronic invoice integration, advanced analytics and growth monitoring.",
+                MonthlyPrice = 199000,
+                AnnualPrice = 1999000,
+                MaxProducts = null,
+                MaxTransactionsPerMonth = null,
+                IsActive = true,
+                SortOrder = 3
+            }
+        );
+        
+        // Seed plan features
+        modelBuilder.Entity<PlanFeature>().HasData(
+            new PlanFeature
+            {
+                Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"),
+                SubscriptionPlanId = freePlanId,
+                FeatureKey = "revenue_recording",
+                FeatureName = "Revenue recording",
+                IsEnabled = true
+            },
+            new PlanFeature
+            {
+                Id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"),
+                SubscriptionPlanId = freePlanId,
+                FeatureKey = "product_management",
+                FeatureName = "Product management",
+                IsEnabled = true
+            },
+            new PlanFeature
+            {
+                Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"),
+                SubscriptionPlanId = smallBusinessPlanId,
+                FeatureKey = "expense_tracking",
+                FeatureName = "Expense recording and monitoring",
+                IsEnabled = true
+            },
+            new PlanFeature
+            {
+                Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
+                SubscriptionPlanId = smallBusinessPlanId,
+                FeatureKey = "rag_legal_retrieval",
+                FeatureName = "RAG-based legal information retrieval",
+                IsEnabled = true
+            },
+            new PlanFeature
+            {
+                Id = Guid.Parse("cccccccc-cccc-cccc-cccc-ccccccccccc1"),
+                SubscriptionPlanId = premiumPlanId,
+                FeatureKey = "electronic_invoice",
+                FeatureName = "Electronic invoice integration",
+                IsEnabled = true
+            },
+            new PlanFeature
+            {
+                Id = Guid.Parse("cccccccc-cccc-cccc-cccc-ccccccccccc2"),
+                SubscriptionPlanId = premiumPlanId,
+                FeatureKey = "advanced_analytics",
+                FeatureName = "Advanced business analytics",
+                IsEnabled = true
+            }
+        );
     }
 }

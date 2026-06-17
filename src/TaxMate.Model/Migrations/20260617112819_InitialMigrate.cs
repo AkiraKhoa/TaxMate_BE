@@ -3,10 +3,12 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
 namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialMigrate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -612,6 +614,29 @@ namespace TaxMate.Model.Migrations
                         principalTable: "Transactions",
                         principalColumn: "TransactionId",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                table: "SubscriptionPlans",
+                columns: new[] { "Id", "AnnualPrice", "Description", "IsActive", "MaxProducts", "MaxTransactionsPerMonth", "MonthlyPrice", "Name", "SortOrder" },
+                values: new object[,]
+                {
+                    { new Guid("11111111-1111-1111-1111-111111111111"), 0m, "Basic features for small household businesses.", true, 50, 300, 0m, "Free", 1 },
+                    { new Guid("22222222-2222-2222-2222-222222222222"), 999000m, "Expense tracking, profitability dashboard, AI tax guidance and RAG legal retrieval.", true, 500, 5000, 99000m, "Small Business", 2 },
+                    { new Guid("33333333-3333-3333-3333-333333333333"), 1999000m, "Electronic invoice integration, advanced analytics and growth monitoring.", true, null, null, 199000m, "Premium Business", 3 }
+                });
+
+            migrationBuilder.InsertData(
+                table: "PlanFeatures",
+                columns: new[] { "Id", "FeatureKey", "FeatureName", "IsEnabled", "SubscriptionPlanId" },
+                values: new object[,]
+                {
+                    { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"), "revenue_recording", "Revenue recording", true, new Guid("11111111-1111-1111-1111-111111111111") },
+                    { new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"), "product_management", "Product management", true, new Guid("11111111-1111-1111-1111-111111111111") },
+                    { new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"), "expense_tracking", "Expense recording and monitoring", true, new Guid("22222222-2222-2222-2222-222222222222") },
+                    { new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"), "rag_legal_retrieval", "RAG-based legal information retrieval", true, new Guid("22222222-2222-2222-2222-222222222222") },
+                    { new Guid("cccccccc-cccc-cccc-cccc-ccccccccccc1"), "electronic_invoice", "Electronic invoice integration", true, new Guid("33333333-3333-3333-3333-333333333333") },
+                    { new Guid("cccccccc-cccc-cccc-cccc-ccccccccccc2"), "advanced_analytics", "Advanced business analytics", true, new Guid("33333333-3333-3333-3333-333333333333") }
                 });
 
             migrationBuilder.CreateIndex(
