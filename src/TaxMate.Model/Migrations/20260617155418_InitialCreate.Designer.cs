@@ -12,7 +12,7 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260616111038_InitialCreate")]
+    [Migration("20260617155418_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -255,6 +255,12 @@ namespace TaxMate.Model.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("IngredientId")
                         .HasColumnType("uuid");
 
@@ -269,11 +275,18 @@ namespace TaxMate.Model.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId");
 
                     b.HasIndex("IngredientId");
 
                     b.HasIndex("PurchaseDate");
+
+                    b.HasIndex("BusinessId", "PurchaseDate");
 
                     b.ToTable("IngredientPurchases");
                 });
@@ -1094,11 +1107,27 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("EndDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaymentLinkId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long?>("PaymentOrderCode")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("timestamp with time zone");
@@ -1120,6 +1149,10 @@ namespace TaxMate.Model.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EndDate");
+
+                    b.HasIndex("PaymentOrderCode")
+                        .IsUnique()
+                        .HasFilter("\"PaymentOrderCode\" IS NOT NULL");
 
                     b.HasIndex("Status");
 
@@ -1169,11 +1202,19 @@ namespace TaxMate.Model.Migrations
 
             modelBuilder.Entity("TaxMate.Model.Entities.IngredientPurchase", b =>
                 {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany("IngredientPurchases")
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("TaxMate.Model.Entities.Ingredient", "Ingredient")
                         .WithMany("IngredientPurchases")
                         .HasForeignKey("IngredientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Business");
 
                     b.Navigation("Ingredient");
                 });
@@ -1385,6 +1426,8 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.BusinessProfile", b =>
                 {
                     b.Navigation("Expenses");
+
+                    b.Navigation("IngredientPurchases");
 
                     b.Navigation("Invoices");
 

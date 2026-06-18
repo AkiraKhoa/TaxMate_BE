@@ -49,4 +49,7 @@ public class BusinessProfile : BaseEntity
 
     public ICollection<Transaction> Transactions { get; set; }
         = new List<Transaction>();
+
+    public ICollection<IngredientPurchase> IngredientPurchases { get; set; }
+        = new List<IngredientPurchase>();
 }

@@ -331,10 +331,22 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<IngredientPurchase>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.IngredientPurchases)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IngredientPurchase>()
             .HasIndex(x => x.PurchaseDate);
 
         modelBuilder.Entity<IngredientPurchase>()
             .HasIndex(x => x.IngredientId);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasIndex(x => new { x.BusinessId, x.PurchaseDate });
         
         // Subscription
         modelBuilder.Entity<PlanFeature>()
@@ -359,6 +371,11 @@ public class AppDbContext : DbContext
                 x.SubscriptionPlanId,
                 x.Status
             });
+
+        modelBuilder.Entity<UserSubscription>()
+            .HasIndex(x => x.PaymentOrderCode)
+            .IsUnique()
+            .HasFilter("\"PaymentOrderCode\" IS NOT NULL");
         
         // Notification
         modelBuilder.Entity<Notification>()

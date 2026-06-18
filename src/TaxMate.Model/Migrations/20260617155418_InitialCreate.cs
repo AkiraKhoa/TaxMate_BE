@@ -133,27 +133,6 @@ namespace TaxMate.Model.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "IngredientPurchases",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    IngredientId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Quantity = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
-                    TotalCost = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    PurchaseDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_IngredientPurchases", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_IngredientPurchases_Ingredients_IngredientId",
-                        column: x => x.IngredientId,
-                        principalTable: "Ingredients",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "PlanFeatures",
                 columns: table => new
                 {
@@ -246,6 +225,10 @@ namespace TaxMate.Model.Migrations
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     BillingCycle = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     AutoRenew = table.Column<bool>(type: "boolean", nullable: false),
+                    PaymentOrderCode = table.Column<long>(type: "bigint", nullable: true),
+                    PaymentLinkId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    CheckoutUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    PaymentStatus = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
@@ -300,6 +283,36 @@ namespace TaxMate.Model.Migrations
                         principalTable: "ExpenseCategories",
                         principalColumn: "ExpenseCategoryId",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "IngredientPurchases",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    IngredientId = table.Column<Guid>(type: "uuid", nullable: false),
+                    BusinessId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Quantity = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
+                    TotalCost = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
+                    PurchaseDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IngredientPurchases", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_IngredientPurchases_BusinessProfiles_BusinessId",
+                        column: x => x.BusinessId,
+                        principalTable: "BusinessProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_IngredientPurchases_Ingredients_IngredientId",
+                        column: x => x.IngredientId,
+                        principalTable: "Ingredients",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -662,6 +675,16 @@ namespace TaxMate.Model.Migrations
                 column: "ExpenseDate");
 
             migrationBuilder.CreateIndex(
+                name: "IX_IngredientPurchases_BusinessId",
+                table: "IngredientPurchases",
+                column: "BusinessId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IngredientPurchases_BusinessId_PurchaseDate",
+                table: "IngredientPurchases",
+                columns: new[] { "BusinessId", "PurchaseDate" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_IngredientPurchases_IngredientId",
                 table: "IngredientPurchases",
                 column: "IngredientId");
@@ -874,6 +897,13 @@ namespace TaxMate.Model.Migrations
                 name: "IX_UserSubscriptions_EndDate",
                 table: "UserSubscriptions",
                 column: "EndDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserSubscriptions_PaymentOrderCode",
+                table: "UserSubscriptions",
+                column: "PaymentOrderCode",
+                unique: true,
+                filter: "\"PaymentOrderCode\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_UserSubscriptions_Status",
