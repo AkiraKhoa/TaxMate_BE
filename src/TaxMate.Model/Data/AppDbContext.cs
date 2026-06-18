@@ -101,6 +101,11 @@ public class AppDbContext : DbContext
             .HasIndex(x => x.BusinessId);
 
         modelBuilder.Entity<Product>()
+            .Property(x => x.Category)
+            .HasConversion<string>()
+            .HasMaxLength(100);
+
+        modelBuilder.Entity<Product>()
             .HasIndex(x => x.Name);
         
         modelBuilder.Entity<Product>()

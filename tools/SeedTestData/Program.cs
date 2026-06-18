@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using TaxMate.Model.Common;
 using TaxMate.Model.Data;
 using TaxMate.Model.Entities;
 
@@ -43,7 +44,7 @@ db.Users.Add(new User
     PasswordHash = "not-used",
     FullName = "POS Test User",
     Role = "Owner",
-    AccountStatus = TaxMate.Model.Common.AccountStatus.Active,
+    AccountStatus = AccountStatus.Active,
     CreatedAt = now
 });
 
@@ -61,8 +62,9 @@ db.Products.Add(new Product
     Id = productId,
     BusinessId = businessId,
     Name = "San pham test",
+    Category = ProductCategory.Fnb,
     Unit = "cai",
-    Status = "Active",
+    Status = ProductStatus.Active,
     CreatedAt = now
 });
 
