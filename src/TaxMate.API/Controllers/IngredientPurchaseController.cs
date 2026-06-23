@@ -30,6 +30,18 @@ public class IngredientPurchaseController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    /// <summary>Creates a batch of ingredient purchase records scoped to a business.</summary>
+    [HttpPost("business/{businessId:guid}/batch")]
+    public async Task<IActionResult> CreateBatch(Guid businessId, [FromBody] CreateBatchIngredientPurchaseRequest request)
+    {
+        var result = await _purchaseService.CreateBatchAsync(businessId, request);
+        return Ok(
+            ApiResponse<IEnumerable<IngredientPurchaseResponse>>.Ok(
+                result,
+                "Ingredient purchase records created successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     /// <summary>Updates an existing ingredient purchase record.</summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateIngredientPurchaseRequest request)

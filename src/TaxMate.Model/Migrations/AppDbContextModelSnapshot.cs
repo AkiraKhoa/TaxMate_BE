@@ -261,12 +261,24 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("IngredientId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateTime>("PurchaseDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("ReceiptImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("SupplierName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<decimal>("TotalCost")
                         .HasPrecision(18, 2)
@@ -280,6 +292,8 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("BusinessId");
 
                     b.HasIndex("IngredientId");
+
+                    b.HasIndex("InvoiceNumber");
 
                     b.HasIndex("PurchaseDate");
 

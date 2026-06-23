@@ -6,6 +6,9 @@ public class CreateIngredientPurchaseRequest
     public decimal Quantity { get; set; }
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? SupplierName { get; set; }
+    public string? ReceiptImageUrl { get; set; }
 }
 
 public class UpdateIngredientPurchaseRequest
@@ -14,6 +17,25 @@ public class UpdateIngredientPurchaseRequest
     public decimal Quantity { get; set; }
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? SupplierName { get; set; }
+    public string? ReceiptImageUrl { get; set; }
+}
+
+public class CreateBatchIngredientPurchaseRequest
+{
+    public string? InvoiceNumber { get; set; }
+    public string? SupplierName { get; set; }
+    public string? ReceiptImageUrl { get; set; }
+    public DateTime PurchaseDate { get; set; }
+    public List<BatchPurchaseItem> Items { get; set; } = new();
+}
+
+public class BatchPurchaseItem
+{
+    public Guid IngredientId { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal TotalCost { get; set; }
 }
 
 public class IngredientPurchaseResponse
@@ -27,6 +49,9 @@ public class IngredientPurchaseResponse
     public decimal Quantity { get; set; }
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
+    public string? InvoiceNumber { get; set; }
+    public string? SupplierName { get; set; }
+    public string? ReceiptImageUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

@@ -15,7 +15,9 @@ public static class DependencyInjection
             cfg => { },
             typeof(MappingProfile));
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IPasswordResetService, PasswordResetService>();
         services.AddScoped<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IVietQRService, VietQRService>();
         services.AddScoped<IPaymentAccountService, PaymentAccountService>();
@@ -23,7 +25,6 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
         services.AddScoped<IIngredientService, IngredientService>();
-
         services.AddSingleton<PayOSClient>(sp =>
         {
             return new PayOSClient(
@@ -34,7 +35,9 @@ public static class DependencyInjection
 
         services.AddScoped<IIngredientPurchaseService, IngredientPurchaseService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
-        
+        services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IProductPriceService, ProductPriceService>();
+        services.AddScoped<IProductIngredientService, ProductIngredientService>();
         return services;
     }
 }

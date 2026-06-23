@@ -295,6 +295,9 @@ namespace TaxMate.Model.Migrations
                     Quantity = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
                     TotalCost = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     PurchaseDate = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    InvoiceNumber = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    SupplierName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    ReceiptImageUrl = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
@@ -688,6 +691,11 @@ namespace TaxMate.Model.Migrations
                 name: "IX_IngredientPurchases_IngredientId",
                 table: "IngredientPurchases",
                 column: "IngredientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_IngredientPurchases_InvoiceNumber",
+                table: "IngredientPurchases",
+                column: "InvoiceNumber");
 
             migrationBuilder.CreateIndex(
                 name: "IX_IngredientPurchases_PurchaseDate",

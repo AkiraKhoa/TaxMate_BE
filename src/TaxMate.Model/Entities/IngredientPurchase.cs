@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 
@@ -18,6 +19,15 @@ public class IngredientPurchase : BaseEntity
     public decimal TotalCost { get; set; }
 
     public DateTime PurchaseDate { get; set; }
+
+    [MaxLength(100)]
+    public string? InvoiceNumber { get; set; }
+
+    [MaxLength(200)]
+    public string? SupplierName { get; set; }
+
+    [MaxLength(1000)]
+    public string? ReceiptImageUrl { get; set; }
 
     public Ingredient Ingredient { get; set; } = null!;
 

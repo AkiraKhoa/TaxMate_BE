@@ -13,8 +13,7 @@ public class Product : BaseEntity
     [MaxLength(200)]
     public string Name { get; set; } = null!;
 
-    [MaxLength(100)]
-    public string? Category { get; set; }
+    public ProductCategory? Category { get; set; }
 
     [MaxLength(2000)]
     public string? Description { get; set; }
@@ -27,7 +26,7 @@ public class Product : BaseEntity
 
     [Required]
     [MaxLength(50)]
-    public string Status { get; set; } = "Active";
+    public string Status { get; set; } = ProductStatus.Active;
 
     public BusinessProfile Business { get; set; } = null!;
 

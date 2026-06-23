@@ -44,6 +44,9 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             Quantity = request.Quantity,
             TotalCost = request.TotalCost,
             PurchaseDate = request.PurchaseDate.ToUniversalTime(),
+            InvoiceNumber = request.InvoiceNumber,
+            SupplierName = request.SupplierName,
+            ReceiptImageUrl = request.ReceiptImageUrl,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -75,6 +78,9 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         entity.Quantity = request.Quantity;
         entity.TotalCost = request.TotalCost;
         entity.PurchaseDate = request.PurchaseDate.ToUniversalTime();
+        entity.InvoiceNumber = request.InvoiceNumber;
+        entity.SupplierName = request.SupplierName;
+        entity.ReceiptImageUrl = request.ReceiptImageUrl;
         entity.UpdatedAt = DateTime.UtcNow;
 
         _purchases.Update(entity);
@@ -125,6 +131,57 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         };
     }
 
+    public async Task<IEnumerable<IngredientPurchaseResponse>> CreateBatchAsync(Guid businessId, CreateBatchIngredientPurchaseRequest request)
+    {
+        var businessExists = await _businesses.AnyAsync(x => x.Id == businessId);
+        if (!businessExists)
+            throw new NotFoundException($"Business profile with id '{businessId}' not found.");
+
+        var responses = new List<IngredientPurchaseResponse>();
+        var entitiesToAdd = new List<IngredientPurchase>();
+
+        foreach (var item in request.Items)
+        {
+            var ingredient = await _ingredients.GetByIdAsync(item.IngredientId);
+            if (ingredient is null || ingredient.IsDeleted)
+                throw new NotFoundException($"Ingredient with id '{item.IngredientId}' not found or deactivated.");
+
+            var entity = new IngredientPurchase
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = businessId,
+                IngredientId = item.IngredientId,
+                Quantity = item.Quantity,
+                TotalCost = item.TotalCost,
+                PurchaseDate = request.PurchaseDate.ToUniversalTime(),
+                InvoiceNumber = request.InvoiceNumber,
+                SupplierName = request.SupplierName,
+                ReceiptImageUrl = request.ReceiptImageUrl,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            entitiesToAdd.Add(entity);
+        }
+
+        foreach (var entity in entitiesToAdd)
+        {
+            await _purchases.AddAsync(entity);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+
+        foreach (var entity in entitiesToAdd)
+        {
+            var details = await _purchases.GetByIdWithDetailsAsync(entity.Id);
+            if (details is not null)
+            {
+                responses.Add(MapToResponse(details));
+            }
+        }
+
+        return responses;
+    }
+
     private static IngredientPurchaseResponse MapToResponse(IngredientPurchase entity)
     {
         return new IngredientPurchaseResponse
@@ -138,6 +195,9 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             Quantity = entity.Quantity,
             TotalCost = entity.TotalCost,
             PurchaseDate = entity.PurchaseDate,
+            InvoiceNumber = entity.InvoiceNumber,
+            SupplierName = entity.SupplierName,
+            ReceiptImageUrl = entity.ReceiptImageUrl,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
