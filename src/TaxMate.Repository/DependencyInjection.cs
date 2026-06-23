@@ -18,8 +18,12 @@ public static class DependencyInjection
         services.AddScoped<IIngredientRepository, IngredientRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IProductPriceRepository, ProductPriceRepository>();
+<<<<<<< HEAD
         services.AddScoped<IExpenseCategoryRepository, ExpenseCategoryRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
+=======
+        services.AddScoped<IProductIngredientRepository, ProductIngredientRepository>();
+>>>>>>> develop
 
         return services;
     }

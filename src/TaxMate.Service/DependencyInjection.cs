@@ -25,9 +25,14 @@ public static class DependencyInjection
         services.AddScoped<IIngredientService, IngredientService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IProductPriceService, ProductPriceService>();
+<<<<<<< HEAD
         services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
         services.AddScoped<IExpenseService, ExpenseService>();
         
+=======
+        services.AddScoped<IProductIngredientService, ProductIngredientService>();
+
+>>>>>>> develop
         return services;
     }
 }
