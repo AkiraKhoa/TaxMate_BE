@@ -307,7 +307,16 @@ public class AppDbContext : DbContext
         
         // Expense Category
         modelBuilder.Entity<ExpenseCategory>()
-            .HasIndex(x => x.CategoryName)
+            .HasOne(x => x.Business)
+            .WithMany() // Assuming BusinessProfile doesn't necessarily need a collection of ExpenseCategories
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExpenseCategory>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<ExpenseCategory>()
+            .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
         // Product Ingredient
