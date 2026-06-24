@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using TaxMate.Model.DTO;
 using TaxMate.Model.DTO.LegalDocument;
 using TaxMate.Model.DTO.PlanFeature;
@@ -13,6 +13,10 @@ public class MappingProfile : Profile
     {
         // LegalDocument mappings
         CreateMap<LegalDocument, LegalDocumentResponse>();
+
+        CreateMap<ExpenseCategory, TaxMate.Model.DTO.ExpenseCategory.ExpenseCategoryDTO>();
+        CreateMap<Expense, TaxMate.Model.DTO.Expense.ExpenseDTO>()
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.ExpenseCategory != null ? src.ExpenseCategory.CategoryName : string.Empty));
         
         // SubscriptionPlan & PlanFeature mappings
         CreateMap<CreatePlanFeatureRequest, PlanFeature>();

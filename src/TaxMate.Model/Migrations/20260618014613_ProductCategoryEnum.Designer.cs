@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618014613_ProductCategoryEnum")]
+    partial class ProductCategoryEnum
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -187,9 +190,6 @@ namespace TaxMate.Model.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("BusinessId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("CategoryName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -210,9 +210,7 @@ namespace TaxMate.Model.Migrations
 
                     b.HasKey("ExpenseCategoryId");
 
-                    b.HasIndex("BusinessId");
-
-                    b.HasIndex("BusinessId", "CategoryName")
+                    b.HasIndex("CategoryName")
                         .IsUnique();
 
                     b.ToTable("ExpenseCategories");
@@ -609,56 +607,6 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("SubscriptionPlanId");
 
                     b.ToTable("PlanFeatures");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"),
-                            FeatureKey = "revenue_recording",
-                            FeatureName = "Revenue recording",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("11111111-1111-1111-1111-111111111111")
-                        },
-                        new
-                        {
-                            Id = new Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"),
-                            FeatureKey = "product_management",
-                            FeatureName = "Product management",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("11111111-1111-1111-1111-111111111111")
-                        },
-                        new
-                        {
-                            Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1"),
-                            FeatureKey = "expense_tracking",
-                            FeatureName = "Expense recording and monitoring",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("22222222-2222-2222-2222-222222222222")
-                        },
-                        new
-                        {
-                            Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2"),
-                            FeatureKey = "rag_legal_retrieval",
-                            FeatureName = "RAG-based legal information retrieval",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("22222222-2222-2222-2222-222222222222")
-                        },
-                        new
-                        {
-                            Id = new Guid("cccccccc-cccc-cccc-cccc-ccccccccccc1"),
-                            FeatureKey = "electronic_invoice",
-                            FeatureName = "Electronic invoice integration",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("33333333-3333-3333-3333-333333333333")
-                        },
-                        new
-                        {
-                            Id = new Guid("cccccccc-cccc-cccc-cccc-ccccccccccc2"),
-                            FeatureKey = "advanced_analytics",
-                            FeatureName = "Advanced business analytics",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("33333333-3333-3333-3333-333333333333")
-                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
@@ -801,42 +749,6 @@ namespace TaxMate.Model.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SubscriptionPlans");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("11111111-1111-1111-1111-111111111111"),
-                            AnnualPrice = 0m,
-                            Description = "Basic features for small household businesses.",
-                            IsActive = true,
-                            MaxProducts = 50,
-                            MaxTransactionsPerMonth = 300,
-                            MonthlyPrice = 0m,
-                            Name = "Free",
-                            SortOrder = 1
-                        },
-                        new
-                        {
-                            Id = new Guid("22222222-2222-2222-2222-222222222222"),
-                            AnnualPrice = 999000m,
-                            Description = "Expense tracking, profitability dashboard, AI tax guidance and RAG legal retrieval.",
-                            IsActive = true,
-                            MaxProducts = 500,
-                            MaxTransactionsPerMonth = 5000,
-                            MonthlyPrice = 99000m,
-                            Name = "Small Business",
-                            SortOrder = 2
-                        },
-                        new
-                        {
-                            Id = new Guid("33333333-3333-3333-3333-333333333333"),
-                            AnnualPrice = 1999000m,
-                            Description = "Electronic invoice integration, advanced analytics and growth monitoring.",
-                            IsActive = true,
-                            MonthlyPrice = 199000m,
-                            Name = "Premium Business",
-                            SortOrder = 3
-                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.TaxPayment", b =>
@@ -1253,16 +1165,6 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Business");
 
                     b.Navigation("ExpenseCategory");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
-                        .WithMany()
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("Business");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.IngredientPurchase", b =>
