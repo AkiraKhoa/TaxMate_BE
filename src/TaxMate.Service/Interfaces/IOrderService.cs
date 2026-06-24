@@ -8,7 +8,13 @@ public interface IOrderService
     Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request);
     Task<OrderDetailResponse> GetOrderDetailAsync(Guid transactionId);
     Task<PagedResult<OrderSummaryResponse>> GetOrdersByBusinessAsync(
-        Guid businessId, int page, int pageSize);
+        Guid businessId,
+        int page,
+        int pageSize,
+        string? status = null,
+        string? paymentMethod = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null);
 
     Task AddItemAsync(Guid transactionId, AddOrderItemRequest request);
     Task UpdateItemAsync(Guid transactionId, Guid itemId, UpdateOrderItemRequest request);

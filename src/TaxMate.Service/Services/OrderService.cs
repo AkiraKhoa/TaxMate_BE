@@ -119,10 +119,16 @@ public class OrderService : IOrderService
     }
 
     public async Task<PagedResult<OrderSummaryResponse>> GetOrdersByBusinessAsync(
-        Guid businessId, int page, int pageSize)
+        Guid businessId,
+        int page,
+        int pageSize,
+        string? status = null,
+        string? paymentMethod = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null)
     {
-        var count = await _transactions.CountByBusinessIdAsync(businessId);
-        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize);
+        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount);
+        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount);
 
         var items = transactions.Select(x => new OrderSummaryResponse
         {
