@@ -43,34 +43,34 @@ builder.Services.AddRepository();
 builder.Services.AddServices();
 
 // ── JWT Authentication ─────────────────────────────────────
-var jwtOptions = builder.Configuration
-    .GetSection(JwtOptions.SectionName)
-    .Get<JwtOptions>() ?? new JwtOptions();
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidAudience = jwtOptions.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
-            ClockSkew = TimeSpan.Zero
-        };
-    });
-
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy(AuthPolicies.ActiveAccountOnly, policy =>
-        policy.RequireClaim("account_status", AccountStatus.Active));
-});
-
-builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenAuthorizationResultHandler>();
+// var jwtOptions = builder.Configuration
+//     .GetSection(JwtOptions.SectionName)
+//     .Get<JwtOptions>() ?? new JwtOptions();
+//
+// builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+//     .AddJwtBearer(options =>
+//     {
+//         options.TokenValidationParameters = new TokenValidationParameters
+//         {
+//             ValidateIssuer = true,
+//             ValidateAudience = true,
+//             ValidateLifetime = true,
+//             ValidateIssuerSigningKey = true,
+//             ValidIssuer = jwtOptions.Issuer,
+//             ValidAudience = jwtOptions.Audience,
+//             IssuerSigningKey = new SymmetricSecurityKey(
+//                 Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+//             ClockSkew = TimeSpan.Zero
+//         };
+//     });
+//
+// builder.Services.AddAuthorization(options =>
+// {
+//     options.AddPolicy(AuthPolicies.ActiveAccountOnly, policy =>
+//         policy.RequireClaim("account_status", AccountStatus.Active));
+// });
+//
+// builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenAuthorizationResultHandler>();
 
 // ── API ────────────────────────────────────────────────────
 builder.Services.AddControllers();

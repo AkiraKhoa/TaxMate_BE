@@ -21,7 +21,9 @@ public static class DependencyInjection
         services.AddScoped<IExpenseCategoryRepository, ExpenseCategoryRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
         services.AddScoped<IProductIngredientRepository, ProductIngredientRepository>();
-
+        services.AddScoped<IUserDeviceRepository, UserDeviceRepository>();
+        services.AddScoped<IReportRepository, ReportRepository>();
+        
         return services;
     }
 }

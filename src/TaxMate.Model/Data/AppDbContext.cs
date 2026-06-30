@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<BusinessProfile> BusinessProfiles => Set<BusinessProfile>();
     public DbSet<BusinessCategory> BusinessCategories => Set<BusinessCategory>();
+    
+    public DbSet<UserDevice> UserDevices => Set<UserDevice>();
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();

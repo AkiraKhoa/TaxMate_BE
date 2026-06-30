@@ -3,6 +3,7 @@ using TaxMate.Model.DTO;
 using TaxMate.Model.DTO.LegalDocument;
 using TaxMate.Model.DTO.PlanFeature;
 using TaxMate.Model.DTO.SubscriptionPlan;
+using TaxMate.Model.DTO.UserDevice;
 using TaxMate.Model.Entities;
 
 namespace TaxMate.Service.Mappings;
@@ -45,5 +46,7 @@ public class MappingProfile : Profile
             .ForMember(
                 dest => dest.Id,
                 opt => opt.MapFrom(src => src.Id ?? Guid.NewGuid()));
+
+        CreateMap<RegisterDeviceRequest, UserDevice>();
     }
 }
