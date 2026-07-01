@@ -25,6 +25,11 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
         services.AddScoped<IIngredientService, IngredientService>();
+        services.AddHttpClient();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<MockEInvoiceService>();
+        services.AddScoped<ViettelEInvoiceService>();
+        services.AddScoped<IEInvoiceService, EInvoiceDispatcherService>();
         services.AddSingleton<PayOSClient>(sp =>
         {
             return new PayOSClient(

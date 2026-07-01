@@ -124,6 +124,7 @@ public class OrderController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    /* Comment out discount & surcharge endpoints as they are currently not supported
     /// <summary>Áp dụng giảm giá toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Loại và giá trị giảm giá.</param>
@@ -179,6 +180,7 @@ public class OrderController : ControllerBase
                 "Surcharge removed successfully",
                 HttpContext.TraceIdentifier));
     }
+    */
 
     /// <summary>Thanh toán và phát hành hóa đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
@@ -202,5 +204,18 @@ public class OrderController : ControllerBase
     {
         await _orderService.CancelOrderAsync(id);
         return Ok();
+    }
+
+    /// <summary>Xác nhận đã nhận tiền (đối soát thủ công cho VietQR).</summary>
+    /// <param name="id">ID đơn hàng.</param>
+    [HttpPost("{id:guid}/confirm-payment")]
+    public async Task<IActionResult> ConfirmPayment(Guid id)
+    {
+        var result = await _orderService.ConfirmPaymentAsync(id);
+        return Ok(
+            ApiResponse<InvoiceDetailResponse>.Ok(
+                result,
+                "Payment confirmed successfully",
+                HttpContext.TraceIdentifier));
     }
 }

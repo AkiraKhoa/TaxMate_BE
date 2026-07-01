@@ -52,4 +52,6 @@ public class BusinessProfile : BaseEntity
 
     public ICollection<IngredientPurchase> IngredientPurchases { get; set; }
         = new List<IngredientPurchase>();
+
+    public EInvoiceConfig? EInvoiceConfig { get; set; }
 }

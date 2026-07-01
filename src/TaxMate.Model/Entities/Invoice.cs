@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 
@@ -29,6 +29,15 @@ public class Invoice : BaseEntity
 
     [MaxLength(1000)]
     public string? PdfUrl { get; set; }
+
+    [MaxLength(100)]
+    public string? TaxAuthorityCode { get; set; }
+
+    [MaxLength(1000)]
+    public string? OfficialPdfUrl { get; set; }
+
+    [MaxLength(1000)]
+    public string? OfficialXmlUrl { get; set; }
 
     public BusinessProfile Business { get; set; } = null!;
 

@@ -44,6 +44,7 @@ public class AppDbContext : DbContext
 
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
+    public DbSet<EInvoiceConfig> EInvoiceConfigs => Set<EInvoiceConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,6 +83,13 @@ public class AppDbContext : DbContext
             .WithMany(x => x.BusinessProfiles)
             .HasForeignKey(x => x.MainCategoryId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // EInvoiceConfig
+        modelBuilder.Entity<EInvoiceConfig>()
+            .HasOne(x => x.Business)
+            .WithOne(x => x.EInvoiceConfig)
+            .HasForeignKey<EInvoiceConfig>(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // BusinessCategory
         modelBuilder.Entity<BusinessCategory>()
