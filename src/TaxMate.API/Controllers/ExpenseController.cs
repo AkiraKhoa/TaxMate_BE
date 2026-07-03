@@ -10,8 +10,6 @@ namespace TaxMate.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = UserRoles.Owner)]
-[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 public class ExpenseController : ControllerBase
 {
     private readonly IExpenseService _expenseService;
