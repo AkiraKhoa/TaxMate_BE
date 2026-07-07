@@ -43,34 +43,34 @@ builder.Services.AddRepository();
 builder.Services.AddServices();
 
 // ── JWT Authentication ─────────────────────────────────────
-// var jwtOptions = builder.Configuration
-//     .GetSection(JwtOptions.SectionName)
-//     .Get<JwtOptions>() ?? new JwtOptions();
-//
-// builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-//     .AddJwtBearer(options =>
-//     {
-//         options.TokenValidationParameters = new TokenValidationParameters
-//         {
-//             ValidateIssuer = true,
-//             ValidateAudience = true,
-//             ValidateLifetime = true,
-//             ValidateIssuerSigningKey = true,
-//             ValidIssuer = jwtOptions.Issuer,
-//             ValidAudience = jwtOptions.Audience,
-//             IssuerSigningKey = new SymmetricSecurityKey(
-//                 Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
-//             ClockSkew = TimeSpan.Zero
-//         };
-//     });
-//
-// builder.Services.AddAuthorization(options =>
-// {
-//     options.AddPolicy(AuthPolicies.ActiveAccountOnly, policy =>
-//         policy.RequireClaim("account_status", AccountStatus.Active));
-// });
-//
-// builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenAuthorizationResultHandler>();
+var jwtOptions = builder.Configuration
+    .GetSection(JwtOptions.SectionName)
+    .Get<JwtOptions>() ?? new JwtOptions();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthPolicies.ActiveAccountOnly, policy =>
+        policy.RequireClaim("account_status", AccountStatus.Active));
+});
+
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenAuthorizationResultHandler>();
 
 // ── API ────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -102,18 +102,22 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // ── CORS ───────────────────────────────────────────────────
-var frontendBaseUrl = builder.Configuration
-    .GetSection(AppOptions.SectionName)
-    .Get<AppOptions>()?.FrontendBaseUrl ?? "http://localhost:3000";
+var frontendBaseUrls = builder.Configuration
+    .GetSection("App:FrontendBaseUrls")
+    .Get<string[]>() ?? new[]
+{
+    "http://localhost:3000",
+    "http://localhost:8081"
+};
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        policy.WithOrigins(frontendBaseUrl.TrimEnd('/'))
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+        policy.WithOrigins(frontendBaseUrls.Select(x => x.TrimEnd('/')).ToArray())
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
     });
 });
 
