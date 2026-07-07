@@ -192,4 +192,35 @@ public class ReportRepository : IReportRepository
 
         return result;
     }
+    
+    public async Task<List<ActiveSalesMonthResponse>> GetActiveSalesMonthsAsync(
+        Guid businessId)
+    {
+        var result = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed")
+            .GroupBy(x => new
+            {
+                x.TransactionDate.Year,
+                x.TransactionDate.Month
+            })
+            .Select(g => new ActiveSalesMonthResponse
+            {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                TotalOrders = g.Count(),
+                TotalRevenue = g.Sum(x => x.TotalAmount)
+            })
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Month)
+            .ToListAsync();
+
+        foreach (var item in result)
+        {
+            item.Label = $"Tháng {item.Month}/{item.Year}";
+        }
+
+        return result;
+    }
 }   

@@ -24,4 +24,7 @@ public interface IReportRepository
         Guid businessId,
         int year,
         int month);
+    
+    Task<List<ActiveSalesMonthResponse>> GetActiveSalesMonthsAsync(
+        Guid businessId);
 }

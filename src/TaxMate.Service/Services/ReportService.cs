@@ -81,4 +81,34 @@ public class ReportService : IReportService
             SalesTrend = salesTrend
         };
     }
+    
+    public async Task<List<BusinessProfileDropdownResponse>> GetBusinessesAsync(
+        Guid userId)
+    {
+        var businesses = await _businessProfiles.FindAsync(x =>
+            x.OwnerId == userId);
+
+        return businesses
+            .OrderBy(x => x.BusinessName)
+            .Select(x => new BusinessProfileDropdownResponse
+            {
+                Id = x.Id,
+                BusinessName = x.BusinessName
+            })
+            .ToList();
+    }
+    
+    public async Task<List<ActiveSalesMonthResponse>> GetActiveSalesMonthsAsync(
+        Guid businessId)
+    {
+        var business = await _businessProfiles.GetByIdAsync(businessId);
+
+        if (business == null)
+        {
+            throw new NotFoundException("Business profile not found.");
+        }
+
+        return await _reportRepository
+            .GetActiveSalesMonthsAsync(businessId);
+    }
 }
