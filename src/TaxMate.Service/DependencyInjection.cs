@@ -29,6 +29,10 @@ public static class DependencyInjection
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IProductIngredientService, ProductIngredientService>();
         services.AddScoped<IDashboardAnalyticsService, DashboardAnalyticsService>();
+        services.AddScoped<IUserDeviceService, UserDeviceService>();
+        services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
+        services.AddScoped<IReportService, ReportService>();
+        
 
         return services;
     }

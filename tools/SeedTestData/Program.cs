@@ -71,7 +71,7 @@ if (business is null)
         ApplyDate = now.AddDays(-1),
         CreatedAt = now
     });
-
+    
     await db.SaveChangesAsync();
     seededBase = true;
     product = await db.Products.AsNoTracking()
@@ -82,6 +82,34 @@ else
     businessId = business.Id;
     product = await db.Products.AsNoTracking()
         .FirstOrDefaultAsync(p => p.BusinessId == businessId);
+}
+
+var hasSalesData = await db.Transactions
+    .AnyAsync(t => t.BusinessId == businessId);
+
+if (!hasSalesData)
+{
+    await SeedSalesDashboardDataAsync(db, businessId, now);
+}
+
+var hasExtraSalesData = await db.Transactions
+    .AnyAsync(t =>
+        t.BusinessId == businessId &&
+        t.TransactionCode.StartsWith("SEED-SALES-EXTRA"));
+
+if (!hasExtraSalesData)
+{
+    await SeedExtraMonthlySalesDataAsync(db, businessId, now);
+}
+
+var hasQuarterTrendData = await db.Transactions
+    .AnyAsync(t =>
+        t.BusinessId == businessId &&
+        t.TransactionCode.StartsWith("SEED-QUARTER-TREND"));
+
+if (!hasQuarterTrendData)
+{
+    await SeedQuarterSalesTrendDataAsync(db, businessId, now);
 }
 
 var hasExpenses = await db.Expenses.AnyAsync(e => e.BusinessId == businessId);
@@ -95,6 +123,332 @@ if (!hasExpenses)
 }
 
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
+static async Task SeedQuarterSalesTrendDataAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    var products = await db.Products
+        .Where(p => p.BusinessId == businessId)
+        .Take(3)
+        .ToListAsync();
+
+    if (products.Count == 0)
+    {
+        return;
+    }
+
+    var product = products.First();
+
+    var price = await db.ProductPrices
+        .Where(p => p.ProductId == product.Id)
+        .OrderByDescending(p => p.ApplyDate)
+        .Select(p => p.Price)
+        .FirstOrDefaultAsync();
+
+    if (price <= 0)
+    {
+        price = 50000m;
+    }
+
+    var monthlySales = new[]
+    {
+        new { Month = 1, Revenue = 3_600_000m },
+        new { Month = 2, Revenue = 3_800_000m },
+        new { Month = 3, Revenue = 4_100_000m },
+
+        new { Month = 4, Revenue = 5_800_000m },
+        new { Month = 5, Revenue = 4_900_000m },
+        new { Month = 6, Revenue = 7_000_000m }
+    };
+
+    var index = 1;
+
+    foreach (var item in monthlySales)
+    {
+        var transactionId = Guid.NewGuid();
+
+        var transactionDate = new DateTime(
+            2026,
+            item.Month,
+            15,
+            12,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var quantity = Math.Max(1, (int)(item.Revenue / price));
+
+        db.Transactions.Add(new Transaction
+        {
+            TransactionId = transactionId,
+            BusinessId = businessId,
+            TransactionCode = $"SEED-QUARTER-TREND-2026{item.Month:00}-{index:000}",
+            TransactionDate = transactionDate,
+            Status = "Completed",
+            SubTotal = item.Revenue,
+            DiscountAmount = 0,
+            SurchargeAmount = 0,
+            TotalAmount = item.Revenue,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        db.TransactionItems.Add(new TransactionItem
+        {
+            TransactionItemId = Guid.NewGuid(),
+            TransactionId = transactionId,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            Unit = product.Unit,
+            UnitPrice = price,
+            Quantity = quantity,
+            DiscountAmount = 0,
+            LineTotal = item.Revenue,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        index++;
+    }
+
+    await db.SaveChangesAsync();
+}
+static async Task SeedExtraMonthlySalesDataAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    var products = await db.Products
+        .Where(p => p.BusinessId == businessId)
+        .Take(3)
+        .ToListAsync();
+
+    if (products.Count < 3)
+    {
+        return;
+    }
+
+    var months = new[]
+    {
+        new
+        {
+            MonthStart = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+            Quantities = new[] { 15, 10, 8 }
+        },
+        new
+        {
+            MonthStart = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            Quantities = new[] { 10, 7, 5 }
+        }
+    };
+
+    var index = 1;
+
+    foreach (var month in months)
+    {
+        for (var i = 0; i < products.Count; i++)
+        {
+            var product = products[i];
+
+            var price = await db.ProductPrices
+                .Where(p => p.ProductId == product.Id)
+                .OrderByDescending(p => p.ApplyDate)
+                .Select(p => p.Price)
+                .FirstOrDefaultAsync();
+
+            if (price <= 0)
+            {
+                price = 30000m;
+            }
+
+            var transactionId = Guid.NewGuid();
+            var quantity = month.Quantities[i];
+            var lineTotal = price * quantity;
+
+            db.Transactions.Add(new Transaction
+            {
+                TransactionId = transactionId,
+                BusinessId = businessId,
+                TransactionCode = $"SEED-SALES-EXTRA-{month.MonthStart:yyyyMM}-{index:000}",
+                TransactionDate = month.MonthStart.AddDays(3 + i * 8),
+                Status = "Completed",
+                SubTotal = lineTotal,
+                DiscountAmount = 0,
+                SurchargeAmount = 0,
+                TotalAmount = lineTotal,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+            db.TransactionItems.Add(new TransactionItem
+            {
+                TransactionItemId = Guid.NewGuid(),
+                TransactionId = transactionId,
+                ProductId = product.Id,
+                ProductName = product.Name,
+                Unit = product.Unit,
+                UnitPrice = price,
+                Quantity = quantity,
+                DiscountAmount = 0,
+                LineTotal = lineTotal,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+            index++;
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
+static async Task SeedSalesDashboardDataAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    var currentMonth = new DateTime(
+        now.Year,
+        now.Month,
+        1,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    var products = new[]
+    {
+        new
+        {
+            Id = Guid.NewGuid(),
+            Name = "Pizza",
+            Unit = "cái",
+            Price = 35000m
+        },
+        new
+        {
+            Id = Guid.NewGuid(),
+            Name = "Hamburger",
+            Unit = "cái",
+            Price = 25000m
+        },
+        new
+        {
+            Id = Guid.NewGuid(),
+            Name = "Gà chiên",
+            Unit = "phần",
+            Price = 30000m
+        }
+    };
+
+    foreach (var p in products)
+    {
+        db.Products.Add(new Product
+        {
+            Id = p.Id,
+            BusinessId = businessId,
+            Name = p.Name,
+            Unit = p.Unit,
+            Category = ProductCategory.Fnb,
+            Status = ProductStatus.Active,
+            CreatedAt = now
+        });
+
+        db.ProductPrices.Add(new ProductPrice
+        {
+            Id = Guid.NewGuid(),
+            ProductId = p.Id,
+            Price = p.Price,
+            ApplyDate = currentMonth.AddDays(-1),
+            CreatedAt = now
+        });
+    }
+
+    var sales = new[]
+    {
+        new
+        {
+            Date = currentMonth.AddDays(2),
+            ProductId = products[0].Id,
+            ProductName = products[0].Name,
+            UnitPrice = products[0].Price,
+            Quantity = 20
+        },
+        new
+        {
+            Date = currentMonth.AddDays(6),
+            ProductId = products[1].Id,
+            ProductName = products[1].Name,
+            UnitPrice = products[1].Price,
+            Quantity = 15
+        },
+        new
+        {
+            Date = currentMonth.AddDays(11),
+            ProductId = products[2].Id,
+            ProductName = products[2].Name,
+            UnitPrice = products[2].Price,
+            Quantity = 12
+        },
+        new
+        {
+            Date = currentMonth.AddDays(18),
+            ProductId = products[0].Id,
+            ProductName = products[0].Name,
+            UnitPrice = products[0].Price,
+            Quantity = 30
+        },
+        new
+        {
+            Date = currentMonth.AddDays(25),
+            ProductId = products[1].Id,
+            ProductName = products[1].Name,
+            UnitPrice = products[1].Price,
+            Quantity = 10
+        }
+    };
+
+    var index = 1;
+
+    foreach (var sale in sales)
+    {
+        var transactionId = Guid.NewGuid();
+        var lineTotal = sale.UnitPrice * sale.Quantity;
+
+        db.Transactions.Add(new Transaction
+        {
+            TransactionId = transactionId,
+            BusinessId = businessId,
+            TransactionCode = $"TXM-{now:yyyyMM}-{index:000}",
+            TransactionDate = sale.Date,
+            Status = "Completed",
+            SubTotal = lineTotal,
+            DiscountAmount = 0,
+            SurchargeAmount = 0,
+            TotalAmount = lineTotal,
+            CreatedAt = now
+        });
+
+        db.TransactionItems.Add(new TransactionItem
+        {
+            TransactionItemId = Guid.NewGuid(),
+            TransactionId = transactionId,
+            ProductId = sale.ProductId,
+            ProductName = sale.ProductName,
+            Unit = "cái",
+            UnitPrice = sale.UnitPrice,
+            Quantity = sale.Quantity,
+            DiscountAmount = 0,
+            LineTotal = lineTotal,
+            CreatedAt = now
+        });
+
+        index++;
+    }
+
+    await db.SaveChangesAsync();
+}
 
 static async Task<Dictionary<string, Guid>> SeedExpenseCategoriesAsync(
     AppDbContext db,
