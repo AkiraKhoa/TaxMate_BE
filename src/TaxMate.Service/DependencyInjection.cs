@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IProductIngredientService, ProductIngredientService>();
+        services.AddScoped<IDashboardAnalyticsService, DashboardAnalyticsService>();
 
         return services;
     }
