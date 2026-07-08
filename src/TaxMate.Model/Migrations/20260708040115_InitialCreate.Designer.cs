@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260708040115_InitialCreate")]
+    partial class InitialCreate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -114,112 +117,6 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("OwnerId");
 
                     b.ToTable("BusinessProfiles");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BusinessId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BusinessId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserId", "Status");
-
-                    b.ToTable("ChatConversations");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("CompletionTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("ConversationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ModelName")
-                        .HasColumnType("text");
-
-                    b.Property<int>("PromptTokens")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("TotalTokens")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ConversationId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.ToTable("ChatMessages");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatReference", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ChunkId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("LegalDocumentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<double>("SimilarityScore")
-                        .HasColumnType("double precision");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LegalDocumentId");
-
-                    b.HasIndex("MessageId");
-
-                    b.ToTable("ChatReferences");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Expense", b =>
@@ -1375,54 +1272,6 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Owner");
                 });
 
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
-                        .WithMany()
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("TaxMate.Model.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Business");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.ChatConversation", "Conversation")
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Conversation");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatReference", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.LegalDocument", "LegalDocument")
-                        .WithMany()
-                        .HasForeignKey("LegalDocumentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("TaxMate.Model.Entities.ChatMessage", "Message")
-                        .WithMany("References")
-                        .HasForeignKey("MessageId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("LegalDocument");
-
-                    b.Navigation("Message");
-                });
-
             modelBuilder.Entity("TaxMate.Model.Entities.Expense", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
@@ -1691,16 +1540,6 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("TaxPeriods");
 
                     b.Navigation("Transactions");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
-                {
-                    b.Navigation("Messages");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
-                {
-                    b.Navigation("References");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
