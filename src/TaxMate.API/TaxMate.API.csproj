@@ -7,6 +7,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FirebaseAdmin" Version="3.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -28,11 +29,7 @@
   </PropertyGroup>
 
   <Target Name="CopyModelXmlDocumentation" AfterTargets="Build">
-    <Copy
-      SourceFiles="..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml"
-      DestinationFolder="$(OutputPath)"
-      SkipUnchangedFiles="true"
-      Condition="Exists('..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml')" />
+    <Copy SourceFiles="..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('..\TaxMate.Model\bin\$(Configuration)\$(TargetFramework)\TaxMate.Model.xml')" />
   </Target>
 
   <ItemGroup>
