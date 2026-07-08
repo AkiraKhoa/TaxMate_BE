@@ -32,6 +32,9 @@ public class AppDbContext : DbContext
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
 
+    public DbSet<Income> Incomes => Set<Income>();
+    public DbSet<IncomeCategory> IncomeCategories => Set<IncomeCategory>();
+
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<ProductIngredient> ProductIngredients => Set<ProductIngredient>();
     public DbSet<IngredientPurchase> IngredientPurchases => Set<IngredientPurchase>();
@@ -318,6 +321,45 @@ public class AppDbContext : DbContext
             .HasIndex(x => x.BusinessId);
 
         modelBuilder.Entity<ExpenseCategory>()
+            .HasIndex(x => new { x.BusinessId, x.CategoryName })
+            .IsUnique();
+        
+        // Income
+        modelBuilder.Entity<Income>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Incomes)
+            .HasForeignKey(x => x.BusinessId);
+
+        modelBuilder.Entity<Income>()
+            .HasOne(x => x.IncomeCategory)
+            .WithMany(x => x.Incomes)
+            .HasForeignKey(x => x.IncomeCategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => x.IncomeDate);
+
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => new
+            {
+                x.BusinessId,
+                x.IncomeDate
+            });
+        
+        // Income Category
+        modelBuilder.Entity<IncomeCategory>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IncomeCategory>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<IncomeCategory>()
             .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         

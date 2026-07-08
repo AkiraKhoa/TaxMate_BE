@@ -3,78 +3,78 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
-using TaxMate.Model.DTO.ExpenseCategory;
+using TaxMate.Model.DTO.IncomeCategory;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ExpenseCategoryController : ControllerBase
+public class IncomeCategoryController : ControllerBase
 {
-    private readonly IExpenseCategoryService _expenseCategoryService;
+    private readonly IIncomeCategoryService _incomeCategoryService;
 
-    public ExpenseCategoryController(IExpenseCategoryService expenseCategoryService)
+    public IncomeCategoryController(IIncomeCategoryService incomeCategoryService)
     {
-        _expenseCategoryService = expenseCategoryService;
+        _incomeCategoryService = incomeCategoryService;
     }
 
     [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> Create(
         Guid businessId,
-        [FromBody] CreateExpenseCategoryRequest request)
+        [FromBody] CreateIncomeCategoryRequest request)
     {
-        var result = await _expenseCategoryService.CreateAsync(GetUserId(), businessId, request);
+        var result = await _incomeCategoryService.CreateAsync(GetUserId(), businessId, request);
         return CreatedAtAction(
             nameof(GetById),
-            new { id = result.ExpenseCategoryId },
-            ApiResponse<ExpenseCategoryDTO>.Ok(
+            new { id = result.IncomeCategoryId },
+            ApiResponse<IncomeCategoryDTO>.Ok(
                 result,
-                "Expense category created successfully",
+                "Income category created successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExpenseCategoryRequest request)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateIncomeCategoryRequest request)
     {
-        var result = await _expenseCategoryService.UpdateAsync(GetUserId(), id, request);
+        var result = await _incomeCategoryService.UpdateAsync(GetUserId(), id, request);
         return Ok(
-            ApiResponse<ExpenseCategoryDTO>.Ok(
+            ApiResponse<IncomeCategoryDTO>.Ok(
                 result,
-                "Expense category updated successfully",
+                "Income category updated successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        await _expenseCategoryService.DeleteAsync(GetUserId(), id);
+        await _incomeCategoryService.DeleteAsync(GetUserId(), id);
         return Ok(
             ApiResponse<bool>.Ok(
                 true,
-                "Expense category deleted successfully",
+                "Income category deleted successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetByBusiness(Guid businessId)
     {
-        var result = await _expenseCategoryService.GetByBusinessAsync(GetUserId(), businessId);
+        var result = await _incomeCategoryService.GetByBusinessAsync(GetUserId(), businessId);
         return Ok(
-            ApiResponse<IEnumerable<ExpenseCategoryDTO>>.Ok(
+            ApiResponse<IEnumerable<IncomeCategoryDTO>>.Ok(
                 result,
-                "Get expense categories successfully",
+                "Get income categories successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var result = await _expenseCategoryService.GetByIdAsync(GetUserId(), id);
+        var result = await _incomeCategoryService.GetByIdAsync(GetUserId(), id);
         return Ok(
-            ApiResponse<ExpenseCategoryDTO>.Ok(
+            ApiResponse<IncomeCategoryDTO>.Ok(
                 result,
-                "Get expense category successfully",
+                "Get income category successfully",
                 HttpContext.TraceIdentifier));
     }
 

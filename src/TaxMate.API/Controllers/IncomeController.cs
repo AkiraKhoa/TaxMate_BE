@@ -3,56 +3,56 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
-using TaxMate.Model.DTO.Expense;
+using TaxMate.Model.DTO.Income;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ExpenseController : ControllerBase
+public class IncomeController : ControllerBase
 {
-    private readonly IExpenseService _expenseService;
+    private readonly IIncomeService _incomeService;
 
-    public ExpenseController(IExpenseService expenseService)
+    public IncomeController(IIncomeService incomeService)
     {
-        _expenseService = expenseService;
+        _incomeService = incomeService;
     }
 
     [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> Create(
         Guid businessId,
-        [FromBody] CreateExpenseRequest request)
+        [FromBody] CreateIncomeRequest request)
     {
-        var result = await _expenseService.CreateAsync(GetUserId(), businessId, request);
+        var result = await _incomeService.CreateAsync(GetUserId(), businessId, request);
         return CreatedAtAction(
             nameof(GetById),
-            new { id = result.ExpenseId },
-            ApiResponse<ExpenseDTO>.Ok(
+            new { id = result.IncomeId },
+            ApiResponse<IncomeDTO>.Ok(
                 result,
-                "Expense created successfully",
+                "Income created successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExpenseRequest request)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateIncomeRequest request)
     {
-        var result = await _expenseService.UpdateAsync(GetUserId(), id, request);
+        var result = await _incomeService.UpdateAsync(GetUserId(), id, request);
         return Ok(
-            ApiResponse<ExpenseDTO>.Ok(
+            ApiResponse<IncomeDTO>.Ok(
                 result,
-                "Expense updated successfully",
+                "Income updated successfully",
                 HttpContext.TraceIdentifier));
     }
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        await _expenseService.DeleteAsync(GetUserId(), id);
+        await _incomeService.DeleteAsync(GetUserId(), id);
         return Ok(
             ApiResponse<bool>.Ok(
                 true,
-                "Expense deleted successfully",
+                "Income deleted successfully",
                 HttpContext.TraceIdentifier));
     }
 
@@ -67,13 +67,13 @@ public class ExpenseController : ControllerBase
         [FromQuery] Guid? categoryId = null,
         [FromQuery] string? paymentMethod = null)
     {
-        var result = await _expenseService.GetPagedAsync(
+        var result = await _incomeService.GetPagedAsync(
             GetUserId(), businessId, pageNumber, pageSize, search, fromDate, toDate, categoryId, paymentMethod);
         
         return Ok(
-            ApiResponse<PagedResult<ExpenseDTO>>.Ok(
+            ApiResponse<PagedResult<IncomeDTO>>.Ok(
                 result,
-                "Get paged expenses successfully",
+                "Get paged incomes successfully",
                 HttpContext.TraceIdentifier));
     }
 
@@ -83,9 +83,9 @@ public class ExpenseController : ControllerBase
         [FromQuery] int year,
         [FromQuery] int month)
     {
-        var result = await _expenseService.GetMonthlySummaryAsync(GetUserId(), businessId, year, month);
+        var result = await _incomeService.GetMonthlySummaryAsync(GetUserId(), businessId, year, month);
         return Ok(
-            ApiResponse<ExpenseSummaryDTO>.Ok(
+            ApiResponse<IncomeSummaryDTO>.Ok(
                 result,
                 "Get monthly summary successfully",
                 HttpContext.TraceIdentifier));
@@ -94,11 +94,11 @@ public class ExpenseController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var result = await _expenseService.GetByIdAsync(GetUserId(), id);
+        var result = await _incomeService.GetByIdAsync(GetUserId(), id);
         return Ok(
-            ApiResponse<ExpenseDTO>.Ok(
+            ApiResponse<IncomeDTO>.Ok(
                 result,
-                "Get expense successfully",
+                "Get income successfully",
                 HttpContext.TraceIdentifier));
     }
 

@@ -44,6 +44,9 @@ public class BusinessProfile : BaseEntity
     public ICollection<Expense> Expenses { get; set; }
         = new List<Expense>();
 
+    public ICollection<Income> Incomes { get; set; }
+        = new List<Income>();
+
     public ICollection<PaymentAccount> PaymentAccounts { get; set; }
         = new List<PaymentAccount>();
 

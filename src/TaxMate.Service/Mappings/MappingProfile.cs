@@ -18,6 +18,10 @@ public class MappingProfile : Profile
         CreateMap<ExpenseCategory, TaxMate.Model.DTO.ExpenseCategory.ExpenseCategoryDTO>();
         CreateMap<Expense, TaxMate.Model.DTO.Expense.ExpenseDTO>()
             .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.ExpenseCategory != null ? src.ExpenseCategory.CategoryName : string.Empty));
+            
+        CreateMap<IncomeCategory, TaxMate.Model.DTO.IncomeCategory.IncomeCategoryDTO>();
+        CreateMap<Income, TaxMate.Model.DTO.Income.IncomeDTO>()
+            .ForMember(dest => dest.CategoryName, opt => opt.MapFrom(src => src.IncomeCategory != null ? src.IncomeCategory.CategoryName : string.Empty));
         
         // SubscriptionPlan & PlanFeature mappings
         CreateMap<CreatePlanFeatureRequest, PlanFeature>();
