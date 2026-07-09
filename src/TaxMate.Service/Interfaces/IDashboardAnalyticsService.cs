@@ -17,4 +17,10 @@ public interface IDashboardAnalyticsService
     Task<PackageRevenueResponseDto> GetPackageRevenueAsync(CancellationToken cancellationToken = default);
 
     Task<BusinessUserTrendResponseDto> GetBusinessUserTrendAsync(CancellationToken cancellationToken = default);
+
+    Task<ChatMessageCountDto> GetTotalChatMessagesAsync(CancellationToken cancellationToken = default);
+
+    Task<ChatMessageCountDto> GetTodayChatMessagesAsync(CancellationToken cancellationToken = default);
+
+    Task<AiAccuracyMetricDto> GetAiAccuracyAsync(CancellationToken cancellationToken = default);
 }

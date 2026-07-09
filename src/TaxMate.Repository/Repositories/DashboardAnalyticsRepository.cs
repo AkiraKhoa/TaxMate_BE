@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 using TaxMate.Model.Data;
 using TaxMate.Repository.Interfaces;
 
@@ -189,6 +190,33 @@ public class DashboardAnalyticsRepository : IDashboardAnalyticsRepository
             .OrderBy(plan => plan.SortOrder)
             .Select(plan => new ValueTuple<Guid, string>(plan.Id, plan.Name))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<int> CountAssistantChatMessagesAsync(
+        DateTime? periodStart,
+        DateTime? periodEnd,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.ChatMessages.AsNoTracking()
+            .Where(message => message.Role == ChatMessageRole.Assistant);
+
+        if (periodStart.HasValue)
+        {
+            query = query.Where(message => message.CreatedAt >= periodStart.Value);
+        }
+
+        if (periodEnd.HasValue)
+        {
+            query = query.Where(message => message.CreatedAt < periodEnd.Value);
+        }
+
+        return await query.CountAsync(cancellationToken);
+    }
+
+    public async Task<double?> GetAverageSimilarityScoreAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.ChatReferences.AsNoTracking()
+            .AverageAsync(reference => (double?)reference.SimilarityScore, cancellationToken);
     }
 
     private static Dictionary<(int Year, int Month), int> BuildMonthlyCountDictionary(

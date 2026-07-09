@@ -96,4 +96,37 @@ public class DashboardController : ControllerBase
             "Get business user trend successfully",
             HttpContext.TraceIdentifier));
     }
+
+    /// <summary>Total assistant chat messages (all-time).</summary>
+    [HttpGet("total-chat-messages")]
+    public async Task<IActionResult> GetTotalChatMessages(CancellationToken cancellationToken)
+    {
+        var result = await _dashboardAnalyticsService.GetTotalChatMessagesAsync(cancellationToken);
+        return Ok(ApiResponse<ChatMessageCountDto>.Ok(
+            result,
+            "Get total chat messages successfully",
+            HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Assistant chat messages created today (UTC).</summary>
+    [HttpGet("today-chat-messages")]
+    public async Task<IActionResult> GetTodayChatMessages(CancellationToken cancellationToken)
+    {
+        var result = await _dashboardAnalyticsService.GetTodayChatMessagesAsync(cancellationToken);
+        return Ok(ApiResponse<ChatMessageCountDto>.Ok(
+            result,
+            "Get today chat messages successfully",
+            HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>AI accuracy from average RAG similarity score (0-100%).</summary>
+    [HttpGet("ai-accuracy")]
+    public async Task<IActionResult> GetAiAccuracy(CancellationToken cancellationToken)
+    {
+        var result = await _dashboardAnalyticsService.GetAiAccuracyAsync(cancellationToken);
+        return Ok(ApiResponse<AiAccuracyMetricDto>.Ok(
+            result,
+            "Get AI accuracy successfully",
+            HttpContext.TraceIdentifier));
+    }
 }

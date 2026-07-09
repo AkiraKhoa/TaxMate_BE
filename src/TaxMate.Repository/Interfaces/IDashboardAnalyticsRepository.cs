@@ -27,4 +27,11 @@ public interface IDashboardAnalyticsRepository
 
     Task<IReadOnlyList<(Guid PlanId, string PlanName)>> GetSubscriptionPlansAsync(
         CancellationToken cancellationToken = default);
+
+    Task<int> CountAssistantChatMessagesAsync(
+        DateTime? periodStart,
+        DateTime? periodEnd,
+        CancellationToken cancellationToken = default);
+
+    Task<double?> GetAverageSimilarityScoreAsync(CancellationToken cancellationToken = default);
 }

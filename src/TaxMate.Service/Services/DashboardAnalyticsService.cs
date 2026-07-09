@@ -151,4 +151,36 @@ public class DashboardAnalyticsService : IDashboardAnalyticsService
             }).ToList()
         };
     }
+
+    public async Task<ChatMessageCountDto> GetTotalChatMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        var total = await _dashboardAnalyticsRepository.CountAssistantChatMessagesAsync(
+            null,
+            null,
+            cancellationToken);
+
+        return new ChatMessageCountDto { Total = total };
+    }
+
+    public async Task<ChatMessageCountDto> GetTodayChatMessagesAsync(CancellationToken cancellationToken = default)
+    {
+        var utcNow = DashboardAnalyticsPeriodHelper.UtcNow;
+        var (start, end) = DashboardAnalyticsPeriodHelper.GetTodayUtcRange(utcNow);
+        var total = await _dashboardAnalyticsRepository.CountAssistantChatMessagesAsync(
+            start,
+            end,
+            cancellationToken);
+
+        return new ChatMessageCountDto { Total = total };
+    }
+
+    public async Task<AiAccuracyMetricDto> GetAiAccuracyAsync(CancellationToken cancellationToken = default)
+    {
+        var averageScore = await _dashboardAnalyticsRepository.GetAverageSimilarityScoreAsync(cancellationToken);
+        var accuracyPercent = averageScore.HasValue
+            ? Math.Round((decimal)averageScore.Value * 100m, 2)
+            : 0m;
+
+        return new AiAccuracyMetricDto { AccuracyPercent = accuracyPercent };
+    }
 }

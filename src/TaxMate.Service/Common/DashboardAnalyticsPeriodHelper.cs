@@ -37,6 +37,12 @@ internal static class DashboardAnalyticsPeriodHelper
 
     public static string BuildMonthLabel(int year, int month) => $"{year:D4}-{month:D2}";
 
+    public static (DateTime Start, DateTime End) GetTodayUtcRange(DateTime utcNow)
+    {
+        var start = new DateTime(utcNow.Year, utcNow.Month, utcNow.Day, 0, 0, 0, DateTimeKind.Utc);
+        return (start, start.AddDays(1));
+    }
+
     public static MomCountMetricDto BuildCountMetric(int current, int last)
     {
         return new MomCountMetricDto

@@ -87,3 +87,13 @@ public class PackageRevenueResponseDto
 
     public List<PackageRevenueItemDto> Packages { get; set; } = [];
 }
+
+public class ChatMessageCountDto
+{
+    public int Total { get; set; }
+}
+
+public class AiAccuracyMetricDto
+{
+    public decimal AccuracyPercent { get; set; }
+}
