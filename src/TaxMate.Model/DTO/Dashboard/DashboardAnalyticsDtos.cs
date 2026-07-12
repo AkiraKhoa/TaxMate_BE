@@ -97,3 +97,21 @@ public class AiAccuracyMetricDto
 {
     public decimal AccuracyPercent { get; set; }
 }
+
+public class UserConversionStageDto
+{
+    public Guid? PlanId { get; set; }
+
+    public string Label { get; set; } = string.Empty;
+
+    public int Count { get; set; }
+
+    public decimal Percent { get; set; }
+}
+
+public class UserConversionResponseDto
+{
+    public int TotalUsers { get; set; }
+
+    public List<UserConversionStageDto> Stages { get; set; } = [];
+}

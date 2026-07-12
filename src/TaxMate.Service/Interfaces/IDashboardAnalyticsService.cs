@@ -23,4 +23,6 @@ public interface IDashboardAnalyticsService
     Task<ChatMessageCountDto> GetTodayChatMessagesAsync(CancellationToken cancellationToken = default);
 
     Task<AiAccuracyMetricDto> GetAiAccuracyAsync(CancellationToken cancellationToken = default);
+
+    Task<UserConversionResponseDto> GetUserConversionAsync(CancellationToken cancellationToken = default);
 }

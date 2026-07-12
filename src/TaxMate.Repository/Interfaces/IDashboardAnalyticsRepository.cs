@@ -34,4 +34,9 @@ public interface IDashboardAnalyticsRepository
         CancellationToken cancellationToken = default);
 
     Task<double?> GetAverageSimilarityScoreAsync(CancellationToken cancellationToken = default);
+
+    Task<int> CountOwnerUsersAsync(CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<(Guid PlanId, string PlanName, int UserCount)>> GetActiveUsersByPlanAsync(
+        CancellationToken cancellationToken = default);
 }

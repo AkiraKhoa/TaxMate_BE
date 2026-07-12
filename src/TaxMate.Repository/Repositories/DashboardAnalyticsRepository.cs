@@ -219,6 +219,42 @@ public class DashboardAnalyticsRepository : IDashboardAnalyticsRepository
             .AverageAsync(reference => (double?)reference.SimilarityScore, cancellationToken);
     }
 
+    public async Task<int> CountOwnerUsersAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Users.AsNoTracking()
+            .CountAsync(user => user.Role == UserRoles.Owner, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<(Guid PlanId, string PlanName, int UserCount)>> GetActiveUsersByPlanAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await (
+            from subscription in _context.UserSubscriptions.AsNoTracking()
+            join plan in _context.SubscriptionPlans.AsNoTracking()
+                on subscription.SubscriptionPlanId equals plan.Id
+            join user in _context.Users.AsNoTracking()
+                on subscription.UserId equals user.Id
+            where subscription.Status == "Active"
+            where user.Role == UserRoles.Owner
+            select new
+            {
+                plan.Id,
+                plan.Name,
+                plan.SortOrder,
+                subscription.UserId
+            }
+        ).ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => new { row.Id, row.Name, row.SortOrder })
+            .OrderBy(group => group.Key.SortOrder)
+            .Select(group => (
+                PlanId: group.Key.Id,
+                PlanName: group.Key.Name,
+                UserCount: group.Select(row => row.UserId).Distinct().Count()))
+            .ToList();
+    }
+
     private static Dictionary<(int Year, int Month), int> BuildMonthlyCountDictionary(
         IReadOnlyList<(int Year, int Month, DateTime Start, DateTime End)> months,
         IReadOnlyList<DateTime> timestamps)

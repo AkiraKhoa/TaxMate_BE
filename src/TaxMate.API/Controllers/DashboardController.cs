@@ -129,4 +129,15 @@ public class DashboardController : ControllerBase
             "Get AI accuracy successfully",
             HttpContext.TraceIdentifier));
     }
+
+    /// <summary>User conversion funnel: total owners and active users per subscription plan.</summary>
+    [HttpGet("user-conversion")]
+    public async Task<IActionResult> GetUserConversion(CancellationToken cancellationToken)
+    {
+        var result = await _dashboardAnalyticsService.GetUserConversionAsync(cancellationToken);
+        return Ok(ApiResponse<UserConversionResponseDto>.Ok(
+            result,
+            "Get user conversion successfully",
+            HttpContext.TraceIdentifier));
+    }
 }

@@ -183,4 +183,44 @@ public class DashboardAnalyticsService : IDashboardAnalyticsService
 
         return new AiAccuracyMetricDto { AccuracyPercent = accuracyPercent };
     }
+
+    public async Task<UserConversionResponseDto> GetUserConversionAsync(CancellationToken cancellationToken = default)
+    {
+        var totalUsers = await _dashboardAnalyticsRepository.CountOwnerUsersAsync(cancellationToken);
+        var plans = await _dashboardAnalyticsRepository.GetSubscriptionPlansAsync(cancellationToken);
+        var usersByPlan = await _dashboardAnalyticsRepository.GetActiveUsersByPlanAsync(cancellationToken);
+        var countByPlanId = usersByPlan.ToDictionary(row => row.PlanId, row => row.UserCount);
+
+        decimal PercentOfTotal(int count) =>
+            totalUsers == 0 ? 0m : Math.Round(count * 100m / totalUsers, 0);
+
+        var stages = new List<UserConversionStageDto>
+        {
+            new()
+            {
+                PlanId = null,
+                Label = "Tổng người dùng",
+                Count = totalUsers,
+                Percent = 100m
+            }
+        };
+
+        stages.AddRange(plans.Select(plan =>
+        {
+            var count = countByPlanId.TryGetValue(plan.PlanId, out var userCount) ? userCount : 0;
+            return new UserConversionStageDto
+            {
+                PlanId = plan.PlanId,
+                Label = plan.PlanName,
+                Count = count,
+                Percent = PercentOfTotal(count)
+            };
+        }));
+
+        return new UserConversionResponseDto
+        {
+            TotalUsers = totalUsers,
+            Stages = stages
+        };
+    }
 }
