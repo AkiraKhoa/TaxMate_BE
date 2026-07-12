@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using TaxMate.Infrastructure.Options;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO.Auth;
 using TaxMate.Service.Interfaces;
@@ -21,19 +23,22 @@ public class AuthController : ControllerBase
     private readonly IPasswordResetService _passwordResetService;
     private readonly IGoogleOAuthService _googleOAuthService;
     private readonly IMemoryCache _cache;
+    private readonly AppOptions _appOptions;
 
     public AuthController(
         IAuthService authService,
         IUserProfileService userProfileService,
         IPasswordResetService passwordResetService,
         IGoogleOAuthService googleOAuthService,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        IOptions<AppOptions> appOptions)
     {
         _authService = authService;
         _userProfileService = userProfileService;
         _passwordResetService = passwordResetService;
         _googleOAuthService = googleOAuthService;
         _cache = cache;
+        _appOptions = appOptions.Value;
     }
 
     [HttpPost("register")]
@@ -136,12 +141,13 @@ public class AuthController : ControllerBase
     {
         try
         {
-            var email = await _authService.ConfirmEmailVerificationAsync(token, cancellationToken);
-            return Content(
-                BuildHtmlPage(
-                    "Email verified successfully",
-                    $"Email {email} has been activated. Login again with Google to receive access token."),
-                "text/html; charset=utf-8");
+            await _authService.ConfirmEmailVerificationAsync(token, cancellationToken);
+
+            var frontendBase = string.IsNullOrWhiteSpace(_appOptions.FrontendBaseUrl)
+                ? "https://localhost:5173"
+                : _appOptions.FrontendBaseUrl.TrimEnd('/');
+
+            return Redirect($"{frontendBase}/login?verified=1");
         }
         catch (ArgumentException ex)
         {

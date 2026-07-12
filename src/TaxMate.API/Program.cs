@@ -102,6 +102,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // ── CORS ───────────────────────────────────────────────────
+
 var frontendBaseUrls = builder.Configuration
     .GetSection("App:FrontendBaseUrls")
     .Get<string[]>() ?? new[]
@@ -110,14 +111,17 @@ var frontendBaseUrls = builder.Configuration
     "http://localhost:8081"
 };
 
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
+
         policy.WithOrigins(frontendBaseUrls.Select(x => x.TrimEnd('/')).ToArray())
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials();
+
     });
 });
 
