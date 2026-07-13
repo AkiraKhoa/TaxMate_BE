@@ -13,28 +13,39 @@ public class IngredientPurchaseService : IIngredientPurchaseService
     private readonly IIngredientPurchaseRepository _purchases;
     private readonly IGenericRepository<BusinessProfile> _businesses;
     private readonly IIngredientRepository _ingredients;
+    private readonly ISupplierRepository _suppliers;
 
     public IngredientPurchaseService(
         IUnitOfWork unitOfWork,
         IIngredientPurchaseRepository purchases,
         IGenericRepository<BusinessProfile> businesses,
-        IIngredientRepository ingredients)
+        IIngredientRepository ingredients,
+        ISupplierRepository suppliers)
     {
         _unitOfWork = unitOfWork;
         _purchases = purchases;
         _businesses = businesses;
         _ingredients = ingredients;
+        _suppliers = suppliers;
     }
 
-    public async Task<IngredientPurchaseResponse> CreateAsync(Guid businessId, CreateIngredientPurchaseRequest request)
+    public async Task<IngredientPurchaseResponse> CreateAsync(Guid ownerId, Guid businessId, CreateIngredientPurchaseRequest request)
     {
-        var businessExists = await _businesses.AnyAsync(x => x.Id == businessId);
-        if (!businessExists)
-            throw new NotFoundException($"Business profile with id '{businessId}' not found.");
+        await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         var ingredient = await _ingredients.GetByIdAsync(request.IngredientId);
         if (ingredient is null || ingredient.IsDeleted)
             throw new NotFoundException($"Ingredient with id '{request.IngredientId}' not found or deactivated.");
+
+        string? supplierName = request.SupplierName;
+        if (request.SupplierId.HasValue && string.IsNullOrWhiteSpace(supplierName))
+        {
+            var supplier = await _suppliers.GetByIdAsync(request.SupplierId.Value);
+            if (supplier != null)
+            {
+                supplierName = supplier.Name;
+            }
+        }
 
         var entity = new IngredientPurchase
         {
@@ -45,7 +56,8 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             TotalCost = request.TotalCost,
             PurchaseDate = request.PurchaseDate.ToUniversalTime(),
             InvoiceNumber = request.InvoiceNumber,
-            SupplierName = request.SupplierName,
+            SupplierId = request.SupplierId,
+            SupplierName = supplierName,
             ReceiptImageUrl = request.ReceiptImageUrl,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -61,11 +73,13 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         return MapToResponse(details);
     }
 
-    public async Task<IngredientPurchaseResponse> UpdateAsync(Guid id, UpdateIngredientPurchaseRequest request)
+    public async Task<IngredientPurchaseResponse> UpdateAsync(Guid ownerId, Guid id, UpdateIngredientPurchaseRequest request)
     {
         var entity = await _purchases.GetByIdWithDetailsAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
 
         if (entity.IngredientId != request.IngredientId)
         {
@@ -75,11 +89,22 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             entity.IngredientId = request.IngredientId;
         }
 
+        string? supplierName = request.SupplierName;
+        if (request.SupplierId.HasValue && string.IsNullOrWhiteSpace(supplierName))
+        {
+            var supplier = await _suppliers.GetByIdAsync(request.SupplierId.Value);
+            if (supplier != null)
+            {
+                supplierName = supplier.Name;
+            }
+        }
+
         entity.Quantity = request.Quantity;
         entity.TotalCost = request.TotalCost;
         entity.PurchaseDate = request.PurchaseDate.ToUniversalTime();
         entity.InvoiceNumber = request.InvoiceNumber;
-        entity.SupplierName = request.SupplierName;
+        entity.SupplierId = request.SupplierId;
+        entity.SupplierName = supplierName;
         entity.ReceiptImageUrl = request.ReceiptImageUrl;
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -93,35 +118,24 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         return MapToResponse(details);
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task DeleteAsync(Guid ownerId, Guid id)
     {
         var entity = await _purchases.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
 
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
         _purchases.Remove(entity);
         await _unitOfWork.SaveChangesAsync();
     }
 
-    public async Task<IngredientPurchaseResponse> GetByIdAsync(Guid id)
-    {
-        var entity = await _purchases.GetByIdWithDetailsAsync(id);
-        if (entity is null)
-            throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
-
-        return MapToResponse(entity);
-    }
-
     public async Task<PagedResult<IngredientPurchaseResponse>> GetPagedByBusinessAsync(
-        Guid businessId, int pageNumber, int pageSize, string? search)
+        Guid ownerId, Guid businessId, int pageNumber, int pageSize, string? search)
     {
-        var businessExists = await _businesses.AnyAsync(x => x.Id == businessId);
-        if (!businessExists)
-            throw new NotFoundException($"Business profile with id '{businessId}' not found.");
+        await EnsureBusinessOwnerAsync(businessId, ownerId);
 
-        var (items, totalCount) = await _purchases.GetPagedByBusinessAsync(
-            businessId, pageNumber, pageSize, search);
-
+        var (items, totalCount) = await _purchases.GetPagedByBusinessAsync(businessId, pageNumber, pageSize, search);
         return new PagedResult<IngredientPurchaseResponse>
         {
             Items = items.Select(MapToResponse).ToList(),
@@ -131,11 +145,30 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         };
     }
 
-    public async Task<IEnumerable<IngredientPurchaseResponse>> CreateBatchAsync(Guid businessId, CreateBatchIngredientPurchaseRequest request)
+    public async Task<IngredientPurchaseResponse> GetByIdAsync(Guid ownerId, Guid id)
     {
-        var businessExists = await _businesses.AnyAsync(x => x.Id == businessId);
-        if (!businessExists)
-            throw new NotFoundException($"Business profile with id '{businessId}' not found.");
+        var details = await _purchases.GetByIdWithDetailsAsync(id);
+        if (details is null)
+            throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(details.BusinessId, ownerId);
+
+        return MapToResponse(details);
+    }
+
+    public async Task<IEnumerable<IngredientPurchaseResponse>> CreateBatchAsync(Guid ownerId, Guid businessId, CreateBatchIngredientPurchaseRequest request)
+    {
+        await EnsureBusinessOwnerAsync(businessId, ownerId);
+
+        string? supplierName = request.SupplierName;
+        if (request.SupplierId.HasValue && string.IsNullOrWhiteSpace(supplierName))
+        {
+            var supplier = await _suppliers.GetByIdAsync(request.SupplierId.Value);
+            if (supplier != null)
+            {
+                supplierName = supplier.Name;
+            }
+        }
 
         var responses = new List<IngredientPurchaseResponse>();
         var entitiesToAdd = new List<IngredientPurchase>();
@@ -155,7 +188,8 @@ public class IngredientPurchaseService : IIngredientPurchaseService
                 TotalCost = item.TotalCost,
                 PurchaseDate = request.PurchaseDate.ToUniversalTime(),
                 InvoiceNumber = request.InvoiceNumber,
-                SupplierName = request.SupplierName,
+                SupplierId = request.SupplierId,
+                SupplierName = supplierName,
                 ReceiptImageUrl = request.ReceiptImageUrl,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -182,6 +216,16 @@ public class IngredientPurchaseService : IIngredientPurchaseService
         return responses;
     }
 
+    private async Task EnsureBusinessOwnerAsync(Guid businessId, Guid ownerId)
+    {
+        var business = await _businesses.GetByIdAsync(businessId);
+        if (business is null)
+            throw new NotFoundException("Không tìm thấy thông tin cửa hàng.");
+
+        if (business.OwnerId != ownerId)
+            throw new UnauthorizedAccessException("Bạn không sở hữu cửa hàng này.");
+    }
+
     private static IngredientPurchaseResponse MapToResponse(IngredientPurchase entity)
     {
         return new IngredientPurchaseResponse
@@ -196,7 +240,8 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             TotalCost = entity.TotalCost,
             PurchaseDate = entity.PurchaseDate,
             InvoiceNumber = entity.InvoiceNumber,
-            SupplierName = entity.SupplierName,
+            SupplierId = entity.SupplierId,
+            SupplierName = entity.Supplier?.Name ?? entity.SupplierName,
             ReceiptImageUrl = entity.ReceiptImageUrl,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

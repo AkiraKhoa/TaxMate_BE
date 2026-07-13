@@ -21,15 +21,16 @@ public static class DependencyInjection
         services.AddScoped<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IVietQRService, VietQRService>();
         services.AddScoped<IPaymentAccountService, PaymentAccountService>();
+        services.AddScoped<ICassoService, CassoService>();
+        services.AddScoped<ISePayService, SePayService>();
+        services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
+
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
         services.AddScoped<IIngredientService, IngredientService>();
         services.AddHttpClient();
         services.AddScoped<INotificationService, NotificationService>();
-        services.AddScoped<MockEInvoiceService>();
-        services.AddScoped<ViettelEInvoiceService>();
-        services.AddScoped<IEInvoiceService, EInvoiceDispatcherService>();
         services.AddSingleton<PayOSClient>(sp =>
         {
             return new PayOSClient(
@@ -41,6 +42,8 @@ public static class DependencyInjection
         services.AddScoped<IIngredientPurchaseService, IngredientPurchaseService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
         services.AddScoped<IProductService, ProductService>();
+        services.AddScoped<IProductCategoryService, ProductCategoryService>();
+        services.AddScoped<ISupplierService, SupplierService>();
         services.AddScoped<IProductPriceService, ProductPriceService>();
         services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
         services.AddScoped<IExpenseService, ExpenseService>();

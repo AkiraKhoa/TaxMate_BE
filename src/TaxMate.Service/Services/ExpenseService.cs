@@ -48,7 +48,8 @@ public class ExpenseService : IExpenseService
             Note = request.Note,
             FileUrl = request.FileUrl,
             DueDate = request.DueDate,
-            PaidDate = request.PaidDate
+            PaidDate = request.PaidDate,
+            SupplierId = request.SupplierId
         };
 
         await _expenses.AddAsync(entity);
@@ -77,6 +78,7 @@ public class ExpenseService : IExpenseService
         entity.FileUrl = request.FileUrl;
         entity.DueDate = request.DueDate;
         entity.PaidDate = request.PaidDate;
+        entity.SupplierId = request.SupplierId;
 
         _expenses.Update(entity);
         await _unitOfWork.SaveChangesAsync();

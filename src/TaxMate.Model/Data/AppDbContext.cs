@@ -16,7 +16,9 @@ public class AppDbContext : DbContext
     public DbSet<BusinessCategory> BusinessCategories => Set<BusinessCategory>();
 
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Payment> Payments => Set<Payment>();
@@ -108,10 +110,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Product>()
             .HasIndex(x => x.BusinessId);
 
-        modelBuilder.Entity<Product>()
-            .Property(x => x.Category)
-            .HasConversion<string>()
-            .HasMaxLength(100);
+
 
         modelBuilder.Entity<Product>()
             .HasIndex(x => x.Name);
@@ -122,6 +121,38 @@ public class AppDbContext : DbContext
                 x.BusinessId,
                 x.Status
             });
+
+        // ProductCategory relationship
+        modelBuilder.Entity<ProductCategory>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Product>()
+            .HasOne(x => x.ProductCategory)
+            .WithMany(x => x.Products)
+            .HasForeignKey(x => x.ProductCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Supplier relationships
+        modelBuilder.Entity<Supplier>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasOne(x => x.Supplier)
+            .WithMany(x => x.IngredientPurchases)
+            .HasForeignKey(x => x.SupplierId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Expense>()
+            .HasOne(x => x.Supplier)
+            .WithMany(x => x.Expenses)
+            .HasForeignKey(x => x.SupplierId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // ProductPrice
         modelBuilder.Entity<ProductPrice>()

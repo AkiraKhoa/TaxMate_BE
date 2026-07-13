@@ -21,4 +21,5 @@ public interface ITransactionRepository : IGenericRepository<Transaction>
         string? paymentMethod = null,
         decimal? minAmount = null,
         decimal? maxAmount = null);
+    Task<IEnumerable<Transaction>> GetAwaitingTransactionsWithPaymentsAsync();
 }

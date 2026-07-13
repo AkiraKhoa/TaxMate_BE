@@ -8,6 +8,11 @@ public class OrderDetailResponse
     public string Status { get; set; } = null!;
     public string? Note { get; set; }
     public string? InvoiceNumber { get; set; }
+    
+    public string? TaxAuthorityCode { get; set; }
+    public string? OfficialPdfUrl { get; set; }
+    public string? OfficialXmlUrl { get; set; }
+    public string? InvoiceStatus { get; set; }
 
     public decimal SubTotal { get; set; }
 

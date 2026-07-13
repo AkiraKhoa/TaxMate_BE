@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
@@ -7,6 +9,8 @@ namespace TaxMate.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = UserRoles.Owner)]
+[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 public class IngredientPurchaseController : ControllerBase
 {
     private readonly IIngredientPurchaseService _purchaseService;
@@ -20,7 +24,7 @@ public class IngredientPurchaseController : ControllerBase
     [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> Create(Guid businessId, [FromBody] CreateIngredientPurchaseRequest request)
     {
-        var result = await _purchaseService.CreateAsync(businessId, request);
+        var result = await _purchaseService.CreateAsync(GetUserId(), businessId, request);
         return CreatedAtAction(
             nameof(GetById),
             new { id = result.Id },
@@ -34,7 +38,7 @@ public class IngredientPurchaseController : ControllerBase
     [HttpPost("business/{businessId:guid}/batch")]
     public async Task<IActionResult> CreateBatch(Guid businessId, [FromBody] CreateBatchIngredientPurchaseRequest request)
     {
-        var result = await _purchaseService.CreateBatchAsync(businessId, request);
+        var result = await _purchaseService.CreateBatchAsync(GetUserId(), businessId, request);
         return Ok(
             ApiResponse<IEnumerable<IngredientPurchaseResponse>>.Ok(
                 result,
@@ -46,7 +50,7 @@ public class IngredientPurchaseController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateIngredientPurchaseRequest request)
     {
-        var result = await _purchaseService.UpdateAsync(id, request);
+        var result = await _purchaseService.UpdateAsync(GetUserId(), id, request);
         return Ok(
             ApiResponse<IngredientPurchaseResponse>.Ok(
                 result,
@@ -58,7 +62,7 @@ public class IngredientPurchaseController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        await _purchaseService.DeleteAsync(id);
+        await _purchaseService.DeleteAsync(GetUserId(), id);
         return Ok(
             ApiResponse<string>.Ok(
                 "Success",
@@ -70,7 +74,7 @@ public class IngredientPurchaseController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var result = await _purchaseService.GetByIdAsync(id);
+        var result = await _purchaseService.GetByIdAsync(GetUserId(), id);
         return Ok(
             ApiResponse<IngredientPurchaseResponse>.Ok(
                 result,
@@ -78,7 +82,7 @@ public class IngredientPurchaseController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
-    /// <summary>Gets a paginated list of ingredient purchase records for a business.</summary>
+    /// <summary>Gets a paged list of ingredient purchases scoped to a business.</summary>
     [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetPaged(
         Guid businessId,
@@ -86,11 +90,23 @@ public class IngredientPurchaseController : ControllerBase
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null)
     {
-        var result = await _purchaseService.GetPagedByBusinessAsync(businessId, pageNumber, pageSize, search);
+        var result = await _purchaseService.GetPagedByBusinessAsync(
+            GetUserId(), businessId, pageNumber, pageSize, search);
         return Ok(
             ApiResponse<PagedResult<IngredientPurchaseResponse>>.Ok(
                 result,
-                "Ingredient purchase records retrieved successfully",
+                "Ingredient purchases retrieved successfully",
                 HttpContext.TraceIdentifier));
+    }
+
+    private Guid GetUserId()
+    {
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+
+        if (sub is null || !Guid.TryParse(sub, out var userId))
+            throw new UnauthorizedAccessException("Token invalid.");
+
+        return userId;
     }
 }

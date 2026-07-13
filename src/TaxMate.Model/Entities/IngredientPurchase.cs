@@ -29,6 +29,9 @@ public class IngredientPurchase : BaseEntity
     [MaxLength(1000)]
     public string? ReceiptImageUrl { get; set; }
 
+    public Guid? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
     public Ingredient Ingredient { get; set; } = null!;
 
     public BusinessProfile Business { get; set; } = null!;

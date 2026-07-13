@@ -21,7 +21,6 @@ public class OrderService : IOrderService
     private readonly IInvoiceService _invoiceService;
     private readonly IGenericRepository<EInvoiceConfig> _eInvoiceConfigs;
     private readonly IInvoiceRepository _invoices;
-    private readonly IEInvoiceService _eInvoiceService;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -34,8 +33,7 @@ public class OrderService : IOrderService
         IGenericRepository<Payment> payments,
         IInvoiceService invoiceService,
         IGenericRepository<EInvoiceConfig> eInvoiceConfigs,
-        IInvoiceRepository invoices,
-        IEInvoiceService eInvoiceService)
+        IInvoiceRepository invoices)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -48,7 +46,6 @@ public class OrderService : IOrderService
         _invoiceService = invoiceService;
         _eInvoiceConfigs = eInvoiceConfigs;
         _invoices = invoices;
-        _eInvoiceService = eInvoiceService;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -84,6 +81,12 @@ public class OrderService : IOrderService
             throw new NotFoundException("Order not found.");
         }
 
+        Invoice? invoice = null;
+        if (!string.IsNullOrEmpty(order.InvoiceId))
+        {
+            invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
+        }
+
         return new OrderDetailResponse
         {
             TransactionId = order.TransactionId,
@@ -92,6 +95,10 @@ public class OrderService : IOrderService
             Status = order.Status,
             Note = order.Note,
             InvoiceNumber = order.InvoiceId,
+            TaxAuthorityCode = invoice?.TaxAuthorityCode,
+            OfficialPdfUrl = invoice?.OfficialPdfUrl,
+            OfficialXmlUrl = invoice?.OfficialXmlUrl,
+            InvoiceStatus = invoice?.Status,
             SubTotal = order.SubTotal,
             DiscountType = order.DiscountType,
             DiscountValue = order.DiscountValue,
@@ -208,7 +215,10 @@ public class OrderService : IOrderService
                 CreatedAt = DateTime.UtcNow
             };
             await _transactionItems.AddAsync(item);
-            order.TransactionItems.Add(item);
+            // KHÔNG gọi order.TransactionItems.Add(item) ở đây vì EF Core Navigation Fixup
+            // đã tự động thêm item vào collection sau khi AddAsync được gọi.
+            // Nếu gọi thêm Add() thủ công, item sẽ xuất hiện 2 lần trong danh sách in-memory
+            // và RecalculateOrder sẽ tính tổng tiền gấp đôi!
         }
 
         RecalculateOrder(order);
@@ -352,19 +362,27 @@ public class OrderService : IOrderService
         try
         {
             var paidAt = DateTime.UtcNow;
-            var isAwaitingPayment = request.Payments.Any(p => p.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase));
 
+            // Kiểm tra xem BankTransfer có dùng tài khoản SePay (có webhook tự động) không.
+            // Nếu tài khoản là static VietQR (không có SePayBankAccountXid), đơn sẽ được Complete ngay.
+            bool isAwaitingPayment = false;
             foreach (var paymentEntry in request.Payments)
             {
-                if (paymentEntry.PaymentAccountId.HasValue)
+                if (paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
+                    && paymentEntry.PaymentAccountId.HasValue)
                 {
                     var account = await _paymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
                     if (account == null || account.BusinessId != order.BusinessId)
-                    {
                         throw new NotFoundException($"Payment account '{paymentEntry.PaymentAccountId}' not found or does not belong to this business.");
-                    }
-                }
 
+                    // Chỉ AwaitingPayment nếu tài khoản có liên kết SePay
+                    if (!string.IsNullOrEmpty(account.SePayBankAccountXid))
+                        isAwaitingPayment = true;
+                }
+            }
+
+            foreach (var paymentEntry in request.Payments)
+            {
                 var isBankTransfer = paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase);
                 var payment = new Payment
                 {
@@ -387,37 +405,7 @@ public class OrderService : IOrderService
 
             var invoiceNumber = await _invoiceService.GenerateFromOrderAsync(order.TransactionId);
 
-            // Tự động phát hành HĐĐT nếu đơn đã hoàn thành và business có thiết lập
-            if (order.Status == TransactionStatus.Completed)
-            {
-                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
-                if (business != null && business.PreferElectronicInvoice)
-                {
-                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
-                    if (eInvoiceConfig != null)
-                    {
-                        var invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == invoiceNumber);
-
-                        if (invoice != null)
-                        {
-                            try
-                            {
-                                var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
-                                invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
-                                invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
-                                invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
-                                invoice.Status = InvoiceStatus.Issued;
-                                await _unitOfWork.SaveChangesAsync();
-                            }
-                            catch
-                            {
-                                // Không rollback transaction chính khi lỗi T-VAN
-                            }
-                        }
-                    }
-                }
-            }
-
+            // Tự động phát hành HĐĐT: Tạm thời gỡ bỏ để thay thế bằng SePay eInvoice sau
             await _unitOfWork.CommitTransactionAsync();
 
             return await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
@@ -437,9 +425,9 @@ public class OrderService : IOrderService
             throw new NotFoundException("Order not found.");
         }
 
-        if (order.Status != "Draft")
+        if (order.Status != "Draft" && order.Status != "AwaitingPayment")
         {
-            throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' orders can be cancelled.");
+            throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' or 'AwaitingPayment' orders can be cancelled.");
         }
 
         order.Status = "Cancelled";
@@ -486,29 +474,8 @@ public class OrderService : IOrderService
                 }
             }
 
-            if (invoice != null)
-            {
-                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
-                if (business != null && business.PreferElectronicInvoice)
-                {
-                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
-                    if (eInvoiceConfig != null)
-                    {
-                        try
-                        {
-                            var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
-                            invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
-                            invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
-                            invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
-                            await _unitOfWork.SaveChangesAsync();
-                        }
-                        catch
-                        {
-                            // Bỏ qua lỗi kết nối nhà mạng phát hành HĐĐT
-                        }
-                    }
-                }
-            }
+            // Tự động phát hành HĐĐT: Tạm thời gỡ bỏ để thay thế bằng SePay eInvoice sau
+
 
             await _unitOfWork.CommitTransactionAsync();
 

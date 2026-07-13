@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -13,7 +13,8 @@ public class Product : BaseEntity
     [MaxLength(200)]
     public string Name { get; set; } = null!;
 
-    public ProductCategory? Category { get; set; }
+    public Guid? ProductCategoryId { get; set; }
+    public ProductCategory? ProductCategory { get; set; }
 
     [MaxLength(2000)]
     public string? Description { get; set; }

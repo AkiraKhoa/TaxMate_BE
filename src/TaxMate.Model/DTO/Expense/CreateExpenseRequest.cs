@@ -33,4 +33,6 @@ public class CreateExpenseRequest
     public DateTime? DueDate { get; set; }
 
     public DateTime? PaidDate { get; set; }
+
+    public Guid? SupplierId { get; set; }
 }

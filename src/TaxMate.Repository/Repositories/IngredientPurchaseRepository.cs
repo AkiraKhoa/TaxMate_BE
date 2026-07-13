@@ -19,6 +19,7 @@ public class IngredientPurchaseRepository : GenericRepository<IngredientPurchase
     {
         var query = _appContext.IngredientPurchases
             .Include(x => x.Ingredient)
+            .Include(x => x.Supplier)
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -44,6 +45,7 @@ public class IngredientPurchaseRepository : GenericRepository<IngredientPurchase
         return await _appContext.IngredientPurchases
             .Include(x => x.Ingredient)
             .Include(x => x.Business)
+            .Include(x => x.Supplier)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 }

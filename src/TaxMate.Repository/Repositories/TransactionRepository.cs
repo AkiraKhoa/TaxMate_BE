@@ -107,8 +107,17 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         var dateStr = localToday.ToString("yyyyMMdd");
         var prefix = $"DH-{dateStr}-";
         
-        var count = await _dbSet.CountAsync(x => x.BusinessId == businessId && x.TransactionCode.StartsWith(prefix));
+        var count = await _dbSet.CountAsync(x => x.TransactionCode.StartsWith(prefix));
         var sequence = count + 1;
         return $"{prefix}{sequence:D3}";
+    }
+
+    public async Task<IEnumerable<Transaction>> GetAwaitingTransactionsWithPaymentsAsync()
+    {
+        return await _dbSet
+            .Include(x => x.Payments)
+                .ThenInclude(p => p.PaymentAccount)
+            .Where(x => x.Status == TaxMate.Model.Common.TransactionStatus.AwaitingPayment)
+            .ToListAsync();
     }
 }

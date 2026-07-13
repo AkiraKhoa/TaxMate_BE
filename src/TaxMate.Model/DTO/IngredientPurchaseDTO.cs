@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace TaxMate.Model.DTO;
 
 public class CreateIngredientPurchaseRequest
@@ -7,6 +10,7 @@ public class CreateIngredientPurchaseRequest
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
     public string? InvoiceNumber { get; set; }
+    public Guid? SupplierId { get; set; }
     public string? SupplierName { get; set; }
     public string? ReceiptImageUrl { get; set; }
 }
@@ -18,6 +22,7 @@ public class UpdateIngredientPurchaseRequest
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
     public string? InvoiceNumber { get; set; }
+    public Guid? SupplierId { get; set; }
     public string? SupplierName { get; set; }
     public string? ReceiptImageUrl { get; set; }
 }
@@ -25,6 +30,7 @@ public class UpdateIngredientPurchaseRequest
 public class CreateBatchIngredientPurchaseRequest
 {
     public string? InvoiceNumber { get; set; }
+    public Guid? SupplierId { get; set; }
     public string? SupplierName { get; set; }
     public string? ReceiptImageUrl { get; set; }
     public DateTime PurchaseDate { get; set; }
@@ -50,6 +56,7 @@ public class IngredientPurchaseResponse
     public decimal TotalCost { get; set; }
     public DateTime PurchaseDate { get; set; }
     public string? InvoiceNumber { get; set; }
+    public Guid? SupplierId { get; set; }
     public string? SupplierName { get; set; }
     public string? ReceiptImageUrl { get; set; }
     public DateTime CreatedAt { get; set; }

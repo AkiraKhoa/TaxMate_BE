@@ -108,6 +108,10 @@ public class EInvoiceConfigController : ControllerBase
             _configs.Update(config);
         }
 
+        // Đồng bộ trạng thái PreferElectronicInvoice trên BusinessProfile
+        business.PreferElectronicInvoice = request.IsEnabled;
+        _businesses.Update(business);
+
         await _unitOfWork.SaveChangesAsync();
 
         var response = new EInvoiceConfigResponse
