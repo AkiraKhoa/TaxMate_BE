@@ -13,6 +13,9 @@ public class OrderDetailResponse
     public string? OfficialPdfUrl { get; set; }
     public string? OfficialXmlUrl { get; set; }
     public string? InvoiceStatus { get; set; }
+    public string? SePayMessage { get; set; }
+    public int? QuotaRemaining { get; set; }
+    public int? QuotaWarningThreshold { get; set; }
 
     public decimal SubTotal { get; set; }
 

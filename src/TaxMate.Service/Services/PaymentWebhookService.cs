@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -19,7 +17,6 @@ public class PaymentWebhookService : IPaymentWebhookService
 {
     private readonly ITransactionRepository _transactions;
     private readonly IOrderService _orderService;
-    private readonly ISubscriptionService _subscriptionService;
     private readonly IPaymentAccountService _paymentAccountService;
     private readonly INotificationService _notificationService;
     private readonly IPaymentNotificationService _paymentNotificationService;
@@ -29,7 +26,6 @@ public class PaymentWebhookService : IPaymentWebhookService
     public PaymentWebhookService(
         ITransactionRepository transactions,
         IOrderService orderService,
-        ISubscriptionService subscriptionService,
         IPaymentAccountService paymentAccountService,
         INotificationService notificationService,
         IPaymentNotificationService paymentNotificationService,
@@ -38,54 +34,11 @@ public class PaymentWebhookService : IPaymentWebhookService
     {
         _transactions = transactions;
         _orderService = orderService;
-        _subscriptionService = subscriptionService;
         _paymentAccountService = paymentAccountService;
         _notificationService = notificationService;
         _paymentNotificationService = paymentNotificationService;
         _configuration = configuration;
         _logger = logger;
-    }
-
-    public async Task ProcessPayOsWebhookAsync(PayOsWebhookRequest request)
-    {
-        if (request == null || request.Data == null)
-            throw new ArgumentException("Invalid payload.");
-
-        var checksumKey = _configuration["PayOS:ChecksumKey"] ?? "YOUR_PAYOS_CHECKSUM_KEY";
-        var isValid = VerifyPayOsSignature(request.Data, request.Signature, checksumKey);
-        if (!isValid)
-        {
-            _logger.LogWarning("Invalid PayOS webhook signature.");
-            throw new UnauthorizedAccessException("Signature verification failed.");
-        }
-
-        if (request.Code == "00")
-        {
-            var transaction = await FindTransactionFromTextAsync(request.Data.Description, request.Data.AccountNumber);
-            if (transaction != null && transaction.Status == TransactionStatus.AwaitingPayment)
-            {
-                await _orderService.ConfirmPaymentAsync(transaction.TransactionId);
-                await _paymentNotificationService.NotifyPaymentSuccessAsync(transaction.TransactionId.ToString());
-
-                var msg = $"*Thanh toán VietQR thành công (PayOS)*\n" +
-                          $"- Số tiền: +{request.Data.Amount:N0} VND\n" +
-                          $"- Nội dung: {request.Data.Description}\n" +
-                          $"- Mã đơn: `{transaction.TransactionCode}`";
-
-                await SendNotificationsToOwnerAsync(transaction.BusinessId, "Giao dịch mới (+)", msg);
-            }
-            else
-            {
-                try
-                {
-                    await _subscriptionService.ProcessWebhookAsync(request.Data.OrderCode, request.Code);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Lỗi khi xử lý webhook đăng ký gói cước cho OrderCode {OrderCode}", request.Data.OrderCode);
-                }
-            }
-        }
     }
 
     public async Task ProcessSePayIpnWebhookAsync(SePayWebhookRequest request, string authHeader)
@@ -174,40 +127,6 @@ public class PaymentWebhookService : IPaymentWebhookService
         }
     }
 
-    public async Task ProcessCassoWebhookAsync(CassoWebhookRequest request, string secureTokenHeader)
-    {
-        if (request == null || request.Data == null)
-            throw new ArgumentException("Invalid payload.");
-
-        var expectedToken = _configuration["Casso:SecureToken"] ?? "YOUR_CASSO_SECURE_TOKEN";
-        if (string.IsNullOrEmpty(secureTokenHeader) || !secureTokenHeader.Equals(expectedToken))
-        {
-            _logger.LogWarning("Invalid Casso webhook secure token header.");
-            throw new UnauthorizedAccessException("Authorization failed.");
-        }
-
-        foreach (var transactionData in request.Data)
-        {
-            if (transactionData.Amount > 0)
-            {
-                var transaction = await FindTransactionFromTextAsync(transactionData.Description, transactionData.BankSubAccId);
-                if (transaction != null && transaction.Status == TransactionStatus.AwaitingPayment)
-                {
-                    await _orderService.ConfirmPaymentAsync(transaction.TransactionId);
-                    await _paymentNotificationService.NotifyPaymentSuccessAsync(transaction.TransactionId.ToString());
-
-                    var msg = $"*Thanh toán VietQR thành công (Casso)*\n" +
-                              $"- Số tiền: +{transactionData.Amount:N0} VND\n" +
-                              $"- Nội dung: {transactionData.Description}\n" +
-                              $"- Người gửi: {transactionData.CorrespName}\n" +
-                              $"- Mã đơn: `{transaction.TransactionCode}`";
-
-                    await SendNotificationsToOwnerAsync(transaction.BusinessId, "Giao dịch mới (+)", msg);
-                }
-            }
-        }
-    }
-
     private async Task HandleBankAccountLinkedAsync(SePayBankHubEventRequest request)
     {
         var meta = request.Metadata;
@@ -227,7 +146,6 @@ public class PaymentWebhookService : IPaymentWebhookService
             "[BankHub] LINKED: bank={BankName}, account={AccountNumber}, bankAccountXid={BankAccountXid}, linkTokenXid={LinkTokenXid}",
             bankName, accountNumber, bankAccountXid, linkTokenXid);
 
-        // Gọi service xử lý cập nhật tài khoản liên kết
         await _paymentAccountService.CreateOrUpdateFromLinkTokenAsync(
             linkTokenXid,
             bankAccountXid,
@@ -250,10 +168,8 @@ public class PaymentWebhookService : IPaymentWebhookService
             "[BankHub] UNLINKED: bankAccountXid={BankAccountXid}, account={AccountNumber}",
             meta.BankAccountXid, meta.AccountNumber);
 
-        // Gọi service xóa tài khoản khỏi DB cục bộ
         await _paymentAccountService.DeleteBySePayBankAccountXidAsync(meta.BankAccountXid);
     }
-
 
     private async Task<Transaction?> FindTransactionFromTextAsync(string text, string? recipientAccountNumber = null)
     {
@@ -305,27 +221,5 @@ public class PaymentWebhookService : IPaymentWebhookService
         {
             await _notificationService.SendFcmPushAsync(fcmToken, title, message);
         }
-    }
-
-    private bool VerifyPayOsSignature(PayOsData data, string expectedSignature, string checksumKey)
-    {
-        var sortedParams = new SortedDictionary<string, string>
-        {
-            { "accountNumber", data.AccountNumber },
-            { "amount", data.Amount.ToString() },
-            { "description", data.Description },
-            { "orderCode", data.OrderCode.ToString() },
-            { "paymentLinkId", data.PaymentLinkId },
-            { "reference", data.Reference },
-            { "transactionDateTime", data.TransactionDateTime }
-        };
-
-        var queryString = string.Join("&", sortedParams.Select(p => $"{p.Key}={p.Value}"));
-        var keyBytes = Encoding.UTF8.GetBytes(checksumKey);
-        using var hmac = new HMACSHA256(keyBytes);
-        var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(queryString));
-        var computedSignature = BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
-
-        return computedSignature == expectedSignature;
     }
 }

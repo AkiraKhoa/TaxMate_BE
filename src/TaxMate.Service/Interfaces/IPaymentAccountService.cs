@@ -10,7 +10,6 @@ public interface IPaymentAccountService
     Task UpdateAsync(Guid id, UpdatePaymentAccountRequest request);
     Task DeleteAsync(Guid id);
     Task SetDefaultAsync(Guid businessId, Guid paymentAccountId);
-    Task CreateOrUpdateFromCassoAsync(Guid businessId, CassoAccountDto cassoAccount, CassoTokenResponse tokens);
     Task CreateOrUpdateFromSePayAsync(string companyXid, string bankAccountXid, string bankName, string bankCode, string accountNumber, string accountName);
     Task CreateOrUpdateFromLinkTokenAsync(string linkTokenXid, string bankAccountXid, string bankName, string accountNumber, string accountName);
     Task<(int Synced, int Total)> SyncSePayAccountsAsync(Guid businessId);

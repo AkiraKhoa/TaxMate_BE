@@ -239,59 +239,7 @@ public class PaymentAccountService : IPaymentAccountService
         }
     }
 
-    public async Task CreateOrUpdateFromCassoAsync(Guid businessId, CassoAccountDto cassoAccount, CassoTokenResponse tokens)
-    {
-        var existingAccount = await _paymentAccounts.FirstOrDefaultAsync(
-            x => x.BusinessId == businessId && x.AccountNumber == cassoAccount.BankAccountNumber);
 
-        await _unitOfWork.BeginTransactionAsync();
-        try
-        {
-            if (existingAccount != null)
-            {
-                existingAccount.BankShortName = cassoAccount.BankName;
-                existingAccount.AccountName = cassoAccount.BankAccountName.ToUpper();
-                existingAccount.CassoAccessToken = tokens.AccessToken;
-                existingAccount.CassoRefreshToken = tokens.RefreshToken;
-                existingAccount.CassoConnectedAccountId = cassoAccount.Id.ToString();
-            }
-            else
-            {
-                var count = await _paymentAccounts.CountAsync(x => x.BusinessId == businessId);
-                var isDefault = count == 0;
-
-                if (isDefault)
-                {
-                    await _paymentAccounts.UnsetAllDefaultAsync(businessId);
-                }
-
-                var newAccount = new PaymentAccount
-                {
-                    PaymentAccountId = Guid.NewGuid(),
-                    BusinessId = businessId,
-                    BankShortName = cassoAccount.BankName,
-                    BankName = cassoAccount.BankName,
-                    AccountNumber = cassoAccount.BankAccountNumber,
-                    AccountName = cassoAccount.BankAccountName.ToUpper(),
-                    IsDefault = isDefault,
-                    CassoAccessToken = tokens.AccessToken,
-                    CassoRefreshToken = tokens.RefreshToken,
-                    CassoConnectedAccountId = cassoAccount.Id.ToString(),
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                await _paymentAccounts.AddAsync(newAccount);
-            }
-
-            await _unitOfWork.SaveChangesAsync();
-            await _unitOfWork.CommitTransactionAsync();
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync();
-            throw;
-        }
-    }
 
     public async Task CreateOrUpdateFromSePayAsync(string companyXid, string bankAccountXid, string bankName, string bankCode, string accountNumber, string accountName)
     {

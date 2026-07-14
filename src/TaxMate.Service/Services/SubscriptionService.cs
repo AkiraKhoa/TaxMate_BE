@@ -64,20 +64,65 @@ public class SubscriptionService : ISubscriptionService
         if (plan is null || !plan.IsActive)
             throw new NotFoundException($"Subscription plan with id '{request.SubscriptionPlanId}' not found or inactive.");
 
+        // Allow upgrades/downgrades: We no longer throw ConflictException for active subscriptions.
+        // The old active subscription will be automatically deactivated in ProcessWebhookAsync when the new one is successfully paid.
         var activeSub = await _subscriptions.GetActiveByUserIdAsync(userId);
-        if (activeSub is not null)
-            throw new ConflictException("User already has an active subscription. Please cancel it before subscribing again.");
-
+        
         decimal price = request.BillingCycle.Equals("Annual", StringComparison.OrdinalIgnoreCase)
             ? plan.AnnualPrice
             : plan.MonthlyPrice;
+
+        // If it is a Free plan (0 VND), activate immediately without calling PayOS
+        if (price == 0)
+        {
+            var freeSubscription = new UserSubscription
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                SubscriptionPlanId = request.SubscriptionPlanId,
+                StartDate = DateTime.UtcNow,
+                EndDate = null,
+                Status = "Active",
+                BillingCycle = request.BillingCycle,
+                AutoRenew = false,
+                PaymentOrderCode = null,
+                PaymentLinkId = null,
+                CheckoutUrl = null,
+                PaymentStatus = "Free",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            await _subscriptions.AddAsync(freeSubscription);
+            await _unitOfWork.SaveChangesAsync();
+
+            return new SubscribeResponse
+            {
+                SubscriptionId = freeSubscription.Id,
+                SubscriptionPlanId = freeSubscription.SubscriptionPlanId,
+                PlanName = plan.Name,
+                Amount = 0m,
+                Status = freeSubscription.Status,
+                PaymentStatus = freeSubscription.PaymentStatus,
+                CheckoutUrl = "",
+                OrderCode = 0
+            };
+        }
 
         // Generate a unique 18-digit order code
         long orderCode = DateTimeOffset.UtcNow.ToUnixTimeSeconds() * 10000 + new Random().Next(1000, 9999);
 
         // Calculate PayOS amount (must be integer, min 2000 VND)
         int payosAmount = (int)price;
-        if (payosAmount < 2000)
+        if (payosAmount == 99000)
+        {
+            payosAmount = 10000;
+        }
+        else if (payosAmount == 199000)
+        {
+            payosAmount = 15000;
+        }
+        else if (payosAmount < 2000)
         {
             payosAmount = 2000;
         }
@@ -90,7 +135,7 @@ public class SubscriptionService : ISubscriptionService
         {
             OrderCode = orderCode,
             Amount = payosAmount,
-            Description = $"Subscribe {plan.Name}",
+            Description = "Thanh toan TaxMate",
             Items = new List<PaymentLinkItem> { item },
             CancelUrl = cancelUrl,
             ReturnUrl = returnUrl,

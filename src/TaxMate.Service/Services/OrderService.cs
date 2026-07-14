@@ -21,6 +21,7 @@ public class OrderService : IOrderService
     private readonly IInvoiceService _invoiceService;
     private readonly IGenericRepository<EInvoiceConfig> _eInvoiceConfigs;
     private readonly IInvoiceRepository _invoices;
+    private readonly IEInvoiceService _eInvoiceService;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -33,7 +34,8 @@ public class OrderService : IOrderService
         IGenericRepository<Payment> payments,
         IInvoiceService invoiceService,
         IGenericRepository<EInvoiceConfig> eInvoiceConfigs,
-        IInvoiceRepository invoices)
+        IInvoiceRepository invoices,
+        IEInvoiceService eInvoiceService)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -46,6 +48,7 @@ public class OrderService : IOrderService
         _invoiceService = invoiceService;
         _eInvoiceConfigs = eInvoiceConfigs;
         _invoices = invoices;
+        _eInvoiceService = eInvoiceService;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -87,6 +90,16 @@ public class OrderService : IOrderService
             invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
         }
 
+        int? quotaRemaining = null;
+        int? quotaWarningThreshold = null;
+
+        var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+        if (eInvoiceConfig != null)
+        {
+            quotaWarningThreshold = eInvoiceConfig.QuotaWarningThreshold;
+            quotaRemaining = await _eInvoiceService.GetQuotaRemainingAsync(eInvoiceConfig);
+        }
+
         return new OrderDetailResponse
         {
             TransactionId = order.TransactionId,
@@ -99,6 +112,9 @@ public class OrderService : IOrderService
             OfficialPdfUrl = invoice?.OfficialPdfUrl,
             OfficialXmlUrl = invoice?.OfficialXmlUrl,
             InvoiceStatus = invoice?.Status,
+            SePayMessage = invoice?.SePayMessage,
+            QuotaRemaining = quotaRemaining,
+            QuotaWarningThreshold = quotaWarningThreshold,
             SubTotal = order.SubTotal,
             DiscountType = order.DiscountType,
             DiscountValue = order.DiscountValue,
@@ -405,7 +421,72 @@ public class OrderService : IOrderService
 
             var invoiceNumber = await _invoiceService.GenerateFromOrderAsync(order.TransactionId);
 
-            // Tự động phát hành HĐĐT: Tạm thời gỡ bỏ để thay thế bằng SePay eInvoice sau
+            var invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == invoiceNumber);
+            if (invoice != null)
+            {
+                invoice.BuyerTaxCode = request.BuyerTaxCode;
+                invoice.BuyerCompanyName = request.BuyerCompanyName;
+                invoice.BuyerAddress = request.BuyerAddress;
+                invoice.BuyerEmail = request.BuyerEmail;
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            // Tự động phát hành HĐĐT nếu đơn đã hoàn thành và shop có thiết lập
+            if (order.Status == TransactionStatus.Completed)
+            {
+                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
+                if (business != null && business.PreferElectronicInvoice)
+                {
+                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+                    if (eInvoiceConfig != null)
+                    {
+                        if (invoice != null)
+                        {
+                            try
+                            {
+                                // Load details including related products for unit info mapping
+                                invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
+                                if (invoice != null)
+                                {
+                                    invoice.Business = business;
+
+                                    invoice.Status = InvoiceStatus.Processing;
+                                    await _unitOfWork.SaveChangesAsync();
+
+                                    var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
+                                    
+                                    invoice.SePayTrackingCode = eInvoiceResult.TrackingCode;
+                                    invoice.SePayReferenceCode = eInvoiceResult.ReferenceCode;
+                                    invoice.SePayMessage = eInvoiceResult.ErrorMessage;
+
+                                    if (eInvoiceResult.Success)
+                                    {
+                                        invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
+                                        invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
+                                        invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
+                                        invoice.Status = InvoiceStatus.Issued;
+                                    }
+                                    else
+                                    {
+                                        invoice.Status = InvoiceStatus.Failed;
+                                    }
+                                    await _unitOfWork.SaveChangesAsync();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (invoice != null)
+                                {
+                                    invoice.Status = InvoiceStatus.Failed;
+                                    invoice.SePayMessage = $"Lỗi xử lý hệ thống: {ex.Message}";
+                                    await _unitOfWork.SaveChangesAsync();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             await _unitOfWork.CommitTransactionAsync();
 
             return await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
@@ -467,15 +548,69 @@ public class OrderService : IOrderService
             if (!string.IsNullOrEmpty(order.InvoiceId))
             {
                 invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
-                if (invoice != null)
+            }
+
+            if (invoice != null)
+            {
+                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
+                if (business != null && business.PreferElectronicInvoice)
+                {
+                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+                    if (eInvoiceConfig != null)
+                    {
+                        try
+                        {
+                            // Load details including related products for unit info mapping
+                            invoice = await _invoices.GetByNumberWithDetailsAsync(invoice.InvoiceNumber);
+                            if (invoice != null)
+                            {
+                                invoice.Business = business;
+
+                                invoice.Status = InvoiceStatus.Processing;
+                                await _unitOfWork.SaveChangesAsync();
+
+                                var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
+                                
+                                invoice.SePayTrackingCode = eInvoiceResult.TrackingCode;
+                                invoice.SePayReferenceCode = eInvoiceResult.ReferenceCode;
+                                invoice.SePayMessage = eInvoiceResult.ErrorMessage;
+
+                                if (eInvoiceResult.Success)
+                                {
+                                    invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
+                                    invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
+                                    invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
+                                    invoice.Status = InvoiceStatus.Issued;
+                                }
+                                else
+                                {
+                                    invoice.Status = InvoiceStatus.Failed;
+                                }
+                                await _unitOfWork.SaveChangesAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (invoice != null)
+                            {
+                                invoice.Status = InvoiceStatus.Failed;
+                                invoice.SePayMessage = $"Lỗi xử lý hệ thống: {ex.Message}";
+                                await _unitOfWork.SaveChangesAsync();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        invoice.Status = InvoiceStatus.Issued;
+                        await _unitOfWork.SaveChangesAsync();
+                    }
+                }
+                else
                 {
                     invoice.Status = InvoiceStatus.Issued;
                     await _unitOfWork.SaveChangesAsync();
                 }
             }
-
-            // Tự động phát hành HĐĐT: Tạm thời gỡ bỏ để thay thế bằng SePay eInvoice sau
-
 
             await _unitOfWork.CommitTransactionAsync();
 

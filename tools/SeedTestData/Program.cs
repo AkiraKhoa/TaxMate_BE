@@ -26,13 +26,13 @@ var now = DateTime.UtcNow;
 
 // Clean existing data for a fresh seed
 Console.WriteLine("Cleaning database...");
+await db.Database.ExecuteSqlRawAsync("DELETE FROM \"SubscriptionPlans\" WHERE \"Id\" NOT IN ('a1d1c694-d271-460b-8835-2b2e6a1b8c1d', 'b2d2c694-d271-460b-8835-2b2e6a1b8c2d', 'c3d3c694-d271-460b-8835-2b2e6a1b8c3d');");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"UserSubscriptions\" CASCADE;");
-await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"SubscriptionPlans\" CASCADE;");
-await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"PlanFeatures\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Payments\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Transactions\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"ProductPrices\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Products\" CASCADE;");
+await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"ProductCategories\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"PaymentAccounts\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Expenses\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"ExpenseCategories\" CASCADE;");
@@ -42,30 +42,17 @@ await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Ingredients\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"BusinessProfiles\" CASCADE;");
 await db.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"Users\" CASCADE;");
 
-Console.WriteLine("Seeding subscription plans...");
-var planId = Guid.NewGuid();
-db.SubscriptionPlans.Add(new SubscriptionPlan
+Console.WriteLine("Locating default subscription plan (Gói Hộ Kinh Doanh)...");
+var planId = Guid.Parse("b2d2c694-d271-460b-8835-2b2e6a1b8c2d");
+var planExists = await db.SubscriptionPlans.AnyAsync(x => x.Id == planId);
+if (!planExists)
 {
-    Id = planId,
-    Name = "Gói Hộ Kinh Doanh",
-    Description = "Dành cho các hộ kinh doanh cá thể",
-    MonthlyPrice = 99000.00m,
-    AnnualPrice = 990000.00m,
-    MaxProducts = 500,
-    MaxTransactionsPerMonth = 1000,
-    IsActive = true,
-    SortOrder = 1,
-    PlanFeatures = new List<PlanFeature>
-    {
-        new() { Id = Guid.NewGuid(), SubscriptionPlanId = planId, FeatureKey = "pos_billing", FeatureName = "Bán hàng POS & Hóa đơn", IsEnabled = true },
-        new() { Id = Guid.NewGuid(), SubscriptionPlanId = planId, FeatureKey = "ElectronicInvoice", FeatureName = "Xuất hóa đơn điện tử", IsEnabled = true }
-    }
-});
-await db.SaveChangesAsync();
+    throw new Exception("Default subscription plan 'Gói Hộ Kinh Doanh' (b2d2c694-d271-460b-8835-2b2e6a1b8c2d) does not exist. Please run database migrations first.");
+}
 
 Console.WriteLine("Seeding user & business profile...");
-var userId = Guid.NewGuid();
-var businessId = Guid.NewGuid();
+var userId = Guid.Parse("433e8534-cf17-4b49-b258-eec218450627");
+var businessId = Guid.Parse("9d9c7a13-4f5d-4d9f-a164-5208b4d5746d");
 
 db.Users.Add(new User
 {
@@ -88,6 +75,7 @@ db.BusinessProfiles.Add(new BusinessProfile
 });
 await db.SaveChangesAsync();
 
+/*
 Console.WriteLine("Seeding user subscription...");
 db.UserSubscriptions.Add(new UserSubscription
 {
@@ -103,6 +91,7 @@ db.UserSubscriptions.Add(new UserSubscription
     CreatedAt = now
 });
 await db.SaveChangesAsync();
+*/
 
 Console.WriteLine("Seeding payment accounts...");
 db.PaymentAccounts.Add(new PaymentAccount
@@ -134,40 +123,64 @@ db.PaymentAccounts.Add(new PaymentAccount
 });
 await db.SaveChangesAsync();
 
-Console.WriteLine("Seeding products...");
-var products = new (string Name, decimal Price, string Unit)[]
-{
-    ("Oishi Snack vị tôm cay", 20000m, "Cái"),
-    ("Oishi Snack vị hành tây", 20000m, "Cái"),
-    ("Oishi Snack bắp ngọt", 15000m, "Cái"),
-    ("Oishi Snack bí đỏ", 15000m, "Cái"),
-    ("Nước suối Aquafina", 20000m, "Cái")
-};
-
-foreach (var item in products)
-{
-    var productId = Guid.NewGuid();
-    db.Products.Add(new Product
-    {
-        Id = productId,
-        BusinessId = businessId,
-        Name = item.Name,
-        Category = ProductCategory.Fnb,
-        Unit = item.Unit,
-        Status = ProductStatus.Active,
-        CreatedAt = now
-    });
-
-    db.ProductPrices.Add(new ProductPrice
+    Console.WriteLine("Seeding product categories...");
+    var snackType = new ProductCategory
     {
         Id = Guid.NewGuid(),
-        ProductId = productId,
-        Price = item.Price,
-        ApplyDate = now.AddDays(-1),
-        CreatedAt = now
-    });
-}
-await db.SaveChangesAsync();
+        BusinessId = businessId,
+        Name = "Snack",
+        Description = "Các loại snack ăn nhẹ",
+        SortOrder = 1,
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+    var drinkType = new ProductCategory
+    {
+        Id = Guid.NewGuid(),
+        BusinessId = businessId,
+        Name = "Nước uống",
+        Description = "Nước giải khát các loại",
+        SortOrder = 2,
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+    db.ProductCategories.AddRange(snackType, drinkType);
+    await db.SaveChangesAsync();
+
+    Console.WriteLine("Seeding products...");
+    var products = new (string Name, decimal Price, string Unit)[]
+    {
+        ("Oishi Snack vị tôm cay", 20000m, "Cái"),
+        ("Oishi Snack vị hành tây", 20000m, "Cái"),
+        ("Oishi Snack bắp ngọt", 15000m, "Cái"),
+        ("Oishi Snack bí đỏ", 15000m, "Cái"),
+        ("Nước suối Aquafina", 20000m, "Cái")
+    };
+
+    foreach (var item in products)
+    {
+        var productId = Guid.NewGuid();
+        db.Products.Add(new Product
+        {
+            Id = productId,
+            BusinessId = businessId,
+            Name = item.Name,
+            ProductCategoryId = item.Name.Contains("Snack") ? snackType.Id : drinkType.Id,
+            Unit = item.Unit,
+            Status = ProductStatus.Active,
+            CreatedAt = now
+        });
+
+        db.ProductPrices.Add(new ProductPrice
+        {
+            Id = Guid.NewGuid(),
+            ProductId = productId,
+            Price = item.Price,
+            ApplyDate = now.AddDays(-1),
+            CreatedAt = now
+        });
+    }
+    await db.SaveChangesAsync();
 
 Console.WriteLine("Seeding ingredients...");
 var ingredients = new (string Name, string Unit, decimal Price)[]

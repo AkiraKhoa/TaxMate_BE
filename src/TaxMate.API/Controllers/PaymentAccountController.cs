@@ -12,25 +12,21 @@ namespace TaxMate.API.Controllers;
 public class PaymentAccountController : ControllerBase
 {
     private readonly IPaymentAccountService _paymentAccountService;
-    private readonly ICassoService _cassoService;
     private readonly ISePayService _sePayService;
     private readonly IBusinessProfileService _businessProfileService;
     private readonly ILogger<PaymentAccountController> _logger;
 
     public PaymentAccountController(
         IPaymentAccountService paymentAccountService, 
-        ICassoService cassoService,
         ISePayService sePayService,
         IBusinessProfileService businessProfileService,
         ILogger<PaymentAccountController> logger)
     {
         _paymentAccountService = paymentAccountService;
-        _cassoService = cassoService;
         _sePayService = sePayService;
         _businessProfileService = businessProfileService;
         _logger = logger;
     }
-
 
     /// <summary>Tạo tài khoản thanh toán mới.</summary>
     /// <param name="businessId">ID cửa hàng. Chạy SeedTestData để lấy ID thật.</param>
@@ -112,163 +108,6 @@ public class PaymentAccountController : ControllerBase
                 "Success",
                 "Default payment account set successfully",
                 HttpContext.TraceIdentifier));
-    }
-
-    /// <summary>Lấy link ủy quyền OAuth kết nối ngân hàng qua Casso.</summary>
-    /// <param name="businessId">ID cửa hàng cần liên kết.</param>
-    [HttpGet("casso-connect-url")]
-    public IActionResult GetCassoConnectUrl([FromQuery] Guid businessId)
-    {
-        var scheme = Request.Scheme;
-        var host = Request.Host;
-        var redirectUri = $"{scheme}://{host}/api/PaymentAccount/casso-callback";
-        
-        var url = _cassoService.GetAuthorizationUrl(businessId, redirectUri);
-        return Ok(ApiResponse<string>.Ok(url, "Get Casso authorization URL successfully", HttpContext.TraceIdentifier));
-    }
-
-    /// <summary>Callback xử lý mã ủy quyền OAuth từ Casso.</summary>
-    /// <param name="code">Authorization code từ Casso.</param>
-    /// <param name="state">Chứa ID cửa hàng (BusinessId).</param>
-    [HttpGet("casso-callback")]
-    public async Task<IActionResult> CassoCallback([FromQuery] string code, [FromQuery] Guid state)
-    {
-        if (string.IsNullOrEmpty(code))
-        {
-            return BadRequest("Authorization code is missing.");
-        }
-
-        var scheme = Request.Scheme;
-        var host = Request.Host;
-        var redirectUri = $"{scheme}://{host}/api/PaymentAccount/casso-callback";
-
-        try
-        {
-            var tokenResponse = await _cassoService.ExchangeCodeForTokensAsync(code, redirectUri);
-            var cassoAccounts = await _cassoService.GetBankAccountsAsync(tokenResponse.AccessToken);
-
-            foreach (var acc in cassoAccounts)
-            {
-                await _paymentAccountService.CreateOrUpdateFromCassoAsync(state, acc, tokenResponse);
-            }
-
-            var html = @"
-                <!DOCTYPE html>
-                <html lang='vi'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                    <title>Liên kết thành công</title>
-                    <style>
-                        body {
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #f4f7f6;
-                            color: #333;
-                        }
-                        .container {
-                            text-align: center;
-                            padding: 30px;
-                            background: white;
-                            border-radius: 12px;
-                            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-                            max-width: 90%;
-                            width: 320px;
-                        }
-                        .icon {
-                            font-size: 60px;
-                            color: #2ecc71;
-                            margin-bottom: 20px;
-                        }
-                        h1 {
-                            font-size: 22px;
-                            margin-bottom: 10px;
-                        }
-                        p {
-                            font-size: 14px;
-                            color: #666;
-                            line-height: 1.5;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class='container'>
-                        <div class='icon'>✓</div>
-                        <h1>Liên kết thành công!</h1>
-                        <p>Tài khoản ngân hàng của bạn đã được kết nối với TaxMate.<br>Bạn có thể đóng cửa sổ này bây giờ.</p>
-                    </div>
-                    <script>
-                        if (window.ReactNativeWebView) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({ status: 'success' }));
-                        }
-                    </script>
-                </body>
-                </html>";
-
-            return Content(html, "text/html");
-        }
-        catch (Exception ex)
-        {
-            var errorHtml = $@"
-                <!DOCTYPE html>
-                <html lang='vi'>
-                <head>
-                    <meta charset='UTF-8'>
-                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                    <title>Liên kết thất bại</title>
-                    <style>
-                        body {{
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                            display: flex;
-                            flex-direction: column;
-                            align-items: center;
-                            justify-content: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: #fff5f5;
-                            color: #333;
-                        }}
-                        .container {{
-                            text-align: center;
-                            padding: 30px;
-                            background: white;
-                            border-radius: 12px;
-                            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-                            max-width: 90%;
-                            width: 320px;
-                        }}
-                        .icon {{
-                            font-size: 60px;
-                            color: #e74c3c;
-                            margin-bottom: 20px;
-                        }}
-                        h1 {{
-                            font-size: 22px;
-                            margin-bottom: 10px;
-                        }}
-                        p {{
-                            font-size: 14px;
-                            color: #666;
-                            line-height: 1.5;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class='container'>
-                        <div class='icon'>✗</div>
-                        <h1>Liên kết thất bại</h1>
-                        <p>Đã xảy ra lỗi trong quá trình liên kết:<br><strong>{ex.Message}</strong></p>
-                    </div>
-                </body>
-                </html>";
-
-            return Content(errorHtml, "text/html");
-        }
     }
 
     /// <summary>Lấy link WebView để liên kết tài khoản ngân hàng qua SePay Bank Hub.</summary>
@@ -390,4 +229,3 @@ public class PaymentAccountController : ControllerBase
         return Ok(ApiResponse<string>.Ok("Mock payment generated successfully. The Webhook IPN will process and confirm this order shortly.", "Mock payment triggered.", HttpContext.TraceIdentifier));
     }
 }
-

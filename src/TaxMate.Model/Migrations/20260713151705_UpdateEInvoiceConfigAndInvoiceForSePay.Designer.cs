@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260713151705_UpdateEInvoiceConfigAndInvoiceForSePay")]
+    partial class UpdateEInvoiceConfigAndInvoiceForSePay
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -162,9 +165,6 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("ProviderAccountId")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<int>("QuotaWarningThreshold")
-                        .HasColumnType("integer");
 
                     b.Property<string>("Symbol")
                         .HasMaxLength(50)
@@ -387,22 +387,6 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("BuyerAddress")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<string>("BuyerCompanyName")
-                        .HasMaxLength(250)
-                        .HasColumnType("character varying(250)");
-
-                    b.Property<string>("BuyerEmail")
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)");
-
-                    b.Property<string>("BuyerTaxCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -764,256 +748,6 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("SubscriptionPlanId");
 
                     b.ToTable("PlanFeatures");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("f1111111-1111-1111-1111-111111111111"),
-                            FeatureKey = "revenue_recording",
-                            FeatureName = "Ghi nhận doanh thu",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("f2222222-2222-2222-2222-222222222222"),
-                            FeatureKey = "revenue_aggregation_viz",
-                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("f3333333-3333-3333-3333-333333333333"),
-                            FeatureKey = "daily_revenue_reporting",
-                            FeatureName = "Báo cáo doanh thu hàng ngày",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("f4444444-4444-4444-4444-444444444444"),
-                            FeatureKey = "order_history_tracking",
-                            FeatureName = "Theo dõi lịch sử đơn hàng",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("f5555555-5555-5555-5555-555555555555"),
-                            FeatureKey = "best_selling_categories",
-                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("f6666666-6666-6666-6666-666666666666"),
-                            FeatureKey = "product_management",
-                            FeatureName = "Quản lý sản phẩm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b1111111-1111-1111-1111-111111111111"),
-                            FeatureKey = "revenue_recording",
-                            FeatureName = "Ghi nhận doanh thu",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b2222222-2222-2222-2222-222222222222"),
-                            FeatureKey = "revenue_aggregation_viz",
-                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b3333333-3333-3333-3333-333333333333"),
-                            FeatureKey = "daily_revenue_reporting",
-                            FeatureName = "Báo cáo doanh thu hàng ngày",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b4444444-4444-4444-4444-444444444444"),
-                            FeatureKey = "order_history_tracking",
-                            FeatureName = "Theo dõi lịch sử đơn hàng",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b5555555-5555-5555-5555-555555555555"),
-                            FeatureKey = "best_selling_categories",
-                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b6666666-6666-6666-6666-666666666666"),
-                            FeatureKey = "product_management",
-                            FeatureName = "Quản lý sản phẩm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b7777777-7777-7777-7777-777777777777"),
-                            FeatureKey = "expense_recording_monitoring",
-                            FeatureName = "Ghi nhận & giám sát chi phí",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b8888888-8888-8888-8888-888888888888"),
-                            FeatureKey = "estimated_profitability_dashboard",
-                            FeatureName = "Bảng điều khiển lợi nhuận ước tính",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("b9999999-9999-9999-9999-999999999999"),
-                            FeatureKey = "ai_tax_guidance",
-                            FeatureName = "Tư vấn thuế AI",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("baaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                            FeatureKey = "rag_legal_retrieval",
-                            FeatureName = "Tra cứu thông tin luật RAG",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-                            FeatureKey = "business_insight_reports",
-                            FeatureName = "Báo cáo insight kinh doanh",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e1111111-1111-1111-1111-111111111111"),
-                            FeatureKey = "revenue_recording",
-                            FeatureName = "Ghi nhận doanh thu",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e2222222-2222-2222-2222-222222222222"),
-                            FeatureKey = "revenue_aggregation_viz",
-                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e3333333-3333-3333-3333-333333333333"),
-                            FeatureKey = "daily_revenue_reporting",
-                            FeatureName = "Báo cáo doanh thu hàng ngày",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e4444444-4444-4444-4444-444444444444"),
-                            FeatureKey = "order_history_tracking",
-                            FeatureName = "Theo dõi lịch sử đơn hàng",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e5555555-5555-5555-5555-555555555555"),
-                            FeatureKey = "best_selling_categories",
-                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e6666666-6666-6666-6666-666666666666"),
-                            FeatureKey = "product_management",
-                            FeatureName = "Quản lý sản phẩm",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e7777777-7777-7777-7777-777777777777"),
-                            FeatureKey = "expense_recording_monitoring",
-                            FeatureName = "Ghi nhận & giám sát chi phí",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e8888888-8888-8888-8888-888888888888"),
-                            FeatureKey = "estimated_profitability_dashboard",
-                            FeatureName = "Bảng điều khiển lợi nhuận ước tính",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("e9999999-9999-9999-9999-999999999999"),
-                            FeatureKey = "ai_tax_guidance",
-                            FeatureName = "Tư vấn thuế AI",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                            FeatureKey = "rag_legal_retrieval",
-                            FeatureName = "Tra cứu thông tin luật RAG",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("ebbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-                            FeatureKey = "business_insight_reports",
-                            FeatureName = "Báo cáo insight kinh doanh",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("eaaaaaaa-cccc-cccc-cccc-cccccccccccc"),
-                            FeatureKey = "einvoice_integration",
-                            FeatureName = "Tích hợp hóa đơn điện tử",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("ebbbbbbb-dddd-dddd-dddd-dddddddddddd"),
-                            FeatureKey = "advanced_analytics",
-                            FeatureName = "Phân tích kinh doanh nâng cao",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        },
-                        new
-                        {
-                            Id = new Guid("ececcccc-eeee-eeee-eeee-eeeeeeeeeeee"),
-                            FeatureKey = "growth_readiness_monitoring",
-                            FeatureName = "Giám sát mức độ sẵn sàng tăng trưởng",
-                            IsEnabled = true,
-                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
-                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
@@ -1191,42 +925,6 @@ namespace TaxMate.Model.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SubscriptionPlans");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d"),
-                            AnnualPrice = 0m,
-                            Description = "Trải nghiệm các tính năng quản lý cơ bản",
-                            IsActive = true,
-                            MaxProducts = 50,
-                            MaxTransactionsPerMonth = 100,
-                            MonthlyPrice = 0m,
-                            Name = "Gói Miễn Phí",
-                            SortOrder = 0
-                        },
-                        new
-                        {
-                            Id = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d"),
-                            AnnualPrice = 990000m,
-                            Description = "Phù hợp cho hộ kinh doanh cá thể nhỏ",
-                            IsActive = true,
-                            MaxProducts = 500,
-                            MaxTransactionsPerMonth = 1000,
-                            MonthlyPrice = 99000m,
-                            Name = "Gói Hộ Kinh Doanh",
-                            SortOrder = 1
-                        },
-                        new
-                        {
-                            Id = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d"),
-                            AnnualPrice = 1990000m,
-                            Description = "Giải pháp toàn diện cho doanh nghiệp tăng trưởng",
-                            IsActive = true,
-                            MonthlyPrice = 199000m,
-                            Name = "Gói Doanh Nghiệp Cao Cấp",
-                            SortOrder = 2
-                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Supplier", b =>

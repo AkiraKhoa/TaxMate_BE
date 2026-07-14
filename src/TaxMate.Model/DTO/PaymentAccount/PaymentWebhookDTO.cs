@@ -3,30 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace TaxMate.Model.DTO;
 
-public class PayOsWebhookRequest
-{
-    [JsonPropertyName("code")] public string Code { get; set; } = null!;
-    [JsonPropertyName("desc")] public string Desc { get; set; } = null!;
-    [JsonPropertyName("success")] public bool Success { get; set; }
-    [JsonPropertyName("data")] public PayOsData Data { get; set; } = null!;
-    [JsonPropertyName("signature")] public string Signature { get; set; } = null!;
-}
-
-public class PayOsData
-{
-    [JsonPropertyName("orderCode")] public long OrderCode { get; set; }
-    [JsonPropertyName("amount")] public int Amount { get; set; }
-    [JsonPropertyName("description")] public string Description { get; set; } = null!;
-    [JsonPropertyName("accountNumber")] public string AccountNumber { get; set; } = null!;
-    [JsonPropertyName("reference")] public string Reference { get; set; } = null!;
-    [JsonPropertyName("transactionDateTime")] public string TransactionDateTime { get; set; } = null!;
-    [JsonPropertyName("currency")] public string Currency { get; set; } = null!;
-    [JsonPropertyName("paymentLinkId")] public string PaymentLinkId { get; set; } = null!;
-}
-
 /// <summary>
 /// DTO cho SePay IPN biến động số dư (endpoint /sepay).
-/// Auth: Authorization: Apikey &lt;SePay:ApiKey&gt;
+/// Auth: Authorization: Apikey <SePay:ApiKey>
 /// Ref: https://developers.sepay.vn/
 /// </summary>
 public class SePayWebhookRequest
@@ -48,7 +27,7 @@ public class SePayWebhookRequest
 
 /// <summary>
 /// DTO cho SePay Bank Hub Webhook events (endpoint /bankhub).
-/// Auth: X-Secret-Key: &lt;SePay:BankHub:SecretKey&gt;
+/// Auth: X-Secret-Key: <SePay:BankHub:SecretKey>
 /// Events: BANK_ACCOUNT_LINKED, BANK_ACCOUNT_UNLINKED, BANK_ACCOUNT_INACTIVATED
 /// Ref: https://developer.sepay.vn/en/bankhub
 /// </summary>
@@ -71,27 +50,4 @@ public class SePayBankHubMetadata
     // Dùng để trace lại companyXid khi không có company_xid trực tiếp trong payload
     [JsonPropertyName("link_token_xid")] public string? LinkTokenXid { get; set; }
     [JsonPropertyName("link_session_xid")] public string? LinkSessionXid { get; set; }
-}
-
-public class CassoWebhookRequest
-{
-    [JsonPropertyName("error")] public int Error { get; set; }
-    [JsonPropertyName("message")] public string Message { get; set; } = null!;
-    [JsonPropertyName("data")] public List<CassoData> Data { get; set; } = null!;
-}
-
-public class CassoData
-{
-    [JsonPropertyName("id")] public long Id { get; set; }
-    [JsonPropertyName("tid")] public string Tid { get; set; } = null!;
-    [JsonPropertyName("description")] public string Description { get; set; } = null!;
-    [JsonPropertyName("amount")] public decimal Amount { get; set; }
-    [JsonPropertyName("cusumBalance")] public decimal CusumBalance { get; set; }
-    [JsonPropertyName("when")] public string When { get; set; } = null!;
-    [JsonPropertyName("bookingDate")] public string BookingDate { get; set; } = null!;
-    [JsonPropertyName("bankSubAccId")] public string BankSubAccId { get; set; } = null!;
-    [JsonPropertyName("correspName")] public string CorrespName { get; set; } = null!;
-    [JsonPropertyName("correspAccId")] public string CorrespAccId { get; set; } = null!;
-    [JsonPropertyName("correspBankName")] public string CorrespBankName { get; set; } = null!;
-    [JsonPropertyName("correspBankId")] public string CorrespBankId { get; set; } = null!;
 }

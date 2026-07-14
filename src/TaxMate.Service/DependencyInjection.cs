@@ -21,7 +21,6 @@ public static class DependencyInjection
         services.AddScoped<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IVietQRService, VietQRService>();
         services.AddScoped<IPaymentAccountService, PaymentAccountService>();
-        services.AddScoped<ICassoService, CassoService>();
         services.AddScoped<ISePayService, SePayService>();
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
@@ -31,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<IIngredientService, IngredientService>();
         services.AddHttpClient();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IEInvoiceService, SePayEInvoiceService>();
         services.AddSingleton<PayOSClient>(sp =>
         {
             return new PayOSClient(

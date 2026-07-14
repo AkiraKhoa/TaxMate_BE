@@ -39,6 +39,27 @@ public class Invoice : BaseEntity
     [MaxLength(1000)]
     public string? OfficialXmlUrl { get; set; }
 
+    [MaxLength(100)]
+    public string? SePayTrackingCode { get; set; }
+
+    [MaxLength(100)]
+    public string? SePayReferenceCode { get; set; }
+
+    [MaxLength(500)]
+    public string? SePayMessage { get; set; }
+
+    [MaxLength(20)]
+    public string? BuyerTaxCode { get; set; }
+
+    [MaxLength(250)]
+    public string? BuyerCompanyName { get; set; }
+
+    [MaxLength(500)]
+    public string? BuyerAddress { get; set; }
+
+    [MaxLength(150)]
+    public string? BuyerEmail { get; set; }
+
     public BusinessProfile Business { get; set; } = null!;
 
     public ICollection<InvoiceDetail> InvoiceDetails { get; set; }

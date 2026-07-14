@@ -12,20 +12,22 @@ public class EInvoiceConfig : BaseEntity
 
     [Required]
     [MaxLength(50)]
-    public string Provider { get; set; } = null!; // "VNPT", "FPT", "MISA", "Hilo", "Mock"
+    public string Provider { get; set; } = "SePay";
 
     [Required]
     [MaxLength(500)]
-    public string ApiUrl { get; set; } = null!;
+    public string BaseUrl { get; set; } = null!;
 
+    [Required]
+    [MaxLength(200)]
+    public string ClientId { get; set; } = null!;
+
+    [Required]
     [MaxLength(500)]
-    public string? ApiKey { get; set; }
+    public string ClientSecret { get; set; } = null!;
 
-    [MaxLength(200)]
-    public string? Username { get; set; }
-
-    [MaxLength(200)]
-    public string? Password { get; set; }
+    [MaxLength(100)]
+    public string? ProviderAccountId { get; set; }
 
     [MaxLength(50)]
     public string? InvoiceTemplateCode { get; set; } // Mẫu số hóa đơn (e.g. 1C22TBB)
@@ -34,6 +36,8 @@ public class EInvoiceConfig : BaseEntity
     public string? Symbol { get; set; } // Ký hiệu hóa đơn (e.g. 1/001)
 
     public bool IsEnabled { get; set; }
+
+    public int QuotaWarningThreshold { get; set; } = 100;
 
     public BusinessProfile Business { get; set; } = null!;
 }
