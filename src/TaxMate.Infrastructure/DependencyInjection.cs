@@ -24,6 +24,8 @@ public static class DependencyInjection
 
         services.Configure<SupabaseStorageOptions>(
             configuration.GetSection("SupabaseStorage"));
+        services.Configure<CloudinaryOptions>(
+            configuration.GetSection(CloudinaryOptions.SectionName));
         services.Configure<GoogleAuthOptions>(
             configuration.GetSection(GoogleAuthOptions.SectionName));
         services.Configure<JwtOptions>(
@@ -46,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISmsService, TwilioSmsService>();
+
+        services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
         services.Configure<RagApiOptions>(
             configuration.GetSection(RagApiOptions.SectionName));
