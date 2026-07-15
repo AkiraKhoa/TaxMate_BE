@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\TaxMate.Model\TaxMate.Model.csproj" />
     <ProjectReference Include="..\TaxMate.Service\TaxMate.Service.csproj" />
     <ProjectReference Include="..\TaxMate.Repository\TaxMate.Repository.csproj" />
     <ProjectReference Include="..\TaxMate.Infrastructure\TaxMate.Infrastructure.csproj" />
@@ -16,6 +17,7 @@
     <PackageReference Include="Scalar.AspNetCore" Version="2.14.11" />
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
   </ItemGroup>
 

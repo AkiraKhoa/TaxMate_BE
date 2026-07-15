@@ -29,12 +29,15 @@ public static class DependencyInjection
         services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IProductIngredientService, ProductIngredientService>();
+        services.AddScoped<IDashboardAnalyticsService, DashboardAnalyticsService>();
         services.AddScoped<IIncomeCategoryService, IncomeCategoryService>();
         services.AddScoped<IIncomeService, IncomeService>();
 
         services.AddScoped<IUserDeviceService, UserDeviceService>();
         services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
         services.AddScoped<IReportService, ReportService>();
+        
+
         services.Configure<TaxSettings>(
             configuration.GetSection(TaxSettings.SectionName));
         return services;

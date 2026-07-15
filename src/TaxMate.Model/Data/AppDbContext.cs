@@ -44,15 +44,15 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatReference> ChatReferences => Set<ChatReference>();
     
     public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
 
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
-    
-    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
-    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
-    public DbSet<ChatReference> ChatReferences => Set<ChatReference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -441,6 +441,64 @@ public class AppDbContext : DbContext
                 x.UserId,
                 x.CreatedAt
             });
+
+        // Chat Conversation
+        modelBuilder.Entity<ChatConversation>()
+            .HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => x.UserId);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => new
+            {
+                x.UserId,
+                x.Status
+            });
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => x.BusinessId);
+
+        // Chat Message
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(x => x.Conversation)
+            .WithMany(x => x.Messages)
+            .HasForeignKey(x => x.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(x => x.ConversationId);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(x => x.CreatedAt);
+
+        // Chat Reference
+        modelBuilder.Entity<ChatReference>()
+            .HasOne(x => x.Message)
+            .WithMany(x => x.References)
+            .HasForeignKey(x => x.MessageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasOne(x => x.LegalDocument)
+            .WithMany()
+            .HasForeignKey(x => x.LegalDocumentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasIndex(x => x.MessageId);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasIndex(x => x.LegalDocumentId);
         
         // Base Indexes for Dashboard
         modelBuilder.Entity<ProductPrice>()
