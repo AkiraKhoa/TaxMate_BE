@@ -56,6 +56,11 @@ public class Transaction : BaseEntity
     public BusinessProfile Business { get; set; } = null!;
 
     public Invoice? Invoice { get; set; }
+    
+    [Required]
+    [MaxLength(30)]
+    public string TransactionType { get; set; }
+        = TransactionTypes.Sale;
 
     public ICollection<Payment> Payments { get; set; }
         = new List<Payment>();

@@ -1,13 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using TaxMate.Service.Interfaces;
 using TaxMate.Service.Mappings;
+using TaxMate.Service.Options;
 using TaxMate.Service.Services;
-
+using Microsoft.Extensions.Configuration;
 namespace TaxMate.Service;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddServices(this IServiceCollection services)
+    public static IServiceCollection AddServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddAutoMapper(
             cfg => { },
@@ -31,7 +32,8 @@ public static class DependencyInjection
         services.AddScoped<IUserDeviceService, UserDeviceService>();
         services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
         services.AddScoped<IReportService, ReportService>();
-        
+        services.Configure<TaxSettings>(
+            configuration.GetSection(TaxSettings.SectionName));
         return services;
     }
 }
