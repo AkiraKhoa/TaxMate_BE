@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260708170009_InitialMigrate")]
+    partial class InitialMigrate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -318,108 +321,6 @@ namespace TaxMate.Model.Migrations
                         .IsUnique();
 
                     b.ToTable("ExpenseCategories");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.Income", b =>
-                {
-                    b.Property<Guid>("IncomeId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<Guid>("BusinessId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DueDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FileUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<Guid>("IncomeCategoryId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("IncomeDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("IncomeTitle")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("PaymentMethod")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("ReceiptImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<DateTime?>("ReceivedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("IncomeId");
-
-                    b.HasIndex("BusinessId");
-
-                    b.HasIndex("IncomeCategoryId");
-
-                    b.HasIndex("IncomeDate");
-
-                    b.HasIndex("BusinessId", "IncomeDate");
-
-                    b.ToTable("Incomes");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
-                {
-                    b.Property<Guid>("IncomeCategoryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BusinessId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("CategoryName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("IncomeCategoryId");
-
-                    b.HasIndex("BusinessId");
-
-                    b.HasIndex("BusinessId", "CategoryName")
-                        .IsUnique();
-
-                    b.ToTable("IncomeCategories");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Ingredient", b =>
@@ -1210,11 +1111,6 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("TransactionDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("TransactionType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)");
-
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1562,35 +1458,6 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Business");
                 });
 
-            modelBuilder.Entity("TaxMate.Model.Entities.Income", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
-                        .WithMany("Incomes")
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("TaxMate.Model.Entities.IncomeCategory", "IncomeCategory")
-                        .WithMany("Incomes")
-                        .HasForeignKey("IncomeCategoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Business");
-
-                    b.Navigation("IncomeCategory");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
-                        .WithMany()
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("Business");
-                });
-
             modelBuilder.Entity("TaxMate.Model.Entities.IngredientPurchase", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.Ingredient", "Ingredient")
@@ -1821,8 +1688,6 @@ namespace TaxMate.Model.Migrations
                 {
                     b.Navigation("Expenses");
 
-                    b.Navigation("Incomes");
-
                     b.Navigation("Invoices");
 
                     b.Navigation("PaymentAccounts");
@@ -1847,11 +1712,6 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
                 {
                     b.Navigation("Expenses");
-                });
-
-            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
-                {
-                    b.Navigation("Incomes");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Ingredient", b =>

@@ -62,4 +62,70 @@ public class ReportController : ControllerBase
                 "Get active sales months successfully",
                 HttpContext.TraceIdentifier));
     }
+    
+    [HttpGet("{businessId:guid}/estimated-profit-dashboard")]
+    public async Task<IActionResult> GetEstimatedProfitDashboard(
+        Guid businessId,
+        [FromQuery] int year,
+        [FromQuery] int quarter)
+    {
+        var result = await _reportService
+            .GetEstimatedProfitDashboardAsync(
+                businessId,
+                year,
+                quarter);
+
+        return Ok(
+            ApiResponse<EstimatedProfitDashboardResponse>.Ok(
+                result,
+                "Get estimated profit dashboard successfully",
+                HttpContext.TraceIdentifier));
+    }
+    
+    [HttpGet("{businessId:guid}/active-quarters")]
+    public async Task<IActionResult> GetActiveSalesQuarters(Guid businessId)
+    {
+        var result = await _reportService.GetActiveSalesQuartersAsync(
+            businessId);
+
+        return Ok(
+            ApiResponse<List<ActiveSalesQuarterResponse>>.Ok(
+                result,
+                "Get active sales quarters successfully",
+                HttpContext.TraceIdentifier));
+    }
+    
+    [HttpGet("{businessId:guid}/cash-flow-dashboard")]
+    public async Task<IActionResult> GetCashFlowDashboard(
+        Guid businessId,
+        [FromQuery] int year,
+        [FromQuery] int quarter)
+    {
+        var result = await _reportService.GetCashFlowDashboardAsync(
+            businessId,
+            year,
+            quarter);
+
+        return Ok(
+            ApiResponse<CashFlowDashboardResponse>.Ok(
+                result,
+                "Get cash flow dashboard successfully",
+                HttpContext.TraceIdentifier));
+    }
+    
+    [HttpGet("{businessId:guid}/tax-dashboard")]
+    public async Task<IActionResult> GetTaxDashboard(
+        Guid businessId,
+        [FromQuery] int year)
+    {
+        var result = await _reportService.GetTaxDashboardAsync(
+            businessId,
+            year);
+
+        return Ok(
+            ApiResponse<TaxDashboardResponse>.Ok(
+                result,
+                "Get tax dashboard successfully",
+                HttpContext.TraceIdentifier));
+    }
 }

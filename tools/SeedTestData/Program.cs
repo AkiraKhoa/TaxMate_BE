@@ -178,18 +178,26 @@ static async Task SeedQuarterSalesTrendDataAsync(
             DateTimeKind.Utc);
 
         var quantity = Math.Max(1, (int)(item.Revenue / price));
-
+        var unitCost = price * 0.5m;
+        
         db.Transactions.Add(new Transaction
         {
             TransactionId = transactionId,
             BusinessId = businessId,
-            TransactionCode = $"SEED-QUARTER-TREND-2026{item.Month:00}-{index:000}",
+            TransactionCode =
+                $"SEED-QUARTER-TREND-2026{item.Month:00}-{index:000}",
+
             TransactionDate = transactionDate,
+
+            TransactionType = TransactionTypes.Sale,
+
             Status = "Completed",
+
             SubTotal = item.Revenue,
             DiscountAmount = 0,
             SurchargeAmount = 0,
             TotalAmount = item.Revenue,
+
             CreatedAt = now,
             UpdatedAt = now
         });
@@ -202,7 +210,9 @@ static async Task SeedQuarterSalesTrendDataAsync(
             ProductName = product.Name,
             Unit = product.Unit,
             UnitPrice = price,
+            UnitCost = unitCost,
             Quantity = quantity,
+            CostAmount = unitCost * quantity,
             DiscountAmount = 0,
             LineTotal = item.Revenue,
             CreatedAt = now,
@@ -265,18 +275,26 @@ static async Task SeedExtraMonthlySalesDataAsync(
             var transactionId = Guid.NewGuid();
             var quantity = month.Quantities[i];
             var lineTotal = price * quantity;
-
+            var unitCost = price * 0.45m;
+            
             db.Transactions.Add(new Transaction
             {
                 TransactionId = transactionId,
                 BusinessId = businessId,
-                TransactionCode = $"SEED-SALES-EXTRA-{month.MonthStart:yyyyMM}-{index:000}",
+                TransactionCode =
+                    $"SEED-SALES-EXTRA-{month.MonthStart:yyyyMM}-{index:000}",
+
                 TransactionDate = month.MonthStart.AddDays(3 + i * 8),
+
+                TransactionType = TransactionTypes.Sale,
+
                 Status = "Completed",
+
                 SubTotal = lineTotal,
                 DiscountAmount = 0,
                 SurchargeAmount = 0,
                 TotalAmount = lineTotal,
+
                 CreatedAt = now,
                 UpdatedAt = now
             });
@@ -289,7 +307,9 @@ static async Task SeedExtraMonthlySalesDataAsync(
                 ProductName = product.Name,
                 Unit = product.Unit,
                 UnitPrice = price,
+                UnitCost = unitCost,
                 Quantity = quantity,
+                CostAmount = unitCost * quantity,
                 DiscountAmount = 0,
                 LineTotal = lineTotal,
                 CreatedAt = now,
@@ -324,21 +344,24 @@ static async Task SeedSalesDashboardDataAsync(
             Id = Guid.NewGuid(),
             Name = "Pizza",
             Unit = "cái",
-            Price = 35000m
+            Price = 35000m,
+            UnitCost = 18000m
         },
         new
         {
             Id = Guid.NewGuid(),
             Name = "Hamburger",
             Unit = "cái",
-            Price = 25000m
+            Price = 25000m,
+            UnitCost = 12000m
         },
         new
         {
             Id = Guid.NewGuid(),
             Name = "Gà chiên",
             Unit = "phần",
-            Price = 30000m
+            Price = 30000m,
+            UnitCost = 14000m
         }
     };
 
@@ -373,6 +396,7 @@ static async Task SeedSalesDashboardDataAsync(
             ProductId = products[0].Id,
             ProductName = products[0].Name,
             UnitPrice = products[0].Price,
+            UnitCost = products[0].UnitCost,
             Quantity = 20
         },
         new
@@ -381,6 +405,7 @@ static async Task SeedSalesDashboardDataAsync(
             ProductId = products[1].Id,
             ProductName = products[1].Name,
             UnitPrice = products[1].Price,
+            UnitCost = products[1].UnitCost,
             Quantity = 15
         },
         new
@@ -389,6 +414,7 @@ static async Task SeedSalesDashboardDataAsync(
             ProductId = products[2].Id,
             ProductName = products[2].Name,
             UnitPrice = products[2].Price,
+            UnitCost = products[2].UnitCost,
             Quantity = 12
         },
         new
@@ -397,6 +423,7 @@ static async Task SeedSalesDashboardDataAsync(
             ProductId = products[0].Id,
             ProductName = products[0].Name,
             UnitPrice = products[0].Price,
+            UnitCost = products[0].UnitCost,
             Quantity = 30
         },
         new
@@ -405,6 +432,7 @@ static async Task SeedSalesDashboardDataAsync(
             ProductId = products[1].Id,
             ProductName = products[1].Name,
             UnitPrice = products[1].Price,
+            UnitCost = products[1].UnitCost,
             Quantity = 10
         }
     };
@@ -415,19 +443,27 @@ static async Task SeedSalesDashboardDataAsync(
     {
         var transactionId = Guid.NewGuid();
         var lineTotal = sale.UnitPrice * sale.Quantity;
+        var costAmount = sale.UnitCost * sale.Quantity;
 
         db.Transactions.Add(new Transaction
         {
             TransactionId = transactionId,
             BusinessId = businessId,
             TransactionCode = $"TXM-{now:yyyyMM}-{index:000}",
+
             TransactionDate = sale.Date,
+
+            TransactionType = TransactionTypes.Sale,
+
             Status = "Completed",
+
             SubTotal = lineTotal,
             DiscountAmount = 0,
             SurchargeAmount = 0,
             TotalAmount = lineTotal,
-            CreatedAt = now
+
+            CreatedAt = now,
+            UpdatedAt = now
         });
 
         db.TransactionItems.Add(new TransactionItem
@@ -438,10 +474,13 @@ static async Task SeedSalesDashboardDataAsync(
             ProductName = sale.ProductName,
             Unit = "cái",
             UnitPrice = sale.UnitPrice,
+            UnitCost = sale.UnitCost,
             Quantity = sale.Quantity,
+            CostAmount = costAmount,
             DiscountAmount = 0,
             LineTotal = lineTotal,
-            CreatedAt = now
+            CreatedAt = now,
+            UpdatedAt = now
         });
 
         index++;
@@ -542,9 +581,9 @@ static async Task SeedExpensesAsync(
     {
         new
         {
-            Title = "Tiền thuê tháng 6",
+            Title = "Tiền thuê tháng 7",
             Category = "Thuê mặt bằng",
-            Amount = 15_000_000m,
+            Amount = 600_000m,
             PaymentMethod = "BankTransfer",
             ExpenseDate = currentMonth.AddDays(4),
             DueDate = (DateTime?)currentMonth.AddDays(9),
@@ -553,20 +592,9 @@ static async Task SeedExpensesAsync(
         },
         new
         {
-            Title = "Hóa đơn điện T5",
-            Category = "Điện nước",
-            Amount = 2_500_000m,
-            PaymentMethod = "Cash",
-            ExpenseDate = previousMonth.AddDays(14),
-            DueDate = (DateTime?)null,
-            PaidDate = (DateTime?)previousMonth.AddDays(14),
-            Note = (string?)null
-        },
-        new
-        {
             Title = "Facebook Ads",
             Category = "Marketing",
-            Amount = 3_000_000m,
+            Amount = 200_000m,
             PaymentMethod = "BankTransfer",
             ExpenseDate = currentMonth.AddDays(6),
             DueDate = (DateTime?)null,
@@ -577,7 +605,7 @@ static async Task SeedExpensesAsync(
         {
             Title = "Mua bột mì",
             Category = "Nguyên liệu",
-            Amount = 1_200_000m,
+            Amount = 400_000m,
             PaymentMethod = "Cash",
             ExpenseDate = currentMonth.AddDays(2),
             DueDate = (DateTime?)null,
@@ -586,31 +614,9 @@ static async Task SeedExpensesAsync(
         },
         new
         {
-            Title = "Mua đường",
-            Category = "Nguyên liệu",
+            Title = "Lương tháng 7",
+            Category = "Lương nhân viên",
             Amount = 800_000m,
-            PaymentMethod = "Cash",
-            ExpenseDate = previousMonth.AddDays(20),
-            DueDate = (DateTime?)null,
-            PaidDate = (DateTime?)previousMonth.AddDays(20),
-            Note = (string?)null
-        },
-        new
-        {
-            Title = "Lương tháng 5",
-            Category = "Lương nhân viên",
-            Amount = 25_000_000m,
-            PaymentMethod = "BankTransfer",
-            ExpenseDate = previousMonth.AddDays(27),
-            DueDate = (DateTime?)previousMonth.AddDays(30),
-            PaidDate = (DateTime?)previousMonth.AddDays(30),
-            Note = (string?)null
-        },
-        new
-        {
-            Title = "Lương tháng 6",
-            Category = "Lương nhân viên",
-            Amount = 25_000_000m,
             PaymentMethod = "BankTransfer",
             ExpenseDate = currentMonth.AddDays(27),
             DueDate = (DateTime?)currentMonth.AddDays(30),
@@ -621,7 +627,7 @@ static async Task SeedExpensesAsync(
         {
             Title = "Phí Grab giao hàng",
             Category = "Vận chuyển",
-            Amount = 350_000m,
+            Amount = 150_000m,
             PaymentMethod = "Cash",
             ExpenseDate = currentMonth.AddDays(10),
             DueDate = (DateTime?)null,
@@ -629,8 +635,116 @@ static async Task SeedExpensesAsync(
             Note = (string?)"Giao hàng cho khách đặt online"
         }
     };
+    
+    var quarterOneExpenses = new[]
+    {
+        // ===== THÁNG 1 =====
+        new
+        {
+            Title = "Thuê mặt bằng T1",
+            Category = "Thuê mặt bằng",
+            Amount = 15_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc),
+            PaidDate = (DateTime?)new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+        new
+        {
+            Title = "Mua nguyên liệu T1",
+            Category = "Nguyên liệu",
+            Amount = 4_200_000m,
+            PaymentMethod = "Cash",
+            ExpenseDate = new DateTime(2026, 1, 8, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 1, 8, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+        new
+        {
+            Title = "Lương nhân viên T1",
+            Category = "Lương nhân viên",
+            Amount = 25_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 1, 28, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 1, 30, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
 
-    foreach (var item in expenses)
+        // ===== THÁNG 2 =====
+        new
+        {
+            Title = "Thuê mặt bằng T2",
+            Category = "Thuê mặt bằng",
+            Amount = 15_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 2, 5, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+        new
+        {
+            Title = "Marketing T2",
+            Category = "Marketing",
+            Amount = 2_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 2, 12, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 2, 12, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+        new
+        {
+            Title = "Lương nhân viên T2",
+            Category = "Lương nhân viên",
+            Amount = 25_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+
+        // ===== THÁNG 3 =====
+        new
+        {
+            Title = "Thuê mặt bằng T3",
+            Category = "Thuê mặt bằng",
+            Amount = 15_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        },
+        new
+        {
+            Title = "Mua thiết bị bếp",
+            Category = "Marketing",
+            Amount = 1_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc),
+            Note = "Thiết bị phục vụ bán hàng"
+        },
+        new
+        {
+            Title = "Lương nhân viên T3",
+            Category = "Lương nhân viên",
+            Amount = 25_000_000m,
+            PaymentMethod = "BankTransfer",
+            ExpenseDate = new DateTime(2026, 3, 28, 0, 0, 0, DateTimeKind.Utc),
+            DueDate = (DateTime?)null,
+            PaidDate = (DateTime?)new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
+            Note = (string?)null
+        }
+    };
+
+    foreach (var item in expenses.Concat(quarterOneExpenses))
     {
         db.Expenses.Add(new Expense
         {

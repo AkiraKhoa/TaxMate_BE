@@ -49,6 +49,10 @@ public class AppDbContext : DbContext
 
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
+    
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatReference> ChatReferences => Set<ChatReference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

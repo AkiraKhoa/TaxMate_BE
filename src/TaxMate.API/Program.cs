@@ -40,7 +40,7 @@ builder.Host.UseSerilog((context, config) =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddModel(builder.Configuration);
 builder.Services.AddRepository();
-builder.Services.AddServices();
+builder.Services.AddServices(builder.Configuration);
 
 // ── JWT Authentication ─────────────────────────────────────
 var jwtOptions = builder.Configuration
