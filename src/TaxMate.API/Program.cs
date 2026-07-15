@@ -10,12 +10,14 @@ using Scalar.AspNetCore;
 using Serilog;
 using TaxMate.API.Authorization;
 using TaxMate.API.Middlewares;
+using TaxMate.API.Hubs;
 using TaxMate.Infrastructure;
 using TaxMate.Infrastructure.Options;
 using TaxMate.Model;
 using TaxMate.Model.Common;
 using TaxMate.Repository;
 using TaxMate.Service;
+using TaxMate.Service.Interfaces;
 
 var envFile = Path.Combine(AppContext.BaseDirectory, ".env");
 if (!File.Exists(envFile))
@@ -41,6 +43,10 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddModel(builder.Configuration);
 builder.Services.AddRepository();
 builder.Services.AddServices(builder.Configuration);
+
+// ── SignalR & Payment Notification ─────────────────────────
+builder.Services.AddSignalR();
+builder.Services.AddScoped<IPaymentNotificationService, PaymentNotificationService>();
 
 // ── JWT Authentication ─────────────────────────────────────
 var jwtOptions = builder.Configuration
@@ -88,7 +94,7 @@ builder.Services.AddSwaggerGen(options =>
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
-        Description = "JWT Authorization header. Example: \"{accessToken}\"",
+        Description = "JWT Authorization header. Example: \"Bearer {accessToken}\"",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
         Scheme = "Bearer",
@@ -145,5 +151,8 @@ app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PaymentHub>("/paymentHub");
+
+// SePayCompanyXid is persisted across restarts.
 
 app.Run();

@@ -6,6 +6,7 @@ public interface ISubscriptionPlanRepository : IGenericRepository<SubscriptionPl
 {
     Task<bool> ExistsByNameAsync(string name);
 
+    Task<List<SubscriptionPlan>> GetActivePlansWithFeaturesAsync();
     Task<SubscriptionPlan?> GetByIdWithFeaturesAsync(Guid id);
 
     Task<List<SubscriptionPlan>> GetPagedAsync(

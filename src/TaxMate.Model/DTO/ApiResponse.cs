@@ -1,4 +1,4 @@
-﻿namespace TaxMate.Model.DTO;
+namespace TaxMate.Model.DTO;
 
 public class ApiResponse<T>
 {
@@ -18,6 +18,20 @@ public class ApiResponse<T>
         return new ApiResponse<T>
         {
             Success = true,
+            Message = message,
+            Data = data,
+            TraceId = traceId
+        };
+    }
+
+    public static ApiResponse<T> Fail(
+        T data,
+        string message = "Failure",
+        string? traceId = null)
+    {
+        return new ApiResponse<T>
+        {
+            Success = false,
             Message = message,
             Data = data,
             TraceId = traceId

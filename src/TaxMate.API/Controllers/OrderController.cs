@@ -46,14 +46,32 @@ public class OrderController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
-    /// <summary>Danh sách đơn hàng theo cửa hàng (phân trang).</summary>
+    /// <summary>Danh sách đơn hàng theo cửa hàng (phân trang và lọc).</summary>
     /// <param name="businessId">ID cửa hàng.</param>
     /// <param name="page">Trang hiện tại (bắt đầu từ 1).</param>
     /// <param name="pageSize">Số bản ghi mỗi trang.</param>
+    /// <param name="status">Trạng thái lọc.</param>
+    /// <param name="paymentMethod">Phương thức thanh toán lọc.</param>
+    /// <param name="minAmount">Tổng tiền nhỏ nhất lọc.</param>
+    /// <param name="maxAmount">Tổng tiền lớn nhất lọc.</param>
     [HttpGet("business/{businessId:guid}")]
-    public async Task<IActionResult> GetOrders(Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetOrders(
+        Guid businessId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? status = null,
+        [FromQuery] string? paymentMethod = null,
+        [FromQuery] decimal? minAmount = null,
+        [FromQuery] decimal? maxAmount = null)
     {
-        var result = await _orderService.GetOrdersByBusinessAsync(businessId, page, pageSize);
+        var result = await _orderService.GetOrdersByBusinessAsync(
+            businessId,
+            page,
+            pageSize,
+            status,
+            paymentMethod,
+            minAmount,
+            maxAmount);
         return Ok(
             ApiResponse<PagedResult<OrderSummaryResponse>>.Ok(
                 result,
@@ -106,6 +124,7 @@ public class OrderController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    /* Comment out discount & surcharge endpoints as they are currently not supported
     /// <summary>Áp dụng giảm giá toàn đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
     /// <param name="request">Loại và giá trị giảm giá.</param>
@@ -161,6 +180,7 @@ public class OrderController : ControllerBase
                 "Surcharge removed successfully",
                 HttpContext.TraceIdentifier));
     }
+    */
 
     /// <summary>Thanh toán và phát hành hóa đơn.</summary>
     /// <param name="id">ID đơn hàng.</param>
@@ -184,5 +204,18 @@ public class OrderController : ControllerBase
     {
         await _orderService.CancelOrderAsync(id);
         return Ok();
+    }
+
+    /// <summary>Xác nhận đã nhận tiền (đối soát thủ công cho VietQR).</summary>
+    /// <param name="id">ID đơn hàng.</param>
+    [HttpPost("{id:guid}/confirm-payment")]
+    public async Task<IActionResult> ConfirmPayment(Guid id)
+    {
+        var result = await _orderService.ConfirmPaymentAsync(id);
+        return Ok(
+            ApiResponse<InvoiceDetailResponse>.Ok(
+                result,
+                "Payment confirmed successfully",
+                HttpContext.TraceIdentifier));
     }
 }
