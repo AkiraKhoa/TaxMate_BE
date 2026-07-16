@@ -57,7 +57,6 @@ if (business is null)
         Id = productId,
         BusinessId = businessId,
         Name = "San pham test",
-        Category = ProductCategory.Fnb,
         Unit = "cai",
         Status = ProductStatus.Active,
         CreatedAt = now
@@ -373,7 +372,6 @@ static async Task SeedSalesDashboardDataAsync(
             BusinessId = businessId,
             Name = p.Name,
             Unit = p.Unit,
-            Category = ProductCategory.Fnb,
             Status = ProductStatus.Active,
             CreatedAt = now
         });
@@ -729,7 +727,7 @@ static async Task SeedExpensesAsync(
             ExpenseDate = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc),
             DueDate = (DateTime?)null,
             PaidDate = (DateTime?)new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc),
-            Note = "Thiết bị phục vụ bán hàng"
+            Note = (string?)"Thiết bị phục vụ bán hàng"
         },
         new
         {

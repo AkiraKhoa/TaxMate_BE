@@ -25,10 +25,6 @@ public class MappingProfile : Profile
         
         // SubscriptionPlan & PlanFeature mappings
         CreateMap<CreatePlanFeatureRequest, PlanFeature>();
-
-        CreateMap<SubscriptionPlan, SubscriptionPlanResponse>();
-
-        CreateMap<PlanFeature, PlanFeatureResponse>();    
         
         CreateMap<CreateSubscriptionPlanRequest, SubscriptionPlan>()
             .ForMember(

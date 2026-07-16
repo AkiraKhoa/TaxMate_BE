@@ -12,8 +12,8 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260707055615_AddSePayFields")]
-    partial class AddSePayFields
+    [Migration("20260715140931_InitialMigrate")]
+    partial class InitialMigrate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -90,6 +90,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("LastSePayLinkTokenXid")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<Guid?>("MainCategoryId")
                         .HasColumnType("uuid");
 
@@ -123,16 +127,128 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("BusinessProfiles");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("ChatConversations");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CompletionTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ModelName")
+                        .HasColumnType("text");
+
+                    b.Property<int>("PromptTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("TotalTokens")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatReference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChunkId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("LegalDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("SimilarityScore")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LegalDocumentId");
+
+                    b.HasIndex("MessageId");
+
+                    b.ToTable("ChatReferences");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.EInvoiceConfig", b =>
                 {
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ApiKey")
+                    b.Property<string>("BaseUrl")
+                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<string>("ApiUrl")
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ClientSecret")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -147,14 +263,17 @@ namespace TaxMate.Model.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Password")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
                     b.Property<string>("Provider")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ProviderAccountId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("QuotaWarningThreshold")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Symbol")
                         .HasMaxLength(50)
@@ -162,10 +281,6 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Username")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
 
                     b.HasKey("BusinessId");
 
@@ -279,6 +394,108 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("ExpenseCategories");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.Income", b =>
+                {
+                    b.Property<Guid>("IncomeId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("IncomeCategoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("IncomeDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IncomeTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ReceiptImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime?>("ReceivedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("IncomeId");
+
+                    b.HasIndex("BusinessId");
+
+                    b.HasIndex("IncomeCategoryId");
+
+                    b.HasIndex("IncomeDate");
+
+                    b.HasIndex("BusinessId", "IncomeDate");
+
+                    b.ToTable("Incomes");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
+                {
+                    b.Property<Guid>("IncomeCategoryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CategoryName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("IncomeCategoryId");
+
+                    b.HasIndex("BusinessId");
+
+                    b.HasIndex("BusinessId", "CategoryName")
+                        .IsUnique();
+
+                    b.ToTable("IncomeCategories");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Ingredient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -382,6 +599,22 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BuyerAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("BuyerCompanyName")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("BuyerEmail")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("BuyerTaxCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -403,6 +636,18 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("PdfUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("SePayMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SePayReferenceCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SePayTrackingCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -730,6 +975,256 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("SubscriptionPlanId");
 
                     b.ToTable("PlanFeatures");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("f1111111-1111-1111-1111-111111111111"),
+                            FeatureKey = "revenue_recording",
+                            FeatureName = "Ghi nhận doanh thu",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("f2222222-2222-2222-2222-222222222222"),
+                            FeatureKey = "revenue_aggregation_viz",
+                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("f3333333-3333-3333-3333-333333333333"),
+                            FeatureKey = "daily_revenue_reporting",
+                            FeatureName = "Báo cáo doanh thu hàng ngày",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("f4444444-4444-4444-4444-444444444444"),
+                            FeatureKey = "order_history_tracking",
+                            FeatureName = "Theo dõi lịch sử đơn hàng",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("f5555555-5555-5555-5555-555555555555"),
+                            FeatureKey = "best_selling_categories",
+                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("f6666666-6666-6666-6666-666666666666"),
+                            FeatureKey = "product_management",
+                            FeatureName = "Quản lý sản phẩm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b1111111-1111-1111-1111-111111111111"),
+                            FeatureKey = "revenue_recording",
+                            FeatureName = "Ghi nhận doanh thu",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b2222222-2222-2222-2222-222222222222"),
+                            FeatureKey = "revenue_aggregation_viz",
+                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b3333333-3333-3333-3333-333333333333"),
+                            FeatureKey = "daily_revenue_reporting",
+                            FeatureName = "Báo cáo doanh thu hàng ngày",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b4444444-4444-4444-4444-444444444444"),
+                            FeatureKey = "order_history_tracking",
+                            FeatureName = "Theo dõi lịch sử đơn hàng",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b5555555-5555-5555-5555-555555555555"),
+                            FeatureKey = "best_selling_categories",
+                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b6666666-6666-6666-6666-666666666666"),
+                            FeatureKey = "product_management",
+                            FeatureName = "Quản lý sản phẩm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b7777777-7777-7777-7777-777777777777"),
+                            FeatureKey = "expense_recording_monitoring",
+                            FeatureName = "Ghi nhận & giám sát chi phí",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b8888888-8888-8888-8888-888888888888"),
+                            FeatureKey = "estimated_profitability_dashboard",
+                            FeatureName = "Bảng điều khiển lợi nhuận ước tính",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("b9999999-9999-9999-9999-999999999999"),
+                            FeatureKey = "ai_tax_guidance",
+                            FeatureName = "Tư vấn thuế AI",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("baaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                            FeatureKey = "rag_legal_retrieval",
+                            FeatureName = "Tra cứu thông tin luật RAG",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                            FeatureKey = "business_insight_reports",
+                            FeatureName = "Báo cáo insight kinh doanh",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e1111111-1111-1111-1111-111111111111"),
+                            FeatureKey = "revenue_recording",
+                            FeatureName = "Ghi nhận doanh thu",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e2222222-2222-2222-2222-222222222222"),
+                            FeatureKey = "revenue_aggregation_viz",
+                            FeatureName = "Tổng hợp doanh thu theo tháng/năm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e3333333-3333-3333-3333-333333333333"),
+                            FeatureKey = "daily_revenue_reporting",
+                            FeatureName = "Báo cáo doanh thu hàng ngày",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e4444444-4444-4444-4444-444444444444"),
+                            FeatureKey = "order_history_tracking",
+                            FeatureName = "Theo dõi lịch sử đơn hàng",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e5555555-5555-5555-5555-555555555555"),
+                            FeatureKey = "best_selling_categories",
+                            FeatureName = "Danh mục sản phẩm bán chạy nhất",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e6666666-6666-6666-6666-666666666666"),
+                            FeatureKey = "product_management",
+                            FeatureName = "Quản lý sản phẩm",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e7777777-7777-7777-7777-777777777777"),
+                            FeatureKey = "expense_recording_monitoring",
+                            FeatureName = "Ghi nhận & giám sát chi phí",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e8888888-8888-8888-8888-888888888888"),
+                            FeatureKey = "estimated_profitability_dashboard",
+                            FeatureName = "Bảng điều khiển lợi nhuận ước tính",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("e9999999-9999-9999-9999-999999999999"),
+                            FeatureKey = "ai_tax_guidance",
+                            FeatureName = "Tư vấn thuế AI",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                            FeatureKey = "rag_legal_retrieval",
+                            FeatureName = "Tra cứu thông tin luật RAG",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("ebbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                            FeatureKey = "business_insight_reports",
+                            FeatureName = "Báo cáo insight kinh doanh",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("eaaaaaaa-cccc-cccc-cccc-cccccccccccc"),
+                            FeatureKey = "einvoice_integration",
+                            FeatureName = "Tích hợp hóa đơn điện tử",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("ebbbbbbb-dddd-dddd-dddd-dddddddddddd"),
+                            FeatureKey = "advanced_analytics",
+                            FeatureName = "Phân tích kinh doanh nâng cao",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        },
+                        new
+                        {
+                            Id = new Guid("ececcccc-eeee-eeee-eeee-eeeeeeeeeeee"),
+                            FeatureKey = "growth_readiness_monitoring",
+                            FeatureName = "Giám sát mức độ sẵn sàng tăng trưởng",
+                            IsEnabled = true,
+                            SubscriptionPlanId = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d")
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
@@ -907,6 +1402,42 @@ namespace TaxMate.Model.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SubscriptionPlans");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("a1d1c694-d271-460b-8835-2b2e6a1b8c1d"),
+                            AnnualPrice = 0m,
+                            Description = "Trải nghiệm các tính năng quản lý cơ bản",
+                            IsActive = true,
+                            MaxProducts = 50,
+                            MaxTransactionsPerMonth = 100,
+                            MonthlyPrice = 0m,
+                            Name = "Gói Miễn Phí",
+                            SortOrder = 0
+                        },
+                        new
+                        {
+                            Id = new Guid("b2d2c694-d271-460b-8835-2b2e6a1b8c2d"),
+                            AnnualPrice = 990000m,
+                            Description = "Phù hợp cho hộ kinh doanh cá thể nhỏ",
+                            IsActive = true,
+                            MaxProducts = 500,
+                            MaxTransactionsPerMonth = 1000,
+                            MonthlyPrice = 99000m,
+                            Name = "Gói Hộ Kinh Doanh",
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("c3d3c694-d271-460b-8835-2b2e6a1b8c3d"),
+                            AnnualPrice = 1990000m,
+                            Description = "Giải pháp toàn diện cho doanh nghiệp tăng trưởng",
+                            IsActive = true,
+                            MonthlyPrice = 199000m,
+                            Name = "Gói Doanh Nghiệp Cao Cấp",
+                            SortOrder = 2
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Supplier", b =>
@@ -1119,6 +1650,11 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("TransactionDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1143,6 +1679,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("TransactionItemId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("CostAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1185,6 +1725,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
@@ -1281,6 +1825,39 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.UserDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeviceToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastActiveAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserDevices");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.UserSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1369,6 +1946,54 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TaxMate.Model.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.ChatConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatReference", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.LegalDocument", "LegalDocument")
+                        .WithMany()
+                        .HasForeignKey("LegalDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaxMate.Model.Entities.ChatMessage", "Message")
+                        .WithMany("References")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LegalDocument");
+
+                    b.Navigation("Message");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.EInvoiceConfig", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
@@ -1407,6 +2032,35 @@ namespace TaxMate.Model.Migrations
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Business");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.Income", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany("Incomes")
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TaxMate.Model.Entities.IncomeCategory", "IncomeCategory")
+                        .WithMany("Incomes")
+                        .HasForeignKey("IncomeCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Business");
+
+                    b.Navigation("IncomeCategory");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
                         .WithMany()
@@ -1651,6 +2305,17 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Transaction");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.UserDevice", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.UserSubscription", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.SubscriptionPlan", "SubscriptionPlan")
@@ -1681,6 +2346,8 @@ namespace TaxMate.Model.Migrations
 
                     b.Navigation("Expenses");
 
+                    b.Navigation("Incomes");
+
                     b.Navigation("IngredientPurchases");
 
                     b.Navigation("Invoices");
@@ -1694,9 +2361,24 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Transactions");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatConversation", b =>
+                {
+                    b.Navigation("Messages");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.ChatMessage", b =>
+                {
+                    b.Navigation("References");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
                 {
                     b.Navigation("Expenses");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
+                {
+                    b.Navigation("Incomes");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Ingredient", b =>
