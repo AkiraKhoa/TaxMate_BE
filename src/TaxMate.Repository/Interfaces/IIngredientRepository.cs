@@ -4,6 +4,11 @@ namespace TaxMate.Repository.Interfaces;
 
 public interface IIngredientRepository : IGenericRepository<Ingredient>
 {
-    Task<(List<Ingredient> Items, int TotalCount)> GetPagedAsync(
-        int pageNumber, int pageSize, string? search);
+    Task<Ingredient?> GetByIdAndBusinessAsync(Guid id, Guid businessId);
+
+    Task<(List<Ingredient> Items, int TotalCount)> GetPagedByBusinessAsync(
+        Guid businessId,
+        int pageNumber,
+        int pageSize,
+        string? search);
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using TaxMate.Model.Common;
 
 namespace TaxMate.Model.DTO;
 

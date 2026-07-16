@@ -11,20 +11,29 @@ public class IngredientService : IIngredientService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IIngredientRepository _ingredients;
+    private readonly IGenericRepository<BusinessProfile> _businessProfiles;
 
     public IngredientService(
         IUnitOfWork unitOfWork,
-        IIngredientRepository ingredients)
+        IIngredientRepository ingredients,
+        IGenericRepository<BusinessProfile> businessProfiles)
     {
         _unitOfWork = unitOfWork;
         _ingredients = ingredients;
+        _businessProfiles = businessProfiles;
     }
 
-    public async Task<IngredientResponse> CreateAsync(CreateIngredientRequest request)
+    public async Task<IngredientResponse> CreateAsync(
+        Guid ownerId,
+        Guid businessId,
+        CreateIngredientRequest request)
     {
-        // Check duplicate name
-        var exists = await _ingredients
-            .AnyAsync(x => x.Name.ToLower() == request.Name.ToLower() && !x.IsDeleted);
+        await EnsureBusinessOwnerAsync(businessId, ownerId);
+
+        var exists = await _ingredients.AnyAsync(x =>
+            x.BusinessId == businessId
+            && x.Name.ToLower() == request.Name.ToLower()
+            && !x.IsDeleted);
 
         if (exists)
             throw new ConflictException($"Ingredient with name '{request.Name}' already exists.");
@@ -32,7 +41,8 @@ public class IngredientService : IIngredientService
         var entity = new Ingredient
         {
             Id = Guid.NewGuid(),
-            Name = request.Name,
+            BusinessId = businessId,
+            Name = request.Name.Trim(),
             Unit = request.Unit,
             EstimatedPrice = request.EstimatedPrice,
             IsDeleted = false
@@ -44,25 +54,30 @@ public class IngredientService : IIngredientService
         return MapToResponse(entity);
     }
 
-    public async Task<IngredientResponse> UpdateAsync(Guid id, UpdateIngredientRequest request)
+    public async Task<IngredientResponse> UpdateAsync(
+        Guid ownerId,
+        Guid id,
+        UpdateIngredientRequest request)
     {
         var entity = await _ingredients.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient with id '{id}' not found.");
 
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
         if (entity.IsDeleted)
             throw new ConflictException($"Ingredient with id '{id}' has been deactivated.");
 
-        // Check duplicate name (exclude current)
-        var duplicate = await _ingredients
-            .AnyAsync(x => x.Name.ToLower() == request.Name.ToLower()
-                           && x.Id != id
-                           && !x.IsDeleted);
+        var duplicate = await _ingredients.AnyAsync(x =>
+            x.BusinessId == entity.BusinessId
+            && x.Name.ToLower() == request.Name.ToLower()
+            && x.Id != id
+            && !x.IsDeleted);
 
         if (duplicate)
             throw new ConflictException($"Ingredient with name '{request.Name}' already exists.");
 
-        entity.Name = request.Name;
+        entity.Name = request.Name.Trim();
         entity.Unit = request.Unit;
         entity.EstimatedPrice = request.EstimatedPrice;
 
@@ -72,11 +87,13 @@ public class IngredientService : IIngredientService
         return MapToResponse(entity);
     }
 
-    public async Task DeactivateAsync(Guid id)
+    public async Task DeactivateAsync(Guid ownerId, Guid id)
     {
         var entity = await _ingredients.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
 
         if (entity.IsDeleted)
             throw new ConflictException($"Ingredient with id '{id}' is already deactivated.");
@@ -86,11 +103,17 @@ public class IngredientService : IIngredientService
         await _unitOfWork.SaveChangesAsync();
     }
 
-    public async Task<PagedResult<IngredientResponse>> GetPagedAsync(
-        int pageNumber, int pageSize, string? search)
+    public async Task<PagedResult<IngredientResponse>> GetPagedByBusinessAsync(
+        Guid ownerId,
+        Guid businessId,
+        int pageNumber,
+        int pageSize,
+        string? search)
     {
+        await EnsureBusinessOwnerAsync(businessId, ownerId);
+
         var (items, totalCount) = await _ingredients
-            .GetPagedAsync(pageNumber, pageSize, search);
+            .GetPagedByBusinessAsync(businessId, pageNumber, pageSize, search);
 
         return new PagedResult<IngredientResponse>
         {
@@ -101,13 +124,25 @@ public class IngredientService : IIngredientService
         };
     }
 
-    public async Task<IngredientResponse> GetByIdAsync(Guid id)
+    public async Task<IngredientResponse> GetByIdAsync(Guid ownerId, Guid id)
     {
         var entity = await _ingredients.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient with id '{id}' not found.");
 
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
         return MapToResponse(entity);
+    }
+
+    private async Task EnsureBusinessOwnerAsync(Guid businessId, Guid ownerId)
+    {
+        var business = await _businessProfiles.GetByIdAsync(businessId);
+        if (business is null)
+            throw new NotFoundException("Business profile not found.");
+
+        if (business.OwnerId != ownerId)
+            throw new UnauthorizedAccessException("You do not own this business.");
     }
 
     private static IngredientResponse MapToResponse(Ingredient entity)
@@ -115,6 +150,7 @@ public class IngredientService : IIngredientService
         return new IngredientResponse
         {
             Id = entity.Id,
+            BusinessId = entity.BusinessId,
             Name = entity.Name,
             Unit = entity.Unit,
             EstimatedPrice = entity.EstimatedPrice,

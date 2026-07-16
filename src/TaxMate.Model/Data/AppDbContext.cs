@@ -404,6 +404,19 @@ public class AppDbContext : DbContext
             .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
         // Product Ingredient
         modelBuilder.Entity<ProductIngredient>()
             .HasKey(x => new
