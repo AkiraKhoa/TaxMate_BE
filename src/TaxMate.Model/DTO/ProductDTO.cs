@@ -1,9 +1,12 @@
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.DTO;
 
 public class CreateProductRequest
 {
+    [Required]
+    [MaxLength(200)]
     public string Name { get; set; } = null!;
     public ProductCategory? Category { get; set; }
     public string? Description { get; set; }
@@ -13,6 +16,8 @@ public class CreateProductRequest
 
 public class UpdateProductRequest
 {
+    [Required]
+    [MaxLength(200)]
     public string Name { get; set; } = null!;
     public ProductCategory? Category { get; set; }
     public string? Description { get; set; }

@@ -57,6 +57,17 @@ public class ProductController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        await _productService.DeleteAsync(GetUserId(), id);
+        return Ok(
+            ApiResponse<object?>.Ok(
+                null,
+                "Product deleted successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetPaged(
         Guid businessId,

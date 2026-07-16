@@ -35,6 +35,9 @@ public class BusinessProfile : BaseEntity
     public ICollection<Product> Products { get; set; }
         = new List<Product>();
 
+    public ICollection<Ingredient> Ingredients { get; set; }
+        = new List<Ingredient>();
+
     public ICollection<Invoice> Invoices { get; set; }
         = new List<Invoice>();
 

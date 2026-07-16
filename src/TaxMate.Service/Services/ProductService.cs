@@ -104,6 +104,18 @@ public class ProductService : IProductService
         return MapToResponse(entity);
     }
 
+    public async Task DeleteAsync(Guid ownerId, Guid id)
+    {
+        var entity = await _products.GetByIdWithPricesAsync(id);
+        if (entity is null)
+            throw new NotFoundException($"Product with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
+        _products.Remove(entity);
+        await _unitOfWork.SaveChangesAsync();
+    }
+
     public async Task<PagedResult<ProductResponse>> GetPagedByBusinessAsync(
         Guid ownerId,
         Guid businessId,
