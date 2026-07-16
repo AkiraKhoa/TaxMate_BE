@@ -26,7 +26,10 @@ public class SmtpEmailService : IEmailService
         string verificationToken,
         CancellationToken cancellationToken = default)
     {
-        var baseUrl = _appOptions.ApiBaseUrl.TrimEnd('/');
+        var linkBase = string.IsNullOrWhiteSpace(_appOptions.VerificationLinkBaseUrl)
+            ? _appOptions.ApiBaseUrl
+            : _appOptions.VerificationLinkBaseUrl;
+        var baseUrl = linkBase.TrimEnd('/');
         var path = _appOptions.VerificationPath.StartsWith('/')
             ? _appOptions.VerificationPath
             : $"/{_appOptions.VerificationPath}";

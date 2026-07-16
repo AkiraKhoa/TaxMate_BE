@@ -27,4 +27,38 @@ public interface IReportRepository
     
     Task<List<ActiveSalesMonthResponse>> GetActiveSalesMonthsAsync(
         Guid businessId);
+    
+    Task<EstimatedProfitSummaryResponse> GetEstimatedProfitSummaryAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+
+    Task<List<EstimatedProfitTrendResponse>> GetEstimatedProfitTrendAsync(
+        Guid businessId,
+        int year);
+    
+    Task<List<ActiveSalesQuarterResponse>> GetActiveSalesQuartersAsync(
+        Guid businessId);
+    Task<CashFlowSummaryResponse> GetCashFlowSummaryAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+
+    Task<List<ExpenseDistributionResponse>> GetExpenseDistributionAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+
+    Task<List<CashFlowTrendResponse>> GetCashFlowTrendAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+    
+    Task<decimal> GetAccumulatedRevenueAsync(
+        Guid businessId,
+        int year);
+
+    Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesAsync(
+        Guid businessId,
+        int year);
 }

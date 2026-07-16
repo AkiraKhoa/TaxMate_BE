@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO.Auth;
@@ -12,8 +13,7 @@ namespace TaxMate.Service.Services;
 
 public class AuthService : IAuthService
 {
-    private const int VerificationTokenExpiryMinutes = 1440;
-
+    private readonly int _verificationTokenExpiryMinutes;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IGenericRepository<User> _users;
     private readonly IGoogleTokenValidator _googleTokenValidator;
@@ -29,7 +29,8 @@ public class AuthService : IAuthService
         IJwtService jwtService,
         IPasswordHasher passwordHasher,
         IEmailService emailService,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        IConfiguration configuration)
     {
         _unitOfWork = unitOfWork;
         _users = users;
@@ -38,6 +39,9 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _emailService = emailService;
         _logger = logger;
+        _verificationTokenExpiryMinutes = configuration.GetValue(
+            "App:VerificationTokenExpiryMinutes",
+            1440);
     }
 
     public async Task<AuthResponse> RegisterAsync(
@@ -115,7 +119,17 @@ public class AuthService : IAuthService
 
         if (user.AccountStatus == AccountStatus.Pending)
         {
-            throw new AccountPendingException();
+            await EnsurePendingVerificationTokenAsync(user, userRepo, cancellationToken);
+
+            var (pendingToken, pendingExpiresAt) = _jwtService.GenerateToken(user);
+
+            return new AuthResponse
+            {
+                AccessToken = pendingToken,
+                ExpiresAt = pendingExpiresAt,
+                User = MapToDto(user),
+                RequiresEmailVerification = true
+            };
         }
 
         var (accessToken, jwtExpiresAt) = _jwtService.GenerateToken(user);
@@ -169,17 +183,15 @@ public class AuthService : IAuthService
             user.FullName = googleUser.FullName;
             user.AvatarUrl = googleUser.AvatarUrl;
 
-            if (user.AccountStatus == AccountStatus.Pending
-                && string.IsNullOrEmpty(user.EmailVerificationToken))
+            if (user.AccountStatus == AccountStatus.Pending)
             {
-                var (token, expiresAt) = CreateVerificationToken();
-                user.EmailVerificationToken = token;
-                user.EmailVerificationTokenExpiresAt = expiresAt;
-                await TrySendVerificationEmailAsync(user, cancellationToken);
+                await EnsurePendingVerificationTokenAsync(user, userRepo, cancellationToken);
             }
-
-            userRepo.Update(user);
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            else
+            {
+                userRepo.Update(user);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
         }
 
         var (accessToken, jwtExpiresAt) = _jwtService.GenerateToken(user);
@@ -252,6 +264,31 @@ public class AuthService : IAuthService
             ?? throw new KeyNotFoundException("Không tìm thấy người dùng.");
 
         return MapToDto(user);
+    }
+
+    private async Task EnsurePendingVerificationTokenAsync(
+        User user,
+        IGenericRepository<User> userRepo,
+        CancellationToken cancellationToken)
+    {
+        var needsNewToken = string.IsNullOrEmpty(user.EmailVerificationToken)
+            || user.EmailVerificationTokenExpiresAt is null
+            || DateTime.UtcNow > user.EmailVerificationTokenExpiresAt;
+
+        if (needsNewToken)
+        {
+            var (token, expiresAt) = CreateVerificationToken();
+            user.EmailVerificationToken = token;
+            user.EmailVerificationTokenExpiresAt = expiresAt;
+        }
+
+        userRepo.Update(user);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        if (needsNewToken)
+        {
+            await TrySendVerificationEmailAsync(user, cancellationToken);
+        }
     }
 
     private async Task TrySendVerificationEmailAsync(
@@ -355,7 +392,7 @@ public class AuthService : IAuthService
         }
     }
 
-    private static (string Token, DateTime ExpiresAt) CreateVerificationToken()
+    private (string Token, DateTime ExpiresAt) CreateVerificationToken()
     {
         var bytes = RandomNumberGenerator.GetBytes(32);
         var token = Convert.ToBase64String(bytes)
@@ -363,7 +400,7 @@ public class AuthService : IAuthService
             .Replace('+', '-')
             .Replace('/', '_');
 
-        return (token, DateTime.UtcNow.AddMinutes(VerificationTokenExpiryMinutes));
+        return (token, DateTime.UtcNow.AddMinutes(_verificationTokenExpiryMinutes));
     }
 
     private static UserDto MapToDto(User user) => new()

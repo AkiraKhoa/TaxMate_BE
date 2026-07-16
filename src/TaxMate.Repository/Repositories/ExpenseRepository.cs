@@ -26,6 +26,7 @@ public class ExpenseRepository : GenericRepository<Expense>, IExpenseRepository
     {
         var query = _appContext.Expenses
             .Include(x => x.ExpenseCategory)
+            .Include(x => x.Supplier)
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -80,6 +81,7 @@ public class ExpenseRepository : GenericRepository<Expense>, IExpenseRepository
     {
         return await _appContext.Expenses
             .Include(x => x.ExpenseCategory)
+            .Include(x => x.Supplier)
             .FirstOrDefaultAsync(x => x.ExpenseId == id);
     }
 }

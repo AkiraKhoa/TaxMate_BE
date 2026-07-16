@@ -16,17 +16,24 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IBusinessProfileRepository, BusinessProfileRepository>();
         services.AddScoped<IIngredientRepository, IngredientRepository>();
+        services.AddScoped<IIngredientPurchaseRepository, IngredientPurchaseRepository>();
+        services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanRepository>();
+        services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
+        services.AddScoped<IProductCategoryRepository, ProductCategoryRepository>();
+        services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IProductPriceRepository, ProductPriceRepository>();
         services.AddScoped<IExpenseCategoryRepository, ExpenseCategoryRepository>();
         services.AddScoped<IExpenseRepository, ExpenseRepository>();
         services.AddScoped<IProductIngredientRepository, ProductIngredientRepository>();
+        services.AddScoped<IDashboardAnalyticsRepository, DashboardAnalyticsRepository>();
         services.AddScoped<IIncomeCategoryRepository, IncomeCategoryRepository>();
         services.AddScoped<IIncomeRepository, IncomeRepository>();
 
         services.AddScoped<IUserDeviceRepository, UserDeviceRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
         
+
         return services;
     }
 }

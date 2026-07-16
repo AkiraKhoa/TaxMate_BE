@@ -39,6 +39,12 @@ public class TransactionItem : BaseEntity
 
     [MaxLength(500)]
     public string? Note { get; set; }
+    
+    [Precision(18,2)]
+    public decimal UnitCost { get; set; }
+
+    [Precision(18,2)]
+    public decimal CostAmount { get; set; }
 
     public Transaction Transaction { get; set; } = null!;
     public Product? Product { get; set; }

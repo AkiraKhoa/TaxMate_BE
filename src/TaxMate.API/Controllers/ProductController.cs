@@ -64,10 +64,10 @@ public class ProductController : ControllerBase
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
         [FromQuery] string? status = null,
-        [FromQuery] ProductCategory? category = null)
+        [FromQuery] Guid? productCategoryId = null)
     {
         var result = await _productService.GetPagedByBusinessAsync(
-            GetUserId(), businessId, pageNumber, pageSize, search, status, category);
+            GetUserId(), businessId, pageNumber, pageSize, search, status, productCategoryId);
         return Ok(
             ApiResponse<PagedResult<ProductResponse>>.Ok(
                 result,

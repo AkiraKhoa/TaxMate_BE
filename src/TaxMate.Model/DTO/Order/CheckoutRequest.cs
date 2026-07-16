@@ -8,6 +8,11 @@ public class CheckoutRequest
     /// <summary>Danh sách các khoản thanh toán. Tổng amount phải &gt;= tổng đơn.</summary>
     [Required]
     public List<PaymentEntry> Payments { get; set; } = new();
+
+    public string? BuyerTaxCode { get; set; }
+    public string? BuyerCompanyName { get; set; }
+    public string? BuyerAddress { get; set; }
+    public string? BuyerEmail { get; set; }
 }
 
 /// <summary>Một khoản thanh toán trong checkout.</summary>

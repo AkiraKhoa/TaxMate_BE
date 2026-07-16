@@ -14,4 +14,21 @@ public interface IReportService
     
     Task<List<ActiveSalesMonthResponse>> GetActiveSalesMonthsAsync(
         Guid businessId);
+    
+    Task<EstimatedProfitDashboardResponse> GetEstimatedProfitDashboardAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+    
+    Task<List<ActiveSalesQuarterResponse>> GetActiveSalesQuartersAsync(
+        Guid businessId);
+    
+    Task<CashFlowDashboardResponse> GetCashFlowDashboardAsync(
+        Guid businessId,
+        int year,
+        int quarter);
+    
+    Task<TaxDashboardResponse> GetTaxDashboardAsync(
+        Guid businessId,
+        int year);
 }

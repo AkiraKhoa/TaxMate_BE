@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using QuestPDF.Infrastructure;
 using TaxMate.Infrastructure.Pdf;
 using TaxMate.Infrastructure.Auth;
 using TaxMate.Infrastructure.Email;
 using TaxMate.Infrastructure.Options;
+using TaxMate.Infrastructure.Rag;
 using TaxMate.Infrastructure.Sms;
 using TaxMate.Infrastructure.Storage;
 using TaxMate.Service.Interfaces;
@@ -49,6 +51,21 @@ public static class DependencyInjection
 
         services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
+        services.Configure<RagApiOptions>(
+            configuration.GetSection(RagApiOptions.SectionName));
+
+        services.AddHttpClient<IRagClient, RagClient>((serviceProvider, client) =>
+        {
+            var options = serviceProvider
+                .GetRequiredService<IOptions<RagApiOptions>>()
+                .Value;
+
+            client.BaseAddress = new Uri(options.BaseUrl);
+
+            client.Timeout = TimeSpan.FromSeconds(
+                options.TimeoutSeconds);
+        });
+        
         return services;
     }
 }

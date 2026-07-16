@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 
@@ -37,6 +37,9 @@ public class Expense : BaseEntity
 
     public DateTime? PaidDate { get; set; }
     
+    public Guid? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
+
     public BusinessProfile Business { get; set; } = null!;
 
     public ExpenseCategory ExpenseCategory { get; set; } = null!;

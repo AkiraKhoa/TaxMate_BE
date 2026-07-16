@@ -21,10 +21,11 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         int pageSize,
         string? search,
         string? status,
-        ProductCategory? category)
+        Guid? productCategoryId)
     {
         var query = _appContext.Products
             .Include(x => x.ProductPrices)
+            .Include(x => x.ProductCategory)
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -39,9 +40,9 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             query = query.Where(x => x.Status == status);
         }
 
-        if (category.HasValue)
+        if (productCategoryId.HasValue)
         {
-            query = query.Where(x => x.Category == category.Value);
+            query = query.Where(x => x.ProductCategoryId == productCategoryId.Value);
         }
 
         var totalCount = await query.CountAsync();
@@ -59,6 +60,7 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
     {
         return await _appContext.Products
             .Include(x => x.ProductPrices)
+            .Include(x => x.ProductCategory)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 }
