@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 using TaxMate.Model.Data;
 using TaxMate.Model.DTO.Reports;
 using TaxMate.Repository.Interfaces;
@@ -219,6 +220,362 @@ public class ReportRepository : IReportRepository
         foreach (var item in result)
         {
             item.Label = $"Tháng {item.Month}/{item.Year}";
+        }
+
+        return result;
+    }
+    
+    public async Task<EstimatedProfitSummaryResponse> GetEstimatedProfitSummaryAsync(
+        Guid businessId,
+        int year,
+        int quarter)
+    {
+        var startMonth = ((quarter - 1) * 3) + 1;
+
+        var startDate = new DateTime(
+            year,
+            startMonth,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddMonths(3);
+
+        var revenue = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate)
+            .SumAsync(x => x.TotalAmount);
+
+        var costOfGoodsSold = await _context.TransactionItems
+            .Where(x =>
+                x.Transaction.BusinessId == businessId &&
+                x.Transaction.Status == "Completed" &&
+                x.Transaction.TransactionDate >= startDate &&
+                x.Transaction.TransactionDate < endDate)
+            .SumAsync(x => x.CostAmount);
+
+        return new EstimatedProfitSummaryResponse
+        {
+            Revenue = revenue,
+            CostOfGoodsSold = costOfGoodsSold,
+            Profit = revenue - costOfGoodsSold
+        };
+    }
+    
+    public async Task<List<EstimatedProfitTrendResponse>> GetEstimatedProfitTrendAsync(
+        Guid businessId,
+        int year)
+    {
+        var startDate = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddYears(1);
+
+        var monthlyData = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate)
+            .Select(x => new
+            {
+                Month = x.TransactionDate.Month,
+                Revenue = x.TotalAmount,
+                Cost = x.TransactionItems.Sum(i => i.CostAmount)
+            })
+            .ToListAsync();
+
+        var result = new List<EstimatedProfitTrendResponse>();
+
+        for (var month = 1; month <= 12; month++)
+        {
+            var revenue = monthlyData
+                .Where(x => x.Month == month)
+                .Sum(x => x.Revenue);
+
+            var cost = monthlyData
+                .Where(x => x.Month == month)
+                .Sum(x => x.Cost);
+
+            result.Add(new EstimatedProfitTrendResponse
+            {
+                Month = month,
+                Label = $"T{month}",
+                Profit = revenue - cost
+            });
+        }
+
+        return result;
+    }
+    
+    public async Task<List<ActiveSalesQuarterResponse>> GetActiveSalesQuartersAsync(
+        Guid businessId)
+    {
+        var result = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed")
+            .GroupBy(x => new
+            {
+                x.TransactionDate.Year,
+                Quarter = ((x.TransactionDate.Month - 1) / 3) + 1
+            })
+            .Select(g => new ActiveSalesQuarterResponse
+            {
+                Year = g.Key.Year,
+                Quarter = g.Key.Quarter,
+                TotalOrders = g.Count(),
+                TotalRevenue = g.Sum(x => x.TotalAmount)
+            })
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Quarter)
+            .ToListAsync();
+
+        foreach (var item in result)
+        {
+            item.StartMonth = ((item.Quarter - 1) * 3) + 1;
+            item.EndMonth = item.StartMonth + 2;
+
+            item.Label =
+                $"Quý {ToRomanQuarter(item.Quarter)}/{item.Year} ({item.StartMonth:00}-{item.EndMonth:00}/{item.Year})";
+        }
+
+        return result;
+    }
+
+    private static string ToRomanQuarter(int quarter)
+    {
+        return quarter switch
+        {
+            1 => "I",
+            2 => "II",
+            3 => "III",
+            4 => "IV",
+            _ => quarter.ToString()
+        };
+    }
+    
+    public async Task<CashFlowSummaryResponse> GetCashFlowSummaryAsync(
+        Guid businessId,
+        int year,
+        int quarter)
+    {
+        var startMonth = ((quarter - 1) * 3) + 1;
+
+        var startDate = new DateTime(
+            year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var endDate = startDate.AddMonths(3);
+
+        var totalIncome = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate)
+            .SumAsync(x => x.TotalAmount);
+
+        var totalExpense = await _context.Expenses
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.ExpenseDate >= startDate &&
+                x.ExpenseDate < endDate)
+            .SumAsync(x => x.Amount);
+
+        return new CashFlowSummaryResponse
+        {
+            TotalIncome = totalIncome,
+            TotalExpense = totalExpense,
+            NetAmount = totalIncome - totalExpense
+        };
+    }
+    
+    public async Task<List<ExpenseDistributionResponse>> GetExpenseDistributionAsync(
+        Guid businessId,
+        int year,
+        int quarter)
+    {
+        var startMonth = ((quarter - 1) * 3) + 1;
+
+        var startDate = new DateTime(
+            year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var endDate = startDate.AddMonths(3);
+
+        var totalExpense = await _context.Expenses
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.ExpenseDate >= startDate &&
+                x.ExpenseDate < endDate)
+            .SumAsync(x => x.Amount);
+
+        if (totalExpense == 0)
+        {
+            return [];
+        }
+
+        return await _context.Expenses
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.ExpenseDate >= startDate &&
+                x.ExpenseDate < endDate)
+            .GroupBy(x => x.ExpenseCategory.CategoryName)
+            .Select(g => new ExpenseDistributionResponse
+            {
+                CategoryName = g.Key,
+                Amount = g.Sum(x => x.Amount),
+                Percentage = Math.Round(
+                    g.Sum(x => x.Amount) / totalExpense * 100,
+                    2)
+            })
+            .OrderByDescending(x => x.Amount)
+            .ToListAsync();
+    }
+    
+    public async Task<List<CashFlowTrendResponse>> GetCashFlowTrendAsync(
+        Guid businessId,
+        int year,
+        int quarter)
+    {
+        var startMonth = ((quarter - 1) * 3) + 1;
+
+        var startDate = new DateTime(
+            year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var endDate = startDate.AddMonths(3);
+
+        var incomes = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate)
+            .GroupBy(x => x.TransactionDate.Month)
+            .Select(g => new
+            {
+                Month = g.Key,
+                Income = g.Sum(x => x.TotalAmount)
+            })
+            .ToListAsync();
+
+        var expenses = await _context.Expenses
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.ExpenseDate >= startDate &&
+                x.ExpenseDate < endDate)
+            .GroupBy(x => x.ExpenseDate.Month)
+            .Select(g => new
+            {
+                Month = g.Key,
+                Expense = g.Sum(x => x.Amount)
+            })
+            .ToListAsync();
+
+        var result = new List<CashFlowTrendResponse>();
+
+        for (var i = 0; i < 3; i++)
+        {
+            var month = startMonth + i;
+
+            result.Add(new CashFlowTrendResponse
+            {
+                Month = month,
+                Label = $"Tháng {month}",
+                Income = incomes.FirstOrDefault(x => x.Month == month)?.Income ?? 0,
+                Expense = expenses.FirstOrDefault(x => x.Month == month)?.Expense ?? 0
+            });
+        }
+
+        return result;
+    }
+    
+    public async Task<decimal> GetAccumulatedRevenueAsync(
+        Guid businessId,
+        int year)
+    {
+        var startDate = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddYears(1);
+
+        return await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate &&
+                (
+                    x.TransactionType == TransactionTypes.Sale ||
+                    x.TransactionType == TransactionTypes.ServiceRevenue ||
+                    x.TransactionType == TransactionTypes.OtherRevenue ||
+                    x.TransactionType == TransactionTypes.AdjustmentIncrease
+                ))
+            .SumAsync(x => x.TotalAmount);
+    }
+    
+    public async Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesAsync(
+        Guid businessId,
+        int year)
+    {
+        var startDate = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddYears(1);
+
+        var revenues = await _context.Transactions
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate &&
+                (
+                    x.TransactionType == TransactionTypes.Sale ||
+                    x.TransactionType == TransactionTypes.ServiceRevenue ||
+                    x.TransactionType == TransactionTypes.OtherRevenue ||
+                    x.TransactionType == TransactionTypes.AdjustmentIncrease
+                ))
+            .GroupBy(x => ((x.TransactionDate.Month - 1) / 3) + 1)
+            .Select(g => new
+            {
+                Quarter = g.Key,
+                Revenue = g.Sum(x => x.TotalAmount)
+            })
+            .ToListAsync();
+
+        var result = new List<TaxQuarterRevenueResponse>();
+
+        for (var quarter = 1; quarter <= 4; quarter++)
+        {
+            result.Add(new TaxQuarterRevenueResponse
+            {
+                Quarter = quarter,
+                Revenue = revenues
+                    .FirstOrDefault(x => x.Quarter == quarter)
+                    ?.Revenue ?? 0
+            });
         }
 
         return result;

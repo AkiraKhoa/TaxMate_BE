@@ -28,11 +28,40 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
             .FirstOrDefaultAsync(x => x.InvoiceId == invoiceNumber);
     }
 
-    public async Task<IEnumerable<Transaction>> GetByBusinessIdAsync(Guid businessId, int page, int pageSize)
+    public async Task<IEnumerable<Transaction>> GetByBusinessIdAsync(
+        Guid businessId,
+        int page,
+        int pageSize,
+        string? status = null,
+        string? paymentMethod = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null)
     {
-        return await _dbSet
+        var query = _dbSet
             .Include(x => x.TransactionItems)
-            .Where(x => x.BusinessId == businessId)
+            .Where(x => x.BusinessId == businessId);
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            query = query.Where(x => x.Status == status);
+        }
+
+        if (!string.IsNullOrEmpty(paymentMethod))
+        {
+            query = query.Where(x => x.Payments.Any(p => p.PaymentMethod == paymentMethod));
+        }
+
+        if (minAmount.HasValue)
+        {
+            query = query.Where(x => x.TotalAmount >= minAmount.Value);
+        }
+
+        if (maxAmount.HasValue)
+        {
+            query = query.Where(x => x.TotalAmount <= maxAmount.Value);
+        }
+
+        return await query
             .OrderByDescending(x => x.TransactionDate)
             .ThenByDescending(x => x.CreatedAt)
             .Skip((page - 1) * pageSize)
@@ -40,9 +69,36 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
             .ToListAsync();
     }
 
-    public async Task<int> CountByBusinessIdAsync(Guid businessId)
+    public async Task<int> CountByBusinessIdAsync(
+        Guid businessId,
+        string? status = null,
+        string? paymentMethod = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null)
     {
-        return await _dbSet.CountAsync(x => x.BusinessId == businessId);
+        var query = _dbSet.Where(x => x.BusinessId == businessId);
+
+        if (!string.IsNullOrEmpty(status))
+        {
+            query = query.Where(x => x.Status == status);
+        }
+
+        if (!string.IsNullOrEmpty(paymentMethod))
+        {
+            query = query.Where(x => x.Payments.Any(p => p.PaymentMethod == paymentMethod));
+        }
+
+        if (minAmount.HasValue)
+        {
+            query = query.Where(x => x.TotalAmount >= minAmount.Value);
+        }
+
+        if (maxAmount.HasValue)
+        {
+            query = query.Where(x => x.TotalAmount <= maxAmount.Value);
+        }
+
+        return await query.CountAsync();
     }
 
     public async Task<string> GenerateTransactionCodeAsync(Guid businessId)
@@ -51,8 +107,17 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         var dateStr = localToday.ToString("yyyyMMdd");
         var prefix = $"DH-{dateStr}-";
         
-        var count = await _dbSet.CountAsync(x => x.BusinessId == businessId && x.TransactionCode.StartsWith(prefix));
+        var count = await _dbSet.CountAsync(x => x.TransactionCode.StartsWith(prefix));
         var sequence = count + 1;
         return $"{prefix}{sequence:D3}";
+    }
+
+    public async Task<IEnumerable<Transaction>> GetAwaitingTransactionsWithPaymentsAsync()
+    {
+        return await _dbSet
+            .Include(x => x.Payments)
+                .ThenInclude(p => p.PaymentAccount)
+            .Where(x => x.Status == TaxMate.Model.Common.TransactionStatus.AwaitingPayment)
+            .ToListAsync();
     }
 }

@@ -16,6 +16,6 @@ public interface IProductService
         int pageSize,
         string? search,
         string? status,
-        ProductCategory? category);
+        Guid? productCategoryId);
     Task<ProductResponse> GetByIdAsync(Guid ownerId, Guid id);
 }

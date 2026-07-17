@@ -15,6 +15,8 @@ public class ExpenseDTO
     public string? FileUrl { get; set; }
     public DateTime? DueDate { get; set; }
     public DateTime? PaidDate { get; set; }
+    public Guid? SupplierId { get; set; }
+    public string? SupplierName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

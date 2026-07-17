@@ -19,6 +19,9 @@ public class OrderService : IOrderService
     private readonly IGenericRepository<TransactionItem> _transactionItems;
     private readonly IGenericRepository<Payment> _payments;
     private readonly IInvoiceService _invoiceService;
+    private readonly IGenericRepository<EInvoiceConfig> _eInvoiceConfigs;
+    private readonly IInvoiceRepository _invoices;
+    private readonly IEInvoiceService _eInvoiceService;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -29,7 +32,10 @@ public class OrderService : IOrderService
         IGenericRepository<ProductPrice> productPrices,
         IGenericRepository<TransactionItem> transactionItems,
         IGenericRepository<Payment> payments,
-        IInvoiceService invoiceService)
+        IInvoiceService invoiceService,
+        IGenericRepository<EInvoiceConfig> eInvoiceConfigs,
+        IInvoiceRepository invoices,
+        IEInvoiceService eInvoiceService)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -40,6 +46,9 @@ public class OrderService : IOrderService
         _transactionItems = transactionItems;
         _payments = payments;
         _invoiceService = invoiceService;
+        _eInvoiceConfigs = eInvoiceConfigs;
+        _invoices = invoices;
+        _eInvoiceService = eInvoiceService;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -75,6 +84,22 @@ public class OrderService : IOrderService
             throw new NotFoundException("Order not found.");
         }
 
+        Invoice? invoice = null;
+        if (!string.IsNullOrEmpty(order.InvoiceId))
+        {
+            invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
+        }
+
+        int? quotaRemaining = null;
+        int? quotaWarningThreshold = null;
+
+        var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+        if (eInvoiceConfig != null)
+        {
+            quotaWarningThreshold = eInvoiceConfig.QuotaWarningThreshold;
+            quotaRemaining = await _eInvoiceService.GetQuotaRemainingAsync(eInvoiceConfig);
+        }
+
         return new OrderDetailResponse
         {
             TransactionId = order.TransactionId,
@@ -83,6 +108,13 @@ public class OrderService : IOrderService
             Status = order.Status,
             Note = order.Note,
             InvoiceNumber = order.InvoiceId,
+            TaxAuthorityCode = invoice?.TaxAuthorityCode,
+            OfficialPdfUrl = invoice?.OfficialPdfUrl,
+            OfficialXmlUrl = invoice?.OfficialXmlUrl,
+            InvoiceStatus = invoice?.Status,
+            SePayMessage = invoice?.SePayMessage,
+            QuotaRemaining = quotaRemaining,
+            QuotaWarningThreshold = quotaWarningThreshold,
             SubTotal = order.SubTotal,
             DiscountType = order.DiscountType,
             DiscountValue = order.DiscountValue,
@@ -119,10 +151,16 @@ public class OrderService : IOrderService
     }
 
     public async Task<PagedResult<OrderSummaryResponse>> GetOrdersByBusinessAsync(
-        Guid businessId, int page, int pageSize)
+        Guid businessId,
+        int page,
+        int pageSize,
+        string? status = null,
+        string? paymentMethod = null,
+        decimal? minAmount = null,
+        decimal? maxAmount = null)
     {
-        var count = await _transactions.CountByBusinessIdAsync(businessId);
-        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize);
+        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount);
+        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount);
 
         var items = transactions.Select(x => new OrderSummaryResponse
         {
@@ -193,7 +231,10 @@ public class OrderService : IOrderService
                 CreatedAt = DateTime.UtcNow
             };
             await _transactionItems.AddAsync(item);
-            order.TransactionItems.Add(item);
+            // KHÔNG gọi order.TransactionItems.Add(item) ở đây vì EF Core Navigation Fixup
+            // đã tự động thêm item vào collection sau khi AddAsync được gọi.
+            // Nếu gọi thêm Add() thủ công, item sẽ xuất hiện 2 lần trong danh sách in-memory
+            // và RecalculateOrder sẽ tính tổng tiền gấp đôi!
         }
 
         RecalculateOrder(order);
@@ -251,6 +292,7 @@ public class OrderService : IOrderService
         await _unitOfWork.SaveChangesAsync();
     }
 
+    /*
     public async Task ApplyDiscountAsync(Guid transactionId, ApplyDiscountRequest request)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
@@ -306,6 +348,7 @@ public class OrderService : IOrderService
         RecalculateOrder(order);
         await _unitOfWork.SaveChangesAsync();
     }
+    */
 
     public async Task<InvoiceDetailResponse> CheckoutAsync(Guid transactionId, CheckoutRequest request)
     {
@@ -336,17 +379,27 @@ public class OrderService : IOrderService
         {
             var paidAt = DateTime.UtcNow;
 
+            // Kiểm tra xem BankTransfer có dùng tài khoản SePay (có webhook tự động) không.
+            // Nếu tài khoản là static VietQR (không có SePayBankAccountXid), đơn sẽ được Complete ngay.
+            bool isAwaitingPayment = false;
             foreach (var paymentEntry in request.Payments)
             {
-                if (paymentEntry.PaymentAccountId.HasValue)
+                if (paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
+                    && paymentEntry.PaymentAccountId.HasValue)
                 {
                     var account = await _paymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
                     if (account == null || account.BusinessId != order.BusinessId)
-                    {
                         throw new NotFoundException($"Payment account '{paymentEntry.PaymentAccountId}' not found or does not belong to this business.");
-                    }
-                }
 
+                    // Chỉ AwaitingPayment nếu tài khoản có liên kết SePay
+                    if (!string.IsNullOrEmpty(account.SePayBankAccountXid))
+                        isAwaitingPayment = true;
+                }
+            }
+
+            foreach (var paymentEntry in request.Payments)
+            {
+                var isBankTransfer = paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase);
                 var payment = new Payment
                 {
                     PaymentId = Guid.NewGuid(),
@@ -354,7 +407,7 @@ public class OrderService : IOrderService
                     PaymentMethod = paymentEntry.PaymentMethod,
                     Amount = paymentEntry.Amount,
                     PaymentAccountId = paymentEntry.PaymentAccountId,
-                    PaidAt = paidAt,
+                    PaidAt = (isAwaitingPayment && isBankTransfer) ? null : paidAt,
                     CreatedAt = paidAt
                 };
 
@@ -362,11 +415,77 @@ public class OrderService : IOrderService
                 order.Payments.Add(payment);
             }
 
-            order.Status = "Completed";
+            order.Status = isAwaitingPayment ? TransactionStatus.AwaitingPayment : TransactionStatus.Completed;
 
             await _unitOfWork.SaveChangesAsync();
 
             var invoiceNumber = await _invoiceService.GenerateFromOrderAsync(order.TransactionId);
+
+            var invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == invoiceNumber);
+            if (invoice != null)
+            {
+                invoice.BuyerTaxCode = request.BuyerTaxCode;
+                invoice.BuyerCompanyName = request.BuyerCompanyName;
+                invoice.BuyerAddress = request.BuyerAddress;
+                invoice.BuyerEmail = request.BuyerEmail;
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            // Tự động phát hành HĐĐT nếu đơn đã hoàn thành và shop có thiết lập
+            if (order.Status == TransactionStatus.Completed)
+            {
+                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
+                if (business != null && business.PreferElectronicInvoice)
+                {
+                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+                    if (eInvoiceConfig != null)
+                    {
+                        if (invoice != null)
+                        {
+                            try
+                            {
+                                // Load details including related products for unit info mapping
+                                invoice = await _invoices.GetByNumberWithDetailsAsync(invoiceNumber);
+                                if (invoice != null)
+                                {
+                                    invoice.Business = business;
+
+                                    invoice.Status = InvoiceStatus.Processing;
+                                    await _unitOfWork.SaveChangesAsync();
+
+                                    var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
+                                    
+                                    invoice.SePayTrackingCode = eInvoiceResult.TrackingCode;
+                                    invoice.SePayReferenceCode = eInvoiceResult.ReferenceCode;
+                                    invoice.SePayMessage = eInvoiceResult.ErrorMessage;
+
+                                    if (eInvoiceResult.Success)
+                                    {
+                                        invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
+                                        invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
+                                        invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
+                                        invoice.Status = InvoiceStatus.Issued;
+                                    }
+                                    else
+                                    {
+                                        invoice.Status = InvoiceStatus.Failed;
+                                    }
+                                    await _unitOfWork.SaveChangesAsync();
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (invoice != null)
+                                {
+                                    invoice.Status = InvoiceStatus.Failed;
+                                    invoice.SePayMessage = $"Lỗi xử lý hệ thống: {ex.Message}";
+                                    await _unitOfWork.SaveChangesAsync();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             await _unitOfWork.CommitTransactionAsync();
 
@@ -387,13 +506,121 @@ public class OrderService : IOrderService
             throw new NotFoundException("Order not found.");
         }
 
-        if (order.Status != "Draft")
+        if (order.Status != "Draft" && order.Status != "AwaitingPayment")
         {
-            throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' orders can be cancelled.");
+            throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' or 'AwaitingPayment' orders can be cancelled.");
         }
 
         order.Status = "Cancelled";
         await _unitOfWork.SaveChangesAsync();
+    }
+
+    public async Task<InvoiceDetailResponse> ConfirmPaymentAsync(Guid transactionId)
+    {
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
+        if (order == null)
+        {
+            throw new NotFoundException("Order not found.");
+        }
+
+        if (order.Status != TransactionStatus.AwaitingPayment)
+        {
+            throw new ConflictException($"Cannot confirm payment for order with status '{order.Status}'. Only 'AwaitingPayment' orders can be confirmed.");
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var paidAt = DateTime.UtcNow;
+
+            foreach (var payment in order.Payments)
+            {
+                if (payment.PaidAt == null)
+                {
+                    payment.PaidAt = paidAt;
+                }
+            }
+
+            order.Status = TransactionStatus.Completed;
+            await _unitOfWork.SaveChangesAsync();
+
+            Invoice? invoice = null;
+            if (!string.IsNullOrEmpty(order.InvoiceId))
+            {
+                invoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
+            }
+
+            if (invoice != null)
+            {
+                var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
+                if (business != null && business.PreferElectronicInvoice)
+                {
+                    var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
+                    if (eInvoiceConfig != null)
+                    {
+                        try
+                        {
+                            // Load details including related products for unit info mapping
+                            invoice = await _invoices.GetByNumberWithDetailsAsync(invoice.InvoiceNumber);
+                            if (invoice != null)
+                            {
+                                invoice.Business = business;
+
+                                invoice.Status = InvoiceStatus.Processing;
+                                await _unitOfWork.SaveChangesAsync();
+
+                                var eInvoiceResult = await _eInvoiceService.IssueInvoiceAsync(invoice, eInvoiceConfig);
+                                
+                                invoice.SePayTrackingCode = eInvoiceResult.TrackingCode;
+                                invoice.SePayReferenceCode = eInvoiceResult.ReferenceCode;
+                                invoice.SePayMessage = eInvoiceResult.ErrorMessage;
+
+                                if (eInvoiceResult.Success)
+                                {
+                                    invoice.TaxAuthorityCode = eInvoiceResult.TaxAuthorityCode;
+                                    invoice.OfficialPdfUrl = eInvoiceResult.OfficialPdfUrl;
+                                    invoice.OfficialXmlUrl = eInvoiceResult.OfficialXmlUrl;
+                                    invoice.Status = InvoiceStatus.Issued;
+                                }
+                                else
+                                {
+                                    invoice.Status = InvoiceStatus.Failed;
+                                }
+                                await _unitOfWork.SaveChangesAsync();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            if (invoice != null)
+                            {
+                                invoice.Status = InvoiceStatus.Failed;
+                                invoice.SePayMessage = $"Lỗi xử lý hệ thống: {ex.Message}";
+                                await _unitOfWork.SaveChangesAsync();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        invoice.Status = InvoiceStatus.Issued;
+                        await _unitOfWork.SaveChangesAsync();
+                    }
+                }
+                else
+                {
+                    invoice.Status = InvoiceStatus.Issued;
+                    await _unitOfWork.SaveChangesAsync();
+                }
+            }
+
+            await _unitOfWork.CommitTransactionAsync();
+
+            return await _invoiceService.GetInvoiceDetailAsync(order.InvoiceId!);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
     }
 
     private void RecalculateOrder(Transaction order)
@@ -418,28 +645,10 @@ public class OrderService : IOrderService
 
         order.SubTotal = subTotal;
 
-        decimal orderDiscount = 0;
-        if (order.DiscountType == "Percentage" && order.DiscountValue.HasValue)
-        {
-            orderDiscount = order.SubTotal * (order.DiscountValue.Value / 100);
-        }
-        else if (order.DiscountType == "Fixed" && order.DiscountValue.HasValue)
-        {
-            orderDiscount = order.DiscountValue.Value;
-        }
-        order.DiscountAmount = Math.Max(0, Math.Min(order.SubTotal, orderDiscount));
+        // Force order-level discount and surcharge to 0 (unsupported feature)
+        order.DiscountAmount = 0;
+        order.SurchargeAmount = 0;
 
-        decimal orderSurcharge = 0;
-        if (order.SurchargeType == "Percentage" && order.SurchargeValue.HasValue)
-        {
-            orderSurcharge = order.SubTotal * (order.SurchargeValue.Value / 100);
-        }
-        else if (order.SurchargeType == "Fixed" && order.SurchargeValue.HasValue)
-        {
-            orderSurcharge = order.SurchargeValue.Value;
-        }
-        order.SurchargeAmount = Math.Max(0, orderSurcharge);
-
-        order.TotalAmount = Math.Max(0, order.SubTotal - order.DiscountAmount + order.SurchargeAmount);
+        order.TotalAmount = order.SubTotal;
     }
 }

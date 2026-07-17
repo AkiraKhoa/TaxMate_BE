@@ -10,5 +10,9 @@ public class PaymentAccountResponse
     public string AccountName { get; set; } = null!;
     public bool IsDefault { get; set; }
     public string? Description { get; set; }
+    public string? CassoConnectedAccountId { get; set; }
+    public string? SePayBankAccountXid { get; set; }
+    public bool IsSePayConnected => !string.IsNullOrEmpty(SePayBankAccountXid);
     public DateTime CreatedAt { get; set; }
 }
+

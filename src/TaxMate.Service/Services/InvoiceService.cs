@@ -51,7 +51,7 @@ public class InvoiceService : IInvoiceService
             BusinessId = order.BusinessId,
             TotalAmount = order.TotalAmount,
             IssueDate = issueDate,
-            Status = "Issued",
+            Status = order.Status == "Completed" ? "Issued" : "Unpaid",
             CreatedAt = issueDate
         };
 

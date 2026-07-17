@@ -42,7 +42,7 @@ public class ProductService : IProductService
             Id = Guid.NewGuid(),
             BusinessId = businessId,
             Name = request.Name.Trim(),
-            Category = request.Category,
+            ProductCategoryId = request.ProductCategoryId,
             Description = request.Description,
             Unit = request.Unit,
             ImageUrl = request.ImageUrl,
@@ -52,7 +52,9 @@ public class ProductService : IProductService
         await _products.AddAsync(entity);
         await _unitOfWork.SaveChangesAsync();
 
-        return MapToResponse(entity);
+        // Re-load to populate ProductCategory relationship
+        var loadedEntity = await _products.GetByIdWithPricesAsync(entity.Id);
+        return MapToResponse(loadedEntity ?? entity);
     }
 
     public async Task<ProductResponse> UpdateAsync(
@@ -75,7 +77,7 @@ public class ProductService : IProductService
             throw new ConflictException($"Product with name '{request.Name}' already exists in this business.");
 
         entity.Name = request.Name.Trim();
-        entity.Category = request.Category;
+        entity.ProductCategoryId = request.ProductCategoryId;
         entity.Description = request.Description;
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
@@ -83,7 +85,9 @@ public class ProductService : IProductService
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
 
-        return MapToResponse(entity);
+        // Re-load to populate ProductCategory relationship
+        var loadedEntity = await _products.GetByIdWithPricesAsync(entity.Id);
+        return MapToResponse(loadedEntity ?? entity);
     }
 
     public async Task<ProductResponse> ToggleStatusAsync(Guid ownerId, Guid id)
@@ -123,12 +127,12 @@ public class ProductService : IProductService
         int pageSize,
         string? search,
         string? status,
-        ProductCategory? category)
+        Guid? productCategoryId)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         var (items, totalCount) = await _products.GetPagedByBusinessAsync(
-            businessId, pageNumber, pageSize, search, status, category);
+            businessId, pageNumber, pageSize, search, status, productCategoryId);
 
         return new PagedResult<ProductResponse>
         {
@@ -176,7 +180,8 @@ public class ProductService : IProductService
             Id = entity.Id,
             BusinessId = entity.BusinessId,
             Name = entity.Name,
-            Category = entity.Category,
+            ProductCategoryId = entity.ProductCategoryId,
+            ProductCategoryName = entity.ProductCategory?.Name,
             Description = entity.Description,
             Unit = entity.Unit,
             ImageUrl = entity.ImageUrl,

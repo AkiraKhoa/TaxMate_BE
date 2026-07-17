@@ -8,9 +8,12 @@ public class CreateProductRequest
     [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
-    public ProductCategory? Category { get; set; }
+    public Guid? ProductCategoryId { get; set; }
+    [MaxLength(2000)]
     public string? Description { get; set; }
+    [MaxLength(50)]
     public string? Unit { get; set; }
+    [MaxLength(1000)]
     public string? ImageUrl { get; set; }
 }
 
@@ -19,9 +22,12 @@ public class UpdateProductRequest
     [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
-    public ProductCategory? Category { get; set; }
+    public Guid? ProductCategoryId { get; set; }
+    [MaxLength(2000)]
     public string? Description { get; set; }
+    [MaxLength(50)]
     public string? Unit { get; set; }
+    [MaxLength(1000)]
     public string? ImageUrl { get; set; }
 }
 
@@ -30,7 +36,8 @@ public class ProductResponse
     public Guid Id { get; set; }
     public Guid BusinessId { get; set; }
     public string Name { get; set; } = null!;
-    public ProductCategory? Category { get; set; }
+    public Guid? ProductCategoryId { get; set; }
+    public string? ProductCategoryName { get; set; }
     public string? Description { get; set; }
     public string? Unit { get; set; }
     public string? ImageUrl { get; set; }
