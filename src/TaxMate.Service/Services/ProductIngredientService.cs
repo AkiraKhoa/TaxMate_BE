@@ -84,7 +84,8 @@ public class ProductIngredientService : IProductIngredientService
     {
         await EnsureProductOwnerAsync(ownerId, productId);
 
-        var entity = await _productIngredients.GetByCompositeKeyAsync(productId, ingredientId);
+        // Load link only (no Include) so Remove unlinks ProductIngredient without touching Product/Ingredient.
+        var entity = await _productIngredients.GetLinkOnlyAsync(productId, ingredientId);
         if (entity is null)
             throw new NotFoundException(
                 $"Product ingredient link for product '{productId}' and ingredient '{ingredientId}' not found.");

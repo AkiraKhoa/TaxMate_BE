@@ -365,6 +365,19 @@ public class AppDbContext : DbContext
             .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
         // Income
         modelBuilder.Entity<Income>()
             .HasOne(x => x.Business)
@@ -428,12 +441,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Product)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.ProductId);
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Ingredient)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.IngredientId);
+            .HasForeignKey(x => x.IngredientId)
+            .OnDelete(DeleteBehavior.Restrict);
         
         // Ingredient Purchase
         modelBuilder.Entity<IngredientPurchase>()
