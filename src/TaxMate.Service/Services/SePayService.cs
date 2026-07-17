@@ -303,6 +303,10 @@ public class SePayService : ISePayService
         {
             redirectUri = "https://taxmate.vn/api/PaymentAccount/sepay-callback";
         }
+        else if (scheme == "http")
+        {
+            redirectUri = $"https://{host}/api/PaymentAccount/sepay-callback";
+        }
 
         // Tạo link token và lấy cả URL lẫn linkTokenXid
         var (url, linkTokenXid) = await GenerateHostedLinkUrlAsync(companyXid, redirectUri);
@@ -320,7 +324,12 @@ public class SePayService : ISePayService
         var webhookBaseUrl = _configuration["SePay:BankHub:WebhookUrl"];
         if (string.IsNullOrEmpty(webhookBaseUrl))
         {
-            webhookBaseUrl = $"{scheme}://{host}";
+            var webhookScheme = scheme;
+            if (webhookScheme == "http" && !host.Contains("localhost") && !host.Contains("127.0.0.1"))
+            {
+                webhookScheme = "https";
+            }
+            webhookBaseUrl = $"{webhookScheme}://{host}";
         }
         var webhookUrl = $"{webhookBaseUrl}/api/webhook/payment/bankhub";
         var secretKey = _configuration["SePay:BankHub:SecretKey"] ?? "";

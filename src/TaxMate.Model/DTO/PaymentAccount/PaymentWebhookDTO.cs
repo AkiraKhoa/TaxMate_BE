@@ -33,7 +33,7 @@ public class SePayWebhookRequest
 /// </summary>
 public class SePayBankHubEventRequest
 {
-    [JsonPropertyName("timestamp")] public string? Timestamp { get; set; }
+    [JsonPropertyName("timestamp")] public long Timestamp { get; set; }  // Unix timestamp (số nguyên), không phải string
     [JsonPropertyName("xid")] public string? Xid { get; set; }
     [JsonPropertyName("version")] public string? Version { get; set; }
     [JsonPropertyName("event")] public string? Event { get; set; }
