@@ -30,6 +30,12 @@ public class ProductIngredientRepository : GenericRepository<ProductIngredient>,
             .FirstOrDefaultAsync(x => x.ProductId == productId && x.IngredientId == ingredientId);
     }
 
+    public async Task<ProductIngredient?> GetLinkOnlyAsync(Guid productId, Guid ingredientId)
+    {
+        return await _appContext.ProductIngredients
+            .FirstOrDefaultAsync(x => x.ProductId == productId && x.IngredientId == ingredientId);
+    }
+
     public async Task<bool> ExistsAsync(Guid productId, Guid ingredientId)
     {
         return await _appContext.ProductIngredients

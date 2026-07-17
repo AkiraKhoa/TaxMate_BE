@@ -8,5 +8,7 @@ public interface IProductIngredientRepository : IGenericRepository<ProductIngred
 
     Task<ProductIngredient?> GetByCompositeKeyAsync(Guid productId, Guid ingredientId);
 
+    Task<ProductIngredient?> GetLinkOnlyAsync(Guid productId, Guid ingredientId);
+
     Task<bool> ExistsAsync(Guid productId, Guid ingredientId);
 }

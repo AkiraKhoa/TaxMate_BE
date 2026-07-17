@@ -349,12 +349,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Product)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.ProductId);
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Ingredient)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.IngredientId);
+            .HasForeignKey(x => x.IngredientId)
+            .OnDelete(DeleteBehavior.Restrict);
         
         // Ingredient Purchase
         modelBuilder.Entity<IngredientPurchase>()
