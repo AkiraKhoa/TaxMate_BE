@@ -384,7 +384,7 @@ public class OrderService : IOrderService
             bool isAwaitingPayment = false;
             foreach (var paymentEntry in request.Payments)
             {
-                if (paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase)
+                if (paymentEntry.PaymentMethod.Equals("Transfer", StringComparison.OrdinalIgnoreCase)
                     && paymentEntry.PaymentAccountId.HasValue)
                 {
                     var account = await _paymentAccounts.GetByIdAsync(paymentEntry.PaymentAccountId.Value);
@@ -399,7 +399,7 @@ public class OrderService : IOrderService
 
             foreach (var paymentEntry in request.Payments)
             {
-                var isBankTransfer = paymentEntry.PaymentMethod.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase);
+                var isBankTransfer = paymentEntry.PaymentMethod.Equals("Transfer", StringComparison.OrdinalIgnoreCase);
                 var payment = new Payment
                 {
                     PaymentId = Guid.NewGuid(),
