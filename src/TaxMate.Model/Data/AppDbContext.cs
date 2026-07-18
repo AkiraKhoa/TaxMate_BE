@@ -696,6 +696,28 @@ public class AppDbContext : DbContext
             new PlanFeature { Id = Guid.Parse("ececcccc-eeee-eeee-eeee-eeeeeeeeeeee"), SubscriptionPlanId = premiumPlanId, FeatureKey = "growth_readiness_monitoring", FeatureName = "Giám sát mức độ sẵn sàng tăng trưởng", IsEnabled = true }
         );
 
+        // Seed Business Categories
+        modelBuilder.Entity<BusinessCategory>().HasData(
+            new BusinessCategory
+            {
+                BusinessCategoryId = Guid.Parse("11d1c694-d271-460b-8835-2b2e6a1b8c1d"),
+                Code = "fnb",
+                Name = "Ăn uống, nhà hàng (F&B)",
+                Description = "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước",
+                VatRate = 3.00m,
+                PitRate = 1.50m
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = Guid.Parse("22d2c694-d271-460b-8835-2b2e6a1b8c2d"),
+                Code = "service",
+                Name = "Dịch vụ & Vận tải (Service)",
+                Description = "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản",
+                VatRate = 5.00m,
+                PitRate = 2.00m
+            }
+        );
+
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }
