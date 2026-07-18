@@ -705,7 +705,9 @@ public class AppDbContext : DbContext
                 Name = "Ăn uống, nhà hàng (F&B)",
                 Description = "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước",
                 VatRate = 3.00m,
-                PitRate = 1.50m
+                PitRate = 1.50m,
+                CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc)
             },
             new BusinessCategory
             {
@@ -714,7 +716,9 @@ public class AppDbContext : DbContext
                 Name = "Dịch vụ & Vận tải (Service)",
                 Description = "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản",
                 VatRate = 5.00m,
-                PitRate = 2.00m
+                PitRate = 2.00m,
+                CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc)
             }
         );
 
