@@ -64,6 +64,30 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("Name");
 
                     b.ToTable("BusinessCategories");
+
+                    b.HasData(
+                        new
+                        {
+                            BusinessCategoryId = new Guid("11111111-1111-1111-1111-111111111111"),
+                            Code = "fnb",
+                            CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước",
+                            Name = "Ăn uống, nhà hàng (F&B)",
+                            PitRate = 1.50m,
+                            UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VatRate = 3.00m
+                        },
+                        new
+                        {
+                            BusinessCategoryId = new Guid("22222222-2222-2222-2222-222222222222"),
+                            Code = "service",
+                            CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản",
+                            Name = "Dịch vụ & Vận tải (Service)",
+                            PitRate = 2.00m,
+                            UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VatRate = 5.00m
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.BusinessProfile", b =>
@@ -499,6 +523,9 @@ namespace TaxMate.Model.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -522,6 +549,10 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BusinessId");
+
+                    b.HasIndex("BusinessId", "Name");
 
                     b.ToTable("Ingredients");
                 });
@@ -2067,6 +2098,17 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Business");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.Ingredient", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany("Ingredients")
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.IngredientPurchase", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
@@ -2208,7 +2250,7 @@ namespace TaxMate.Model.Migrations
                     b.HasOne("TaxMate.Model.Entities.Ingredient", "Ingredient")
                         .WithMany("ProductIngredients")
                         .HasForeignKey("IngredientId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("TaxMate.Model.Entities.Product", "Product")
@@ -2346,6 +2388,8 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Incomes");
 
                     b.Navigation("IngredientPurchases");
+
+                    b.Navigation("Ingredients");
 
                     b.Navigation("Invoices");
 

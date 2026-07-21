@@ -700,7 +700,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<BusinessCategory>().HasData(
             new BusinessCategory
             {
-                BusinessCategoryId = Guid.Parse("11d1c694-d271-460b-8835-2b2e6a1b8c1d"),
+                BusinessCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
                 Code = "fnb",
                 Name = "Ăn uống, nhà hàng (F&B)",
                 Description = "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước",
@@ -711,7 +711,7 @@ public class AppDbContext : DbContext
             },
             new BusinessCategory
             {
-                BusinessCategoryId = Guid.Parse("22d2c694-d271-460b-8835-2b2e6a1b8c2d"),
+                BusinessCategoryId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
                 Code = "service",
                 Name = "Dịch vụ & Vận tải (Service)",
                 Description = "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản",

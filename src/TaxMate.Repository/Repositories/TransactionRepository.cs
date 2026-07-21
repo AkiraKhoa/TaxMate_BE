@@ -107,8 +107,22 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         var dateStr = localToday.ToString("yyyyMMdd");
         var prefix = $"DH-{dateStr}-";
         
-        var count = await _dbSet.CountAsync(x => x.TransactionCode.StartsWith(prefix));
-        var sequence = count + 1;
+        var maxCode = await _dbSet
+            .Where(x => x.BusinessId == businessId && x.TransactionCode.StartsWith(prefix))
+            .OrderByDescending(x => x.TransactionCode)
+            .Select(x => x.TransactionCode)
+            .FirstOrDefaultAsync();
+
+        var sequence = 1;
+        if (!string.IsNullOrEmpty(maxCode))
+        {
+            var parts = maxCode.Split('-');
+            if (parts.Length > 0 && int.TryParse(parts[^1], out var lastSeq))
+            {
+                sequence = lastSeq + 1;
+            }
+        }
+        
         return $"{prefix}{sequence:D3}";
     }
 

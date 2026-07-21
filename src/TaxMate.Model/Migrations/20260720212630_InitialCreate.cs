@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialMigrate : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -29,23 +29,6 @@ namespace TaxMate.Model.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_BusinessCategories", x => x.BusinessCategoryId);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Ingredients",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    Unit = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    EstimatedPrice = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
-                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Ingredients", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -357,6 +340,30 @@ namespace TaxMate.Model.Migrations
                     table.PrimaryKey("PK_IncomeCategories", x => x.IncomeCategoryId);
                     table.ForeignKey(
                         name: "FK_IncomeCategories_BusinessProfiles_BusinessId",
+                        column: x => x.BusinessId,
+                        principalTable: "BusinessProfiles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Ingredients",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    BusinessId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    Unit = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    EstimatedPrice = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Ingredients", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Ingredients_BusinessProfiles_BusinessId",
                         column: x => x.BusinessId,
                         principalTable: "BusinessProfiles",
                         principalColumn: "Id",
@@ -848,7 +855,7 @@ namespace TaxMate.Model.Migrations
                         column: x => x.IngredientId,
                         principalTable: "Ingredients",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ProductIngredients_Products_ProductId",
                         column: x => x.ProductId,
@@ -915,6 +922,15 @@ namespace TaxMate.Model.Migrations
                         principalTable: "Transactions",
                         principalColumn: "TransactionId",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                table: "BusinessCategories",
+                columns: new[] { "BusinessCategoryId", "Code", "CreatedAt", "Description", "Name", "PitRate", "UpdatedAt", "VatRate" },
+                values: new object[,]
+                {
+                    { new Guid("11111111-1111-1111-1111-111111111111"), "fnb", new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc), "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước", "Ăn uống, nhà hàng (F&B)", 1.50m, new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc), 3.00m },
+                    { new Guid("22222222-2222-2222-2222-222222222222"), "service", new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc), "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản", "Dịch vụ & Vận tải (Service)", 2.00m, new DateTime(2026, 7, 18, 0, 0, 0, 0, DateTimeKind.Utc), 5.00m }
                 });
 
             migrationBuilder.InsertData(
@@ -1117,6 +1133,16 @@ namespace TaxMate.Model.Migrations
                 name: "IX_IngredientPurchases_SupplierId",
                 table: "IngredientPurchases",
                 column: "SupplierId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Ingredients_BusinessId",
+                table: "Ingredients",
+                column: "BusinessId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Ingredients_BusinessId_Name",
+                table: "Ingredients",
+                columns: new[] { "BusinessId", "Name" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoiceDetails_InvoiceId",

@@ -198,3 +198,8 @@ fabric.properties
 
 # Firebase Admin SDK
 **/*firebase-adminsdk*.json
+
+# Local Logs
+backend.log
+backend_errors.log
+**/backend.log
