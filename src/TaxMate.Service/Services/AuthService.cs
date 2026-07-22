@@ -117,6 +117,11 @@ public class AuthService : IAuthService
             throw new InvalidCredentialsException();
         }
 
+        if (user.AccountStatus == AccountStatus.Inactive)
+        {
+            throw new AccountInactiveException();
+        }
+
         if (user.AccountStatus == AccountStatus.Pending)
         {
             await EnsurePendingVerificationTokenAsync(user, userRepo, cancellationToken);
@@ -179,7 +184,12 @@ public class AuthService : IAuthService
         }
         else
         {
-            user!.GoogleId ??= googleUser.GoogleId;
+            if (user!.AccountStatus == AccountStatus.Inactive)
+            {
+                throw new AccountInactiveException();
+            }
+
+            user.GoogleId ??= googleUser.GoogleId;
             user.FullName = googleUser.FullName;
             user.AvatarUrl = googleUser.AvatarUrl;
 

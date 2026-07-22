@@ -14,7 +14,10 @@ public interface IDashboardAnalyticsService
 
     Task<ServicePackageDistributionResponseDto> GetServicePackageDistributionAsync(CancellationToken cancellationToken = default);
 
-    Task<PackageRevenueResponseDto> GetPackageRevenueAsync(CancellationToken cancellationToken = default);
+    Task<PackageRevenueResponseDto> GetPackageRevenueAsync(
+        int? year = null,
+        int? month = null,
+        CancellationToken cancellationToken = default);
 
     Task<BusinessUserTrendResponseDto> GetBusinessUserTrendAsync(CancellationToken cancellationToken = default);
 

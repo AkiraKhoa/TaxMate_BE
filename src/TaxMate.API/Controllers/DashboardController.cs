@@ -75,11 +75,14 @@ public class DashboardController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
-    /// <summary>Package revenue breakdown for the current month.</summary>
+    /// <summary>Package revenue breakdown for a month (defaults to current month-to-date).</summary>
     [HttpGet("package-revenue")]
-    public async Task<IActionResult> GetPackageRevenue(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetPackageRevenue(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        CancellationToken cancellationToken)
     {
-        var result = await _dashboardAnalyticsService.GetPackageRevenueAsync(cancellationToken);
+        var result = await _dashboardAnalyticsService.GetPackageRevenueAsync(year, month, cancellationToken);
         return Ok(ApiResponse<PackageRevenueResponseDto>.Ok(
             result,
             "Get package revenue successfully",

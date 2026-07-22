@@ -105,6 +105,7 @@ public class ExceptionHandlingMiddleware
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Không có quyền truy cập"),
             InvalidCredentialsException => (HttpStatusCode.Unauthorized, exception.Message),
             AccountPendingException => (HttpStatusCode.Forbidden, exception.Message),
+            AccountInactiveException => (HttpStatusCode.Forbidden, exception.Message),
             ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
             InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),
             ResendCooldownException => (HttpStatusCode.TooManyRequests, exception.Message),
