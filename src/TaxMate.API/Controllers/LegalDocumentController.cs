@@ -7,9 +7,9 @@ using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
 
-/// <summary>Upload và quản lý văn bản pháp lý.</summary>
+/// <summary>Upload và quản lý văn bản pháp lý (Admin).</summary>
 [ApiController]
-[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
+[Authorize(Roles = UserRoles.Admin)]
 [Route("api/[controller]")]
 public class LegalDocumentController : ControllerBase
 {
@@ -98,6 +98,34 @@ public class LegalDocumentController : ControllerBase
             ApiResponse<List<LegalDocumentResponse>>.Ok(
                 await _legalDocumentService.GetActiveAsync(),
                 "Get active legal documents successfully",
+                HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Cập nhật (thay thế) file PDF của văn bản pháp lý.</summary>
+    [HttpPut("{id:guid}/file")]
+    public async Task<IActionResult> UpdateFile(
+        Guid id,
+        [FromForm] UpdateLegalDocumentFileRequest request)
+    {
+        var document = await _legalDocumentService.UpdateFileAsync(id, request);
+
+        return Ok(
+            ApiResponse<LegalDocumentResponse>.Ok(
+                document,
+                "Update legal document file successfully",
+                HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Xóa văn bản pháp lý.</summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        await _legalDocumentService.DeleteAsync(id);
+
+        return Ok(
+            ApiResponse<object?>.Ok(
+                null,
+                "Delete legal document successfully",
                 HttpContext.TraceIdentifier));
     }
 }

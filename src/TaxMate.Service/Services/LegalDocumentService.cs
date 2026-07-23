@@ -180,6 +180,76 @@ public class LegalDocumentService : ILegalDocumentService
         return _mapper.Map<List<LegalDocumentResponse>>(documents);
     }
 
+    public async Task<LegalDocumentResponse> UpdateFileAsync(
+        Guid id,
+        UpdateLegalDocumentFileRequest request)
+    {
+        var document =
+            await _legalDocuments.GetByIdAsync(id);
+
+        if (document == null)
+        {
+            throw new NotFoundException(
+                "Legal document not found.");
+        }
+
+        if (request.File is null || request.File.Length == 0)
+        {
+            throw new BadRequestException("File is required.");
+        }
+
+        await using var stream =
+            request.File.OpenReadStream();
+
+        var fileHash =
+            await CalculateHashAsync(stream);
+
+        var duplicatedFile =
+            await _legalDocuments
+                .ExistsByFileHashExceptIdAsync(fileHash, id);
+
+        if (duplicatedFile)
+        {
+            throw new ConflictException(
+                $"File content already exists on another document.");
+        }
+
+        var storagePath =
+            await _fileStorageService.UploadAsync(
+                stream,
+                request.File.FileName,
+                request.File.ContentType);
+
+        document.SourceFileName = request.File.FileName;
+        document.StoragePath = storagePath;
+        document.FileSize = request.File.Length;
+        document.FileHash = fileHash;
+        document.IsIndexed = false;
+        document.TotalChunks = null;
+        document.TotalPages = null;
+        document.UpdatedAt = DateTime.UtcNow;
+
+        _legalDocuments.Update(document);
+        await _unitOfWork.SaveChangesAsync();
+
+        return _mapper.Map<LegalDocumentResponse>(document);
+    }
+
+    public async Task DeleteAsync(Guid id)
+    {
+        var document =
+            await _legalDocuments.GetByIdAsync(id);
+
+        if (document == null)
+        {
+            throw new NotFoundException(
+                "Legal document not found.");
+        }
+
+        _legalDocuments.Remove(document);
+        await _unitOfWork.SaveChangesAsync();
+    }
+
     // Helper method to calculate hash
     private static async Task<string> CalculateHashAsync(
         Stream stream)
