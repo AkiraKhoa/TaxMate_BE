@@ -33,10 +33,19 @@ public class ProductPriceService : IProductPriceService
         await EnsureProductOwnerAsync(ownerId, productId);
 
         if (request.Price <= 0)
-            throw new BadRequestException("Price must be greater than zero.");
+            throw new BadRequestException("Số tiền phải lớn hơn 0.");
 
-        if (await _productPrices.ExistsDuplicateApplyDateAsync(productId, request.ApplyDate))
-            throw new ConflictException("A price for this apply date already exists.");
+        // Upsert: one price per product per calendar day — update if it already exists.
+        var existing = await _productPrices.FindByProductIdAndApplyDateAsync(
+            productId, request.ApplyDate);
+
+        if (existing is not null)
+        {
+            existing.Price = request.Price;
+            _productPrices.Update(existing);
+            await _unitOfWork.SaveChangesAsync();
+            return MapToResponse(existing);
+        }
 
         var entity = new ProductPrice
         {
@@ -59,16 +68,16 @@ public class ProductPriceService : IProductPriceService
     {
         var entity = await _productPrices.GetByIdAsync(id);
         if (entity is null)
-            throw new NotFoundException($"Product price with id '{id}' not found.");
+            throw new NotFoundException($"Sản phẩm với mã '{id}' không tồn tại.");
 
         await EnsureProductOwnerAsync(ownerId, entity.ProductId);
 
         if (request.Price <= 0)
-            throw new BadRequestException("Price must be greater than zero.");
+            throw new BadRequestException("Giá sản phẩm phải lớn hơn 0.");
 
         if (await _productPrices.ExistsDuplicateApplyDateAsync(
                 entity.ProductId, request.ApplyDate, id))
-            throw new ConflictException("A price for this apply date already exists.");
+            throw new ConflictException("Giá đã tồn tại trong ngày đó.");
 
         entity.Price = request.Price;
         entity.ApplyDate = request.ApplyDate;
@@ -105,7 +114,7 @@ public class ProductPriceService : IProductPriceService
     {
         var entity = await _productPrices.GetByIdAsync(id);
         if (entity is null)
-            throw new NotFoundException($"Product price with id '{id}' not found.");
+            throw new NotFoundException($"Sản phẩm với mã '{id}' không tồn tại.");
 
         await EnsureProductOwnerAsync(ownerId, entity.ProductId);
 
@@ -116,14 +125,14 @@ public class ProductPriceService : IProductPriceService
     {
         var product = await _products.GetByIdAsync(productId);
         if (product is null)
-            throw new NotFoundException($"Product with id '{productId}' not found.");
+            throw new NotFoundException($"Sản phẩm với mã '{productId}' không tồn tại.");
 
         var business = await _businessProfiles.GetByIdAsync(product.BusinessId);
         if (business is null)
-            throw new NotFoundException("Business profile not found.");
+            throw new NotFoundException("Không tìm thấy hồ sơ doanh nghiệp.");
 
         if (business.OwnerId != ownerId)
-            throw new UnauthorizedAccessException("You do not own this business.");
+            throw new UnauthorizedAccessException("Bạn không phải là chủ sở hữu của doanh nghiệp này.");
     }
 
     private static ProductPriceResponse MapToResponse(ProductPrice entity)

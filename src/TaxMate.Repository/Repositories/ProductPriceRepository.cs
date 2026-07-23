@@ -22,6 +22,18 @@ public class ProductPriceRepository : GenericRepository<ProductPrice>, IProductP
             .ToListAsync();
     }
 
+    public async Task<ProductPrice?> FindByProductIdAndApplyDateAsync(
+        Guid productId,
+        DateTime applyDate)
+    {
+        var applyDateOnly = applyDate.Date;
+
+        return await _appContext.ProductPrices
+            .Where(x => x.ProductId == productId && x.ApplyDate.Date == applyDateOnly)
+            .OrderByDescending(x => x.ApplyDate)
+            .FirstOrDefaultAsync();
+    }
+
     public async Task<bool> ExistsDuplicateApplyDateAsync(
         Guid productId,
         DateTime applyDate,
