@@ -1,6 +1,7 @@
 ﻿namespace TaxMate.Model.Common;
 
-public class TaxDeclarationTypes
+public static class TaxDeclarationTypes
 {
-    
+    public const string Initial = "Initial";
+    public const string Supplementary = "Supplementary";
 }

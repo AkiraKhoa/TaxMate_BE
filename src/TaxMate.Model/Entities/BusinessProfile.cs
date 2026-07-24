@@ -42,6 +42,21 @@ public class BusinessProfile : BaseEntity
     public User Owner { get; set; } = null!;
 
     public BusinessCategory? MainCategory { get; set; }
+    
+    [MaxLength(50)]
+    public string? TaxAdministrationAreaCode { get; set; }
+
+    [MaxLength(255)]
+    public string? ManagingTaxAuthority { get; set; }
+    
+    [MaxLength(20)]
+    public string? TaxAuthorityLevel { get; set; }
+
+    [MaxLength(255)]
+    public string? CollectingAuthority { get; set; }
+
+    [MaxLength(50)]
+    public string? BusinessLocationCode { get; set; }
 
     public ICollection<Product> Products { get; set; }
         = new List<Product>();

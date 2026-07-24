@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxMate.Model.Entities;
 
-namespace TaxMate.Infrastructure.Persistence.Configurations;
+namespace TaxMate.Model.Persistence.Configurations;
 
 public class TaxDeclarationConfiguration
     : IEntityTypeConfiguration<TaxDeclaration>

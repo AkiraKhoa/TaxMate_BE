@@ -2,5 +2,5 @@
 
 public class CloseTaxPeriodRequest
 {
-    
+    public bool ConfirmWarnings { get; set; }
 }

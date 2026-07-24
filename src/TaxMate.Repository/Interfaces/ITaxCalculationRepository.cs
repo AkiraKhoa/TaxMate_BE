@@ -1,6 +1,8 @@
-﻿namespace TaxMate.Repository.Interfaces;
+﻿using TaxMate.Model.Entities;
 
-public interface ITaxCalculationRepository
+namespace TaxMate.Repository.Interfaces;
+
+public interface ITaxCalculationRepository : IGenericRepository<TaxCalculation>
 {
     
 }
