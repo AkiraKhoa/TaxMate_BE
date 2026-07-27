@@ -9,6 +9,7 @@ using TaxMate.Infrastructure.Options;
 using TaxMate.Infrastructure.Rag;
 using TaxMate.Infrastructure.Sms;
 using TaxMate.Infrastructure.Storage;
+using TaxMate.Infrastructure.Word;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Infrastructure;
@@ -42,6 +43,7 @@ public static class DependencyInjection
 
         services.AddScoped<IFileStorageService, SupabaseStorageService>();
         services.AddScoped<IInvoicePdfService, InvoicePdfService>();
+        services.AddScoped<IS2aHkdWordService, S2aHkdWordService>();
         services.AddScoped<IGoogleOAuthService, GoogleOAuthService>();
         services.AddScoped<IGoogleTokenValidator, GoogleTokenValidator>();
         services.AddScoped<IJwtService, JwtService>();

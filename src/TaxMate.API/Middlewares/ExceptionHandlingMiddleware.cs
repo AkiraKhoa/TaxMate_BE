@@ -101,6 +101,7 @@ public class ExceptionHandlingMiddleware
             BadRequestException => (HttpStatusCode.BadRequest, exception.Message),
             NotFoundException => (HttpStatusCode.NotFound, exception.Message),
             ConflictException => (HttpStatusCode.Conflict, exception.Message),
+            UnprocessableEntityException => (HttpStatusCode.UnprocessableEntity, exception.Message),
             KeyNotFoundException => (HttpStatusCode.NotFound, exception.Message),
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "Không có quyền truy cập"),
             InvalidCredentialsException => (HttpStatusCode.Unauthorized, exception.Message),
@@ -122,22 +123,32 @@ public class ExceptionHandlingMiddleware
 
         // Format response: luôn có success = false (từ dev/khoa)
         // Thêm retryAfterSeconds cho ResendCooldownException (từ dev/thinh)
-        object response = exception is ResendCooldownException resendCooldown
-            ? new
+        object response = exception switch
+        {
+            UnprocessableEntityException unprocessable => new
+            {
+                success = false,
+                status = (int)statusCode,
+                message,
+                errorCode = unprocessable.ErrorCode,
+                traceId = context.TraceIdentifier
+            },
+            ResendCooldownException resendCooldown => new
             {
                 success = false,
                 status = (int)statusCode,
                 message,
                 retryAfterSeconds = resendCooldown.RetryAfterSeconds,
                 traceId = context.TraceIdentifier
-            }
-            : new
+            },
+            _ => new
             {
                 success = false,
                 status = (int)statusCode,
                 message,
                 traceId = context.TraceIdentifier
-            };
+            }
+        };
 
         var json = JsonSerializer.Serialize(
             response,

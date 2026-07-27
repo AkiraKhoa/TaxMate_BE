@@ -33,8 +33,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUserDeviceRepository, UserDeviceRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
-        
-
+        services.AddScoped<IS2aHkdRepository, S2aHkdRepository>();
         return services;
     }
 }

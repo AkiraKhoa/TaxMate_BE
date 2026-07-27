@@ -27,4 +27,7 @@ public class BusinessCategory : BaseEntity
     
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();
+
+    public ICollection<Product> Products { get; set; }
+        = new List<Product>();
 }

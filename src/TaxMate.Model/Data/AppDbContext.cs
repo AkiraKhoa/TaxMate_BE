@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 using TaxMate.Model.Entities;
 
 namespace TaxMate.Model.Data;
@@ -141,6 +142,15 @@ public class AppDbContext : DbContext
             .WithMany(x => x.Products)
             .HasForeignKey(x => x.ProductCategoryId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Product>()
+            .HasOne(x => x.BusinessCategory)
+            .WithMany(x => x.Products)
+            .HasForeignKey(x => x.BusinessCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Product>()
+            .HasIndex(x => new { x.BusinessId, x.BusinessCategoryId });
 
         // Supplier relationships
         modelBuilder.Entity<Supplier>()
@@ -598,6 +608,66 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<LegalDocument>()
             .HasIndex(x => x.Status);
+
+        // Seed Business Categories (official GTGT/TNCN rate groups)
+        var seedDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<BusinessCategory>().HasData(
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.DistGoods,
+                Code = "DIST_GOODS",
+                Name = "Phân phối, cung cấp hàng hóa",
+                Description = "GTGT 1%, TNCN 0.5%",
+                VatRate = 1m,
+                PitRate = 0.5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.ProdTransport,
+                Code = "PROD_TRANSPORT",
+                Name = "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL",
+                Description = "GTGT 3%, TNCN 1.5%",
+                VatRate = 3m,
+                PitRate = 1.5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
+                Code = "SERVICE_CONSTRUCT",
+                Name = "Dịch vụ, XD không bao thầu NVL",
+                Description = "GTGT 5%, TNCN 2%",
+                VatRate = 5m,
+                PitRate = 2m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.AssetInsurance,
+                Code = "ASSET_INSURANCE",
+                Name = "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…",
+                Description = "GTGT 5%, TNCN 5%",
+                VatRate = 5m,
+                PitRate = 5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.Other,
+                Code = "OTHER",
+                Name = "Hoạt động khác",
+                Description = "GTGT 2%, TNCN 1%",
+                VatRate = 2m,
+                PitRate = 1m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            }
+        );
 
         // Seed Subscription Plans
         var freePlanId = Guid.Parse("a1d1c694-d271-460b-8835-2b2e6a1b8c1d");

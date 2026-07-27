@@ -26,6 +26,7 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         var query = _appContext.Products
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
+            .Include(x => x.BusinessCategory)
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -61,6 +62,7 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         return await _appContext.Products
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
+            .Include(x => x.BusinessCategory)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 }
