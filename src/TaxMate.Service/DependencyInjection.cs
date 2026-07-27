@@ -57,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<IUserDeviceService, UserDeviceService>();
         services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<ITaxBookService, TaxBookService>();
         
 
         services.Configure<TaxSettings>(

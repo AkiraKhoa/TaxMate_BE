@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISmsService, TwilioSmsService>();
         services.AddScoped<ITaxDeclarationDocumentGenerator, OpenXmlTaxDeclarationDocumentGenerator>();
+        services.AddScoped<IS1aDocumentGenerator, OpenXmlS1aDocumentGenerator>();
 
         services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
