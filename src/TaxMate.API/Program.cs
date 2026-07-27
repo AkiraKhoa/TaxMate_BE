@@ -33,6 +33,7 @@ if (File.Exists(envFile))
 
 var builder = WebApplication.CreateBuilder(args);
 
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 builder.Configuration.AddEnvironmentVariables();
 
 // ── Serilog ────────────────────────────────────────────────

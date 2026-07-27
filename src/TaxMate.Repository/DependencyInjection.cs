@@ -29,10 +29,11 @@ public static class DependencyInjection
         services.AddScoped<IDashboardAnalyticsRepository, DashboardAnalyticsRepository>();
         services.AddScoped<IIncomeCategoryRepository, IncomeCategoryRepository>();
         services.AddScoped<IIncomeRepository, IncomeRepository>();
-
+        services.AddScoped<ITaxPeriodRepository, TaxPeriodRepository>();
         services.AddScoped<IUserDeviceRepository, UserDeviceRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
-        
+        services.AddScoped<ITaxCalculationRepository, TaxCalculationRepository>();
+        services.AddScoped<ITaxDeclarationRepository, TaxDeclarationRepository>();
 
         return services;
     }

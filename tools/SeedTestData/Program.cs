@@ -32,6 +32,15 @@ if (business is null)
     var productId = Guid.NewGuid();
     var priceId = Guid.NewGuid();
 
+    var fnbCategory = await db.BusinessCategories
+        .FirstOrDefaultAsync(c => c.Code == "FNB");
+
+    if (fnbCategory is null)
+    {
+        throw new InvalidOperationException(
+            "BusinessCategory FNB not found. Run database migration/seeding first.");
+    }
+
     db.Users.Add(new User
     {
         Id = userId,
@@ -40,17 +49,25 @@ if (business is null)
         FullName = "POS Test User",
         Role = "Owner",
         AccountStatus = AccountStatus.Active,
-        CreatedAt = now
+        CreatedAt = now,
+        UpdatedAt = now
     });
 
     db.BusinessProfiles.Add(new BusinessProfile
     {
         Id = businessId,
         OwnerId = userId,
+
+        MainCategoryId = fnbCategory.BusinessCategoryId,
+
         BusinessName = "Cua Hang Test POS",
         Address = "123 Test St",
-        CreatedAt = now
+
+        CreatedAt = now,
+        UpdatedAt = now
     });
+
+    // phần Product và ProductPrice giữ nguyên...
 
     db.Products.Add(new Product
     {
@@ -121,6 +138,10 @@ if (!hasExpenses)
     seededExpenseData = true;
 }
 
+// Seed/refresh tax periods after transactions and expenses exist so that
+// revenue snapshots match the data used by the Tax Period APIs.
+await SeedTaxPeriodsAsync(db, businessId, now);
+
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
 static async Task SeedQuarterSalesTrendDataAsync(
     AppDbContext db,
@@ -152,13 +173,25 @@ static async Task SeedQuarterSalesTrendDataAsync(
 
     var monthlySales = new[]
     {
-        new { Month = 1, Revenue = 3_600_000m },
-        new { Month = 2, Revenue = 3_800_000m },
-        new { Month = 3, Revenue = 4_100_000m },
+        // Q1 = 400 triệu
+        new { Month = 1, Revenue = 130_000_000m },
+        new { Month = 2, Revenue = 130_000_000m },
+        new { Month = 3, Revenue = 140_000_000m },
 
-        new { Month = 4, Revenue = 5_800_000m },
-        new { Month = 5, Revenue = 4_900_000m },
-        new { Month = 6, Revenue = 7_000_000m }
+        // Q2 = 350 triệu
+        new { Month = 4, Revenue = 110_000_000m },
+        new { Month = 5, Revenue = 120_000_000m },
+        new { Month = 6, Revenue = 120_000_000m },
+
+        // Q3 = 400 triệu
+        new { Month = 7, Revenue = 130_000_000m },
+        new { Month = 8, Revenue = 130_000_000m },
+        new { Month = 9, Revenue = 140_000_000m },
+
+        // Q4 = 200 triệu
+        new { Month = 10, Revenue = 60_000_000m },
+        new { Month = 11, Revenue = 70_000_000m },
+        new { Month = 12, Revenue = 70_000_000m }
     };
 
     var index = 1;
@@ -764,6 +797,214 @@ static async Task SeedExpensesAsync(
     await db.SaveChangesAsync();
 }
 
+static async Task SeedTaxPeriodsAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    const int seedYear = 2026;
+
+    var quarterDefinitions = new[]
+    {
+        new
+        {
+            Quarter = 1,
+            Start = new DateTime(seedYear, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            End = new DateTime(seedYear, 3, 31, 23, 59, 59, DateTimeKind.Utc),
+            DueDate = new DateTime(seedYear, 4, 30, 0, 0, 0, DateTimeKind.Utc),
+            Status = "Open"
+        },
+        new
+        {
+            Quarter = 2,
+            Start = new DateTime(seedYear, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+            End = new DateTime(seedYear, 6, 30, 23, 59, 59, DateTimeKind.Utc),
+            DueDate = new DateTime(seedYear, 7, 30, 0, 0, 0, DateTimeKind.Utc),
+            Status = "Closed"
+        },
+        new
+        {
+            Quarter = 3,
+            Start = new DateTime(seedYear, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            End = new DateTime(seedYear, 9, 30, 23, 59, 59, DateTimeKind.Utc),
+            DueDate = new DateTime(seedYear, 10, 30, 0, 0, 0, DateTimeKind.Utc),
+            Status = "Calculated"
+        },
+        new
+        {
+            Quarter = 4,
+            Start = new DateTime(seedYear, 10, 1, 0, 0, 0, DateTimeKind.Utc),
+            End = new DateTime(seedYear, 12, 31, 23, 59, 59, DateTimeKind.Utc),
+            DueDate = new DateTime(seedYear + 1, 1, 30, 0, 0, 0, DateTimeKind.Utc),
+            Status = "Submitted"
+        }
+    };
+
+    foreach (var definition in quarterDefinitions)
+    {
+        var salesRevenue = await db.Transactions
+            .AsNoTracking()
+            .Where(t =>
+                t.BusinessId == businessId &&
+                t.TransactionType == TransactionTypes.Sale &&
+                t.Status == "Completed" &&
+                t.TransactionDate >= definition.Start &&
+                t.TransactionDate <= definition.End)
+            .SumAsync(t => (decimal?)t.TotalAmount) ?? 0m;
+
+        // // Seed a small, deterministic Q4 snapshot so Submitted-state UI/API
+        // // can still be tested even when no future transactions exist yet.
+        // if (definition.Quarter == 4 && salesRevenue == 0m)
+        // {
+        //     salesRevenue = 12_000_000m;
+        // }
+
+        var otherRevenue = 0m;
+        var totalRevenue = salesRevenue + otherRevenue;
+        var taxableRevenue = totalRevenue;
+
+        var hasCalculatedTax =
+            definition.Status is "Calculated" or "Submitted" or "PartiallyPaid" or "Paid";
+
+        // Test rates follow the seeded BusinessCategory convention:
+        // VAT 1% and PIT 0.5%. The real Calculate API must read current rates
+        // from BusinessCategory and snapshot them into TaxCalculationLine.
+        var vatTaxAmount = hasCalculatedTax
+            ? decimal.Round(taxableRevenue * 1.0m / 100m, 2)
+            : 0m;
+
+        var pitTaxAmount = hasCalculatedTax
+            ? decimal.Round(taxableRevenue * 0.5m / 100m, 2)
+            : 0m;
+
+        var estimatedTax = vatTaxAmount + pitTaxAmount;
+
+        var period = await db.TaxPeriods
+            .FirstOrDefaultAsync(p =>
+                p.BusinessId == businessId &&
+                p.PeriodType == "Quarterly" &&
+                p.Year == seedYear &&
+                p.Quarter == definition.Quarter);
+
+        if (period is null)
+        {
+            period = new TaxPeriod
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = businessId,
+                PeriodType = "Quarterly",
+                Year = seedYear,
+                Month = null,
+                Quarter = definition.Quarter,
+                CreatedAt = now
+            };
+
+            db.TaxPeriods.Add(period);
+        }
+
+        period.PeriodStartDate = definition.Start;
+        period.PeriodEndDate = definition.End;
+        period.DueDate = definition.DueDate;
+        period.Status = definition.Status;
+
+        period.SalesRevenue = salesRevenue;
+        period.OtherRevenue = otherRevenue;
+        period.TotalRevenue = totalRevenue;
+        period.TaxableRevenue = taxableRevenue;
+
+        period.VatTaxAmount = vatTaxAmount;
+        period.PersonalIncomeTaxAmount = pitTaxAmount;
+        period.EstimatedTax = estimatedTax;
+        period.TaxAmountDebt = estimatedTax;
+
+        period.ClosedAt = definition.Status == "Open"
+            ? null
+            : definition.End.AddDays(1);
+
+        period.CalculatedAt = hasCalculatedTax
+            ? definition.End.AddDays(2)
+            : null;
+
+        period.SubmittedAt = definition.Status is "Submitted" or "PartiallyPaid" or "Paid"
+            ? definition.End.AddDays(3)
+            : null;
+
+        period.PaidDate = definition.Status == "Paid"
+            ? definition.End.AddDays(4)
+            : null;
+
+        period.UpdatedAt = now;
+    }
+
+    // Add one yearly Paid record so the Paid branch can be tested without
+    // changing the quarterly state-flow examples above.
+    var yearStart = new DateTime(seedYear, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    var yearEnd = new DateTime(seedYear, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+
+    var yearlyRevenue = await db.TaxPeriods
+        .Where(p =>
+            p.BusinessId == businessId &&
+            p.PeriodType == "Quarterly" &&
+            p.Year == seedYear)
+        .SumAsync(p => (decimal?)p.TotalRevenue) ?? 0m;
+
+    var yearlyVat = decimal.Round(yearlyRevenue * 1.0m / 100m, 2);
+    var yearlyPit = decimal.Round(yearlyRevenue * 0.5m / 100m, 2);
+    var yearlyTax = yearlyVat + yearlyPit;
+
+    var yearlyPeriod = await db.TaxPeriods
+        .FirstOrDefaultAsync(p =>
+            p.BusinessId == businessId &&
+            p.PeriodType == "Yearly" &&
+            p.Year == seedYear);
+
+    if (yearlyPeriod is null)
+    {
+        yearlyPeriod = new TaxPeriod
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = businessId,
+            PeriodType = "Yearly",
+            Year = seedYear,
+            Month = null,
+            Quarter = null,
+            CreatedAt = now
+        };
+
+        db.TaxPeriods.Add(yearlyPeriod);
+    }
+
+    yearlyPeriod.PeriodStartDate = yearStart;
+    yearlyPeriod.PeriodEndDate = yearEnd;
+    yearlyPeriod.DueDate = new DateTime(seedYear + 1, 1, 30, 0, 0, 0, DateTimeKind.Utc);
+    yearlyPeriod.Status = "Paid";
+
+    yearlyPeriod.SalesRevenue = yearlyRevenue;
+    yearlyPeriod.OtherRevenue = 0m;
+    yearlyPeriod.TotalRevenue = yearlyRevenue;
+    yearlyPeriod.TaxableRevenue = yearlyRevenue;
+
+    yearlyPeriod.VatTaxAmount = yearlyVat;
+    yearlyPeriod.PersonalIncomeTaxAmount = yearlyPit;
+    yearlyPeriod.EstimatedTax = yearlyTax;
+    yearlyPeriod.TaxAmountDebt = 0m;
+
+    yearlyPeriod.ClosedAt = yearEnd.AddDays(1);
+    yearlyPeriod.CalculatedAt = yearEnd.AddDays(2);
+    yearlyPeriod.SubmittedAt = yearEnd.AddDays(3);
+    yearlyPeriod.PaidDate = yearEnd.AddDays(4);
+    yearlyPeriod.UpdatedAt = now;
+
+    await db.SaveChangesAsync();
+
+    await SeedTaxCalculationsAsync(
+        db,
+        businessId,
+        seedYear,
+        now);
+}
+
+
 static async Task PrintOutputAsync(
     AppDbContext db,
     Guid businessId,
@@ -796,7 +1037,8 @@ static async Task PrintOutputAsync(
     foreach (var category in businessCategories)
     {
         var categoryPrefix = seededExpenseData ? "SEEDED" : "EXISTING";
-        Console.WriteLine($"{categoryPrefix} BUSINESS category: {category.CategoryName} = {category.ExpenseCategoryId}");
+        Console.WriteLine(
+            $"{categoryPrefix} BUSINESS category: {category.CategoryName} = {category.ExpenseCategoryId}");
     }
 
     var expenses = await db.Expenses.AsNoTracking()
@@ -809,4 +1051,321 @@ static async Task PrintOutputAsync(
         var expensePrefix = seededExpenseData ? "SEEDED" : "EXISTING";
         Console.WriteLine($"{expensePrefix} EXPENSE: {expense.ExpenseTitle} = {expense.ExpenseId}");
     }
+
+    var taxPeriods = await db.TaxPeriods
+        .AsNoTracking()
+        .Where(p => p.BusinessId == businessId)
+        .OrderBy(p => p.Year)
+        .ThenBy(p => p.PeriodType)
+        .ThenBy(p => p.Quarter)
+        .ThenBy(p => p.Month)
+        .ToListAsync();
+
+    foreach (var period in taxPeriods)
+    {
+        var periodLabel = period.PeriodType == "Quarterly"
+            ? $"Q{period.Quarter}/{period.Year}"
+            : period.PeriodType == "Monthly"
+                ? $"M{period.Month}/{period.Year}"
+                : $"Y{period.Year}";
+
+        Console.WriteLine(
+            $"TAX PERIOD: {periodLabel} | id={period.Id} | " +
+            $"status={period.Status} | revenue={period.TotalRevenue:N0} | " +
+            $"tax={period.EstimatedTax:N0} | debt={period.TaxAmountDebt:N0}");
+    }
 }
+
+static async Task SeedTaxCalculationsAsync(
+    AppDbContext db,
+    Guid businessId,
+    int year,
+    DateTime now)
+{
+    var periods = await db.TaxPeriods
+        .Where(p =>
+            p.BusinessId == businessId &&
+            p.Year == year &&
+            (
+                p.Status == "Calculated" ||
+                p.Status == "Submitted" ||
+                p.Status == "PartiallyPaid" ||
+                p.Status == "Paid"
+            ))
+        .ToListAsync();
+
+    if (periods.Count == 0)
+    {
+        return;
+    }
+
+    var business = await db.BusinessProfiles
+        .Include(b => b.MainCategory)
+        .FirstOrDefaultAsync(b => b.Id == businessId);
+
+    if (business is null)
+    {
+        throw new InvalidOperationException(
+            $"Business {businessId} not found.");
+    }
+
+    var category = business.MainCategory;
+
+// Business cũ chưa có ngành nghề chính thì tự gán FNB
+    if (category is null)
+    {
+        category = await db.BusinessCategories
+            .FirstOrDefaultAsync(c => c.Code == "FNB");
+
+        if (category is null)
+        {
+            throw new InvalidOperationException(
+                "BusinessCategory FNB not found in database. Seed BusinessCategories first.");
+        }
+
+        business.MainCategoryId = category.BusinessCategoryId;
+        business.UpdatedAt = now;
+
+        await db.SaveChangesAsync();
+
+        Console.WriteLine(
+            $"Assigned FNB category to business {businessId}");
+    }
+
+    foreach (var period in periods)
+    {
+        var existingCalculation = await db.TaxCalculations
+            .Include(c => c.Lines)
+            .FirstOrDefaultAsync(c =>
+                c.TaxPeriodId == period.Id &&
+                c.IsCurrent);
+
+        if (existingCalculation is not null)
+        {
+            continue;
+        }
+
+        var taxableRevenue = period.TaxableRevenue;
+
+        // ==============================
+        // VAT
+        // ==============================
+
+        var vatTaxableRevenue = taxableRevenue;
+
+        var vatNonTaxableRevenue = 0m;
+
+        var zeroRatedVatRevenue = 0m;
+
+        var vatTaxAmount = decimal.Round(
+            vatTaxableRevenue *
+            category.VatRate /
+            100m,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        // ==============================
+        // PIT
+        // ==============================
+
+        var pitTaxableRevenue = taxableRevenue;
+
+        // Hiện tại seed chưa áp dụng mức giảm trừ 1 tỷ.
+        // Rule thật sẽ được xử lý trong CalculateAsync.
+        var pitDeductibleRevenue = 0m;
+
+        var pitRevenue = Math.Max(
+            0m,
+            pitTaxableRevenue -
+            pitDeductibleRevenue);
+
+        var pitTaxAmount = decimal.Round(
+            pitRevenue *
+            category.PitRate /
+            100m,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        var totalTax =
+            vatTaxAmount +
+            pitTaxAmount;
+        
+        var yearStart = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var nextYearStart = yearStart.AddYears(1);
+
+        var annualRevenue = await db.Transactions
+                                .AsNoTracking()
+                                .Where(t =>
+                                    t.BusinessId == businessId &&
+                                    t.TransactionType == TransactionTypes.Sale &&
+                                    t.Status == "Completed" &&
+                                    t.TransactionDate >= yearStart &&
+                                    t.TransactionDate < nextYearStart)
+                                .SumAsync(t => (decimal?)t.TotalAmount)
+                            ?? 0m;
+
+        const decimal annualRevenueThreshold =
+            1_000_000_000m;
+
+        var recommendedFormCode =
+            annualRevenue > annualRevenueThreshold
+                ? "01/CNKD"
+                : "01/TKN-CNKD";
+
+        var calculation = new TaxCalculation
+        {
+            Id = Guid.NewGuid(),
+
+            TaxPeriodId = period.Id,
+
+            Version = 1,
+
+            Status = "Completed",
+
+            CalculationRuleVersion =
+                "SEED-2026",
+
+            TotalRevenue =
+                period.TotalRevenue,
+
+            TotalTaxableRevenue =
+                taxableRevenue,
+
+            TotalVatTaxAmount =
+                vatTaxAmount,
+
+            TotalPersonalIncomeTaxAmount =
+                pitTaxAmount,
+
+            TotalTaxBeforeExemption =
+                totalTax,
+
+            TotalExemptionAmount =
+                0m,
+
+            TotalTaxPayableAmount =
+                totalTax,
+
+            CalculatedAt =
+                period.CalculatedAt ?? now,
+
+            IsCurrent = true,
+
+            CreatedAt = now,
+
+            UpdatedAt = now,
+            
+            AnnualRevenueAtCalculation = annualRevenue,
+
+            ApplicableRevenueThreshold = annualRevenueThreshold,
+
+            RecommendedFormCode = recommendedFormCode
+        };
+
+        calculation.Lines.Add(
+            new TaxCalculationLine
+            {
+                Id = Guid.NewGuid(),
+
+                TaxCalculationId =
+                    calculation.Id,
+
+                BusinessCategoryId =
+                    category.BusinessCategoryId,
+
+                SectionCode =
+                    category.FormSectionCode ?? "I",
+
+                IndicatorCode =
+                    category.FormIndicatorCode ?? "d",
+
+                BusinessActivityCode =
+                    category.Code,
+
+                BusinessActivityName =
+                    category.Name,
+
+                // [10]
+                TotalRevenue =
+                    period.TotalRevenue,
+
+                // VAT
+
+                VatTaxableRevenue =
+                    vatTaxableRevenue,
+
+                // [11]
+                VatNonTaxableRevenue =
+                    vatNonTaxableRevenue,
+
+                // [12]
+                ZeroRatedVatRevenue =
+                    zeroRatedVatRevenue,
+
+                VatTaxRate =
+                    category.VatRate,
+
+                // [13]
+                VatTaxAmount =
+                    vatTaxAmount,
+
+                // PIT
+
+                // [14]
+                PersonalIncomeTaxableRevenue =
+                    pitTaxableRevenue,
+
+                // [15]
+                PersonalIncomeTaxDeductibleRevenue =
+                    pitDeductibleRevenue,
+
+                // [16] FIELD MỚI
+                PersonalIncomeTaxRevenue =
+                    pitRevenue,
+
+                PersonalIncomeTaxRate =
+                    category.PitRate,
+
+                // [17]
+                PersonalIncomeTaxAmount =
+                    pitTaxAmount,
+
+                DisplayOrder = 1,
+
+                CreatedAt = now,
+
+                UpdatedAt = now
+            });
+
+        db.TaxCalculations.Add(calculation);
+
+        // Đồng bộ TaxPeriod
+        period.VatTaxAmount =
+            vatTaxAmount;
+
+        period.PersonalIncomeTaxAmount =
+            pitTaxAmount;
+
+        period.EstimatedTax =
+            totalTax;
+
+        if (period.Status != "Paid")
+        {
+            period.TaxAmountDebt =
+                totalTax;
+        }
+
+        period.UpdatedAt = now;
+    }
+
+    await db.SaveChangesAsync();
+}
+

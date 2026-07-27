@@ -56,7 +56,22 @@ public class AppDbContext : DbContext
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
     public DbSet<EInvoiceConfig> EInvoiceConfigs => Set<EInvoiceConfig>();
+    
+    public DbSet<TaxCalculation> TaxCalculations =>
+        Set<TaxCalculation>();
 
+    public DbSet<TaxCalculationLine> TaxCalculationLines =>
+        Set<TaxCalculationLine>();
+
+    public DbSet<TaxDeclaration> TaxDeclarations =>
+        Set<TaxDeclaration>();
+
+    public DbSet<TaxDeclarationLine> TaxDeclarationLines =>
+        Set<TaxDeclarationLine>();
+
+    public DbSet<TaxDeclarationObligation> TaxDeclarationObligations =>
+        Set<TaxDeclarationObligation>();
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -322,9 +337,6 @@ public class AppDbContext : DbContext
             .WithMany(x => x.TaxPayments)
             .HasForeignKey(x => x.TaxPeriodId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<TaxPayment>()
-            .HasIndex(x => x.PaidDate);
         
         // Expense
         modelBuilder.Entity<Expense>()
@@ -700,28 +712,51 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<BusinessCategory>().HasData(
             new BusinessCategory
             {
-                BusinessCategoryId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                Code = "fnb",
-                Name = "Ăn uống, nhà hàng (F&B)",
-                Description = "Kinh doanh dịch vụ ăn uống, nhà hàng, quán nước",
+                BusinessCategoryId =
+                    Guid.Parse("d1111111-1111-1111-1111-111111111111"),
+
+                Code = "FNB",
+                Name = "Ăn uống, nhà hàng, F&B",
+
+                Description =
+                    "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
+
                 VatRate = 3.00m,
                 PitRate = 1.50m,
-                CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc),
-                UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc)
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "d",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             },
+
             new BusinessCategory
             {
-                BusinessCategoryId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                Code = "service",
-                Name = "Dịch vụ & Vận tải (Service)",
-                Description = "Cung cấp dịch vụ phi sản xuất, vận chuyển, cho thuê tài sản",
+                BusinessCategoryId =
+                    Guid.Parse("d2222222-2222-2222-2222-222222222222"),
+
+                Code = "SERVICE",
+                Name = "Dịch vụ",
+
+                Description =
+                    "Dịch vụ, xây dựng không bao thầu nguyên vật liệu.",
+
                 VatRate = 5.00m,
                 PitRate = 2.00m,
-                CreatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc),
-                UpdatedAt = new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc)
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "b",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             }
         );
-
+        
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }

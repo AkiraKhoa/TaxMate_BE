@@ -4,12 +4,14 @@ using Microsoft.Extensions.Options;
 using QuestPDF.Infrastructure;
 using TaxMate.Infrastructure.Pdf;
 using TaxMate.Infrastructure.Auth;
+using TaxMate.Infrastructure.Documents.Tax;
 using TaxMate.Infrastructure.Email;
 using TaxMate.Infrastructure.Options;
 using TaxMate.Infrastructure.Rag;
 using TaxMate.Infrastructure.Sms;
 using TaxMate.Infrastructure.Storage;
 using TaxMate.Service.Interfaces;
+using TaxMate.Service.Interfaces.Documents;
 
 namespace TaxMate.Infrastructure;
 
@@ -48,6 +50,8 @@ public static class DependencyInjection
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISmsService, TwilioSmsService>();
+        services.AddScoped<ITaxDeclarationDocumentGenerator, OpenXmlTaxDeclarationDocumentGenerator>();
+        services.AddScoped<IS1aDocumentGenerator, OpenXmlS1aDocumentGenerator>();
 
         services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 

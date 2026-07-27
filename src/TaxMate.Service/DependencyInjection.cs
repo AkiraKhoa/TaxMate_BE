@@ -25,7 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ISePayService, SePayService>();
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
-
+        services.AddScoped<ITaxPeriodService, TaxPeriodService>();
+        services.AddScoped<ITaxDeclarationService, TaxDeclarationService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
         services.AddScoped<IIngredientService, IngredientService>();
@@ -56,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<IUserDeviceService, UserDeviceService>();
         services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<ITaxBookService, TaxBookService>();
         
 
         services.Configure<TaxSettings>(
