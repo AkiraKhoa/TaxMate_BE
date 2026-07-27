@@ -17,6 +17,7 @@ public class UpdateIngredientRequest
 public class IngredientResponse
 {
     public Guid Id { get; set; }
+    public Guid BusinessId { get; set; }
     public string Name { get; set; } = null!;
     public string? Unit { get; set; }
     public decimal? EstimatedPrice { get; set; }

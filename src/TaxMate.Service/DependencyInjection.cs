@@ -25,7 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ISePayService, SePayService>();
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
-
+        services.AddScoped<ITaxPeriodService, TaxPeriodService>();
+        services.AddScoped<ITaxDeclarationService, TaxDeclarationService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
         services.AddScoped<IIngredientService, IngredientService>();

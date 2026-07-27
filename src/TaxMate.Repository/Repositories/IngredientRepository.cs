@@ -14,11 +14,20 @@ public class IngredientRepository : GenericRepository<Ingredient>, IIngredientRe
         _appContext = context;
     }
 
-    public async Task<(List<Ingredient> Items, int TotalCount)> GetPagedAsync(
-        int pageNumber, int pageSize, string? search)
+    public async Task<Ingredient?> GetByIdAndBusinessAsync(Guid id, Guid businessId)
+    {
+        return await _appContext.Ingredients
+            .FirstOrDefaultAsync(x => x.Id == id && x.BusinessId == businessId);
+    }
+
+    public async Task<(List<Ingredient> Items, int TotalCount)> GetPagedByBusinessAsync(
+        Guid businessId,
+        int pageNumber,
+        int pageSize,
+        string? search)
     {
         var query = _appContext.Ingredients
-            .Where(x => !x.IsDeleted)
+            .Where(x => x.BusinessId == businessId && !x.IsDeleted)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))

@@ -54,7 +54,7 @@ public class SePayEInvoiceService : IEInvoiceService
                 if (orderPaymentMethods != null && orderPaymentMethods.Any())
                 {
                     bool hasCash = orderPaymentMethods.Any(m => m.Equals("Cash", StringComparison.OrdinalIgnoreCase));
-                    bool hasTransfer = orderPaymentMethods.Any(m => m.Equals("Transfer", StringComparison.OrdinalIgnoreCase) || m.Equals("BankTransfer", StringComparison.OrdinalIgnoreCase));
+                    bool hasTransfer = orderPaymentMethods.Any(m => m.Equals("Transfer", StringComparison.OrdinalIgnoreCase) || m.Equals("Transfer", StringComparison.OrdinalIgnoreCase));
 
                     if (hasCash && hasTransfer)
                     {

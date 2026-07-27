@@ -56,7 +56,22 @@ public class AppDbContext : DbContext
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
     public DbSet<EInvoiceConfig> EInvoiceConfigs => Set<EInvoiceConfig>();
+    
+    public DbSet<TaxCalculation> TaxCalculations =>
+        Set<TaxCalculation>();
 
+    public DbSet<TaxCalculationLine> TaxCalculationLines =>
+        Set<TaxCalculationLine>();
+
+    public DbSet<TaxDeclaration> TaxDeclarations =>
+        Set<TaxDeclaration>();
+
+    public DbSet<TaxDeclarationLine> TaxDeclarationLines =>
+        Set<TaxDeclarationLine>();
+
+    public DbSet<TaxDeclarationObligation> TaxDeclarationObligations =>
+        Set<TaxDeclarationObligation>();
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -322,9 +337,6 @@ public class AppDbContext : DbContext
             .WithMany(x => x.TaxPayments)
             .HasForeignKey(x => x.TaxPeriodId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<TaxPayment>()
-            .HasIndex(x => x.PaidDate);
         
         // Expense
         modelBuilder.Entity<Expense>()
@@ -365,6 +377,19 @@ public class AppDbContext : DbContext
             .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
         // Income
         modelBuilder.Entity<Income>()
             .HasOne(x => x.Business)
@@ -404,6 +429,19 @@ public class AppDbContext : DbContext
             .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
         // Product Ingredient
         modelBuilder.Entity<ProductIngredient>()
             .HasKey(x => new
@@ -415,12 +453,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Product)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.ProductId);
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Ingredient)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.IngredientId);
+            .HasForeignKey(x => x.IngredientId)
+            .OnDelete(DeleteBehavior.Restrict);
         
         // Ingredient Purchase
         modelBuilder.Entity<IngredientPurchase>()
@@ -668,6 +708,55 @@ public class AppDbContext : DbContext
             new PlanFeature { Id = Guid.Parse("ececcccc-eeee-eeee-eeee-eeeeeeeeeeee"), SubscriptionPlanId = premiumPlanId, FeatureKey = "growth_readiness_monitoring", FeatureName = "Giám sát mức độ sẵn sàng tăng trưởng", IsEnabled = true }
         );
 
+        // Seed Business Categories
+        modelBuilder.Entity<BusinessCategory>().HasData(
+            new BusinessCategory
+            {
+                BusinessCategoryId =
+                    Guid.Parse("d1111111-1111-1111-1111-111111111111"),
+
+                Code = "FNB",
+                Name = "Ăn uống, nhà hàng, F&B",
+
+                Description =
+                    "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
+
+                VatRate = 3.00m,
+                PitRate = 1.50m,
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "d",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+
+            new BusinessCategory
+            {
+                BusinessCategoryId =
+                    Guid.Parse("d2222222-2222-2222-2222-222222222222"),
+
+                Code = "SERVICE",
+                Name = "Dịch vụ",
+
+                Description =
+                    "Dịch vụ, xây dựng không bao thầu nguyên vật liệu.",
+
+                VatRate = 5.00m,
+                PitRate = 2.00m,
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "b",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+        );
+        
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 }

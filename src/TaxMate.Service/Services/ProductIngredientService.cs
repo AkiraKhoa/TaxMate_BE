@@ -33,8 +33,8 @@ public class ProductIngredientService : IProductIngredientService
         Guid productId,
         AddProductIngredientRequest request)
     {
-        await EnsureProductOwnerAsync(ownerId, productId);
-        await EnsureIngredientAvailableAsync(request.IngredientId);
+        var product = await EnsureProductOwnerAsync(ownerId, productId);
+        await EnsureIngredientAvailableAsync(product.BusinessId, request.IngredientId);
 
         if (request.Quantity <= 0)
             throw new BadRequestException("Quantity must be greater than zero.");
@@ -84,7 +84,8 @@ public class ProductIngredientService : IProductIngredientService
     {
         await EnsureProductOwnerAsync(ownerId, productId);
 
-        var entity = await _productIngredients.GetByCompositeKeyAsync(productId, ingredientId);
+        // Load link only (no Include) so Remove unlinks ProductIngredient without touching Product/Ingredient.
+        var entity = await _productIngredients.GetLinkOnlyAsync(productId, ingredientId);
         if (entity is null)
             throw new NotFoundException(
                 $"Product ingredient link for product '{productId}' and ingredient '{ingredientId}' not found.");
@@ -103,7 +104,7 @@ public class ProductIngredientService : IProductIngredientService
         return items.Select(MapToResponse);
     }
 
-    private async Task EnsureProductOwnerAsync(Guid ownerId, Guid productId)
+    private async Task<Product> EnsureProductOwnerAsync(Guid ownerId, Guid productId)
     {
         var product = await _products.GetByIdAsync(productId);
         if (product is null)
@@ -115,11 +116,13 @@ public class ProductIngredientService : IProductIngredientService
 
         if (business.OwnerId != ownerId)
             throw new UnauthorizedAccessException("You do not own this business.");
+
+        return product;
     }
 
-    private async Task EnsureIngredientAvailableAsync(Guid ingredientId)
+    private async Task EnsureIngredientAvailableAsync(Guid businessId, Guid ingredientId)
     {
-        var ingredient = await _ingredients.GetByIdAsync(ingredientId);
+        var ingredient = await _ingredients.GetByIdAndBusinessAsync(ingredientId, businessId);
         if (ingredient is null || ingredient.IsDeleted)
             throw new NotFoundException($"Ingredient with id '{ingredientId}' not found.");
     }

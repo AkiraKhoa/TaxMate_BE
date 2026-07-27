@@ -8,6 +8,8 @@ public class Ingredient : BaseEntity
 {
     public Guid Id { get; set; }
 
+    public Guid BusinessId { get; set; }
+
     [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
@@ -19,6 +21,8 @@ public class Ingredient : BaseEntity
     public decimal? EstimatedPrice { get; set; }
 
     public bool IsDeleted { get; set; }
+
+    public BusinessProfile Business { get; set; } = null!;
 
     public ICollection<ProductIngredient> ProductIngredients { get; set; }
         = new List<ProductIngredient>();
