@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using TaxMate.Model.Common;
 using TaxMate.Model.Data;
 using TaxMate.Model.DTO;
 using TaxMate.Repository.Interfaces;
@@ -8,14 +7,6 @@ namespace TaxMate.Repository.Repositories;
 
 public class S2aHkdRepository : IS2aHkdRepository
 {
-    private static readonly string[] RevenueTypes =
-    [
-        TransactionTypes.Sale,
-        TransactionTypes.ServiceRevenue,
-        TransactionTypes.OtherRevenue,
-        TransactionTypes.AdjustmentIncrease
-    ];
-
     private readonly AppDbContext _context;
 
     public S2aHkdRepository(AppDbContext context)
@@ -34,8 +25,7 @@ public class S2aHkdRepository : IS2aHkdRepository
                 ti.Transaction.BusinessId == businessId
                 && ti.Transaction.Status == "Completed"
                 && ti.Transaction.TransactionDate >= startDate
-                && ti.Transaction.TransactionDate < endDate
-                && RevenueTypes.Contains(ti.Transaction.TransactionType))
+                && ti.Transaction.TransactionDate < endDate)
             .Select(ti => new
             {
                 ti.ProductId,

@@ -28,4 +28,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="Word\mau-s2a-HKD.docx" CopyToOutputDirectory="PreserveNewest" Link="Word\mau-s2a-HKD.docx" />
+  </ItemGroup>
+
 </Project>

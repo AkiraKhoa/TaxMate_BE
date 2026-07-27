@@ -3,8 +3,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
-
 namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
@@ -13,86 +11,93 @@ namespace TaxMate.Model.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<Guid>(
-                name: "BusinessCategoryId",
-                table: "Products",
-                type: "uuid",
-                nullable: true);
+            // Idempotent: SeedTestData may have already patched local DBs with raw SQL.
+            migrationBuilder.Sql(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_name = 'Products'
+                          AND column_name = 'BusinessCategoryId'
+                    ) THEN
+                        ALTER TABLE "Products"
+                        ADD COLUMN "BusinessCategoryId" uuid NULL;
+                    END IF;
+                END $$;
+                """);
 
-            migrationBuilder.InsertData(
-                table: "BusinessCategories",
-                columns: new[] { "BusinessCategoryId", "Code", "CreatedAt", "Description", "Name", "PitRate", "UpdatedAt", "VatRate" },
-                values: new object[,]
-                {
-                    { new Guid("a0000001-0000-4000-8000-000000000001"), "DIST_GOODS", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 1%, TNCN 0.5%", "Phân phối, cung cấp hàng hóa", 0.5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 1m },
-                    { new Guid("a0000001-0000-4000-8000-000000000002"), "PROD_TRANSPORT", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 3%, TNCN 1.5%", "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL", 1.5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 3m },
-                    { new Guid("a0000001-0000-4000-8000-000000000003"), "SERVICE_CONSTRUCT", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 5%, TNCN 2%", "Dịch vụ, XD không bao thầu NVL", 2m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 5m },
-                    { new Guid("a0000001-0000-4000-8000-000000000004"), "ASSET_INSURANCE", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 5%, TNCN 5%", "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…", 5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 5m },
-                    { new Guid("a0000001-0000-4000-8000-000000000005"), "OTHER", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 2%, TNCN 1%", "Hoạt động khác", 1m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 2m }
-                });
+            migrationBuilder.Sql(
+                """
+                INSERT INTO "BusinessCategories"
+                    ("BusinessCategoryId", "Code", "CreatedAt", "Description", "Name", "PitRate", "UpdatedAt", "VatRate")
+                VALUES
+                    ('a0000001-0000-4000-8000-000000000001', 'DIST_GOODS', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'GTGT 1%, TNCN 0.5%', 'Phân phối, cung cấp hàng hóa', 0.5, TIMESTAMPTZ '2026-01-01 00:00:00+00', 1),
+                    ('a0000001-0000-4000-8000-000000000002', 'PROD_TRANSPORT', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'GTGT 3%, TNCN 1.5%', 'Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL', 1.5, TIMESTAMPTZ '2026-01-01 00:00:00+00', 3),
+                    ('a0000001-0000-4000-8000-000000000003', 'SERVICE_CONSTRUCT', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'GTGT 5%, TNCN 2%', 'Dịch vụ, XD không bao thầu NVL', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 5),
+                    ('a0000001-0000-4000-8000-000000000004', 'ASSET_INSURANCE', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'GTGT 5%, TNCN 5%', 'Cho thuê tài sản / đại lý BH, xổ số, BHĐC…', 5, TIMESTAMPTZ '2026-01-01 00:00:00+00', 5),
+                    ('a0000001-0000-4000-8000-000000000005', 'OTHER', TIMESTAMPTZ '2026-01-01 00:00:00+00', 'GTGT 2%, TNCN 1%', 'Hoạt động khác', 1, TIMESTAMPTZ '2026-01-01 00:00:00+00', 2)
+                ON CONFLICT ("BusinessCategoryId") DO NOTHING;
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_BusinessCategoryId",
-                table: "Products",
-                column: "BusinessCategoryId");
+            migrationBuilder.Sql(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_indexes
+                        WHERE indexname = 'IX_Products_BusinessCategoryId'
+                    ) THEN
+                        CREATE INDEX "IX_Products_BusinessCategoryId"
+                        ON "Products" ("BusinessCategoryId");
+                    END IF;
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Products_BusinessId_BusinessCategoryId",
-                table: "Products",
-                columns: new[] { "BusinessId", "BusinessCategoryId" });
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_indexes
+                        WHERE indexname = 'IX_Products_BusinessId_BusinessCategoryId'
+                    ) THEN
+                        CREATE INDEX "IX_Products_BusinessId_BusinessCategoryId"
+                        ON "Products" ("BusinessId", "BusinessCategoryId");
+                    END IF;
 
-            migrationBuilder.AddForeignKey(
-                name: "FK_Products_BusinessCategories_BusinessCategoryId",
-                table: "Products",
-                column: "BusinessCategoryId",
-                principalTable: "BusinessCategories",
-                principalColumn: "BusinessCategoryId",
-                onDelete: ReferentialAction.SetNull);
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'FK_Products_BusinessCategories_BusinessCategoryId'
+                    ) THEN
+                        ALTER TABLE "Products"
+                        ADD CONSTRAINT "FK_Products_BusinessCategories_BusinessCategoryId"
+                        FOREIGN KEY ("BusinessCategoryId")
+                        REFERENCES "BusinessCategories" ("BusinessCategoryId")
+                        ON DELETE SET NULL;
+                    END IF;
+                END $$;
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_Products_BusinessCategories_BusinessCategoryId",
-                table: "Products");
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE "Products"
+                DROP CONSTRAINT IF EXISTS "FK_Products_BusinessCategories_BusinessCategoryId";
 
-            migrationBuilder.DropIndex(
-                name: "IX_Products_BusinessCategoryId",
-                table: "Products");
+                DROP INDEX IF EXISTS "IX_Products_BusinessCategoryId";
+                DROP INDEX IF EXISTS "IX_Products_BusinessId_BusinessCategoryId";
 
-            migrationBuilder.DropIndex(
-                name: "IX_Products_BusinessId_BusinessCategoryId",
-                table: "Products");
+                DELETE FROM "BusinessCategories"
+                WHERE "BusinessCategoryId" IN (
+                    'a0000001-0000-4000-8000-000000000001',
+                    'a0000001-0000-4000-8000-000000000002',
+                    'a0000001-0000-4000-8000-000000000003',
+                    'a0000001-0000-4000-8000-000000000004',
+                    'a0000001-0000-4000-8000-000000000005'
+                );
 
-            migrationBuilder.DeleteData(
-                table: "BusinessCategories",
-                keyColumn: "BusinessCategoryId",
-                keyValue: new Guid("a0000001-0000-4000-8000-000000000001"));
-
-            migrationBuilder.DeleteData(
-                table: "BusinessCategories",
-                keyColumn: "BusinessCategoryId",
-                keyValue: new Guid("a0000001-0000-4000-8000-000000000002"));
-
-            migrationBuilder.DeleteData(
-                table: "BusinessCategories",
-                keyColumn: "BusinessCategoryId",
-                keyValue: new Guid("a0000001-0000-4000-8000-000000000003"));
-
-            migrationBuilder.DeleteData(
-                table: "BusinessCategories",
-                keyColumn: "BusinessCategoryId",
-                keyValue: new Guid("a0000001-0000-4000-8000-000000000004"));
-
-            migrationBuilder.DeleteData(
-                table: "BusinessCategories",
-                keyColumn: "BusinessCategoryId",
-                keyValue: new Guid("a0000001-0000-4000-8000-000000000005"));
-
-            migrationBuilder.DropColumn(
-                name: "BusinessCategoryId",
-                table: "Products");
+                ALTER TABLE "Products"
+                DROP COLUMN IF EXISTS "BusinessCategoryId";
+                """);
         }
     }
 }
