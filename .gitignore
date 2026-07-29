@@ -198,3 +198,4 @@ fabric.properties
 
 # Firebase Admin SDK
 **/*firebase-adminsdk*.json
+migration_script.sql
