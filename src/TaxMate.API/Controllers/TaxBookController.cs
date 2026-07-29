@@ -20,14 +20,14 @@ public class TaxBookController : ControllerBase
     public async Task<IActionResult> ExportS1a(
         Guid businessId,
         [FromQuery] int year,
-        [FromQuery] int? month,
+        [FromQuery] int? quarter,
         CancellationToken cancellationToken)
     {
         var result = await _taxBookService.ExportS1aAsync(
             GetUserId(),
             businessId,
             year,
-            month,
+            quarter,
             cancellationToken);
 
         return File(
