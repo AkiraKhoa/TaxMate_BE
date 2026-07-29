@@ -58,10 +58,34 @@ if (business is null)
         Id = businessId,
         OwnerId = userId,
 
-        MainCategoryId = fnbCategory.BusinessCategoryId,
+        MainCategoryId =
+            fnbCategory.BusinessCategoryId,
 
-        BusinessName = "Cua Hang Test POS",
-        Address = "123 Test St",
+        BusinessName =
+            "Cua Hang Test POS",
+
+        Address =
+            "123 Test St",
+
+        // ===== Tax payment information for 01/CNKD =====
+
+        // Test theo trường hợp Thuế cơ sở quản lý
+        TaxAuthorityLevel =
+            TaxAuthorityLevels.Local,
+
+        // Đây là dữ liệu TEST.
+        // Sau này production phải lấy từ hồ sơ thuế thực tế.
+        TaxAdministrationAreaCode =
+            "TEST-AREA-001",
+
+        ManagingTaxAuthority =
+            "Thuế cơ sở quản lý hộ kinh doanh test",
+
+        CollectingAuthority =
+            "Kho bạc Nhà nước khu vực test",
+
+        BusinessLocationCode =
+            "LOC-001",
 
         CreatedAt = now,
         UpdatedAt = now
@@ -96,8 +120,31 @@ if (business is null)
 else
 {
     businessId = business.Id;
-    product = await db.Products.AsNoTracking()
-        .FirstOrDefaultAsync(p => p.BusinessId == businessId);
+
+    // Refresh tax-payment test data
+    business.TaxAuthorityLevel =
+        TaxAuthorityLevels.Local;
+
+    business.TaxAdministrationAreaCode =
+        "TEST-AREA-001";
+
+    business.ManagingTaxAuthority =
+        "Thuế cơ sở quản lý hộ kinh doanh test";
+
+    business.CollectingAuthority =
+        "Kho bạc Nhà nước khu vực test";
+
+    business.BusinessLocationCode =
+        "LOC-001";
+
+    business.UpdatedAt = now;
+
+    await db.SaveChangesAsync();
+
+    product = await db.Products
+        .AsNoTracking()
+        .FirstOrDefaultAsync(
+            p => p.BusinessId == businessId);
 }
 
 var hasSalesData = await db.Transactions
@@ -866,18 +913,9 @@ static async Task SeedTaxPeriodsAsync(
         var hasCalculatedTax =
             definition.Status is "Calculated" or "Submitted" or "PartiallyPaid" or "Paid";
 
-        // Test rates follow the seeded BusinessCategory convention:
-        // VAT 1% and PIT 0.5%. The real Calculate API must read current rates
-        // from BusinessCategory and snapshot them into TaxCalculationLine.
-        var vatTaxAmount = hasCalculatedTax
-            ? decimal.Round(taxableRevenue * 1.0m / 100m, 2)
-            : 0m;
-
-        var pitTaxAmount = hasCalculatedTax
-            ? decimal.Round(taxableRevenue * 0.5m / 100m, 2)
-            : 0m;
-
-        var estimatedTax = vatTaxAmount + pitTaxAmount;
+        var vatTaxAmount = 0m;
+        var pitTaxAmount = 0m;
+        var estimatedTax = 0m;
 
         var period = await db.TaxPeriods
             .FirstOrDefaultAsync(p =>
@@ -1164,20 +1202,49 @@ static async Task SeedTaxCalculationsAsync(
             2,
             MidpointRounding.AwayFromZero);
 
-        // ==============================
-        // PIT
-        // ==============================
+        var pitTaxableRevenue =
+            taxableRevenue;
 
-        var pitTaxableRevenue = taxableRevenue;
+        var previousAnnualRevenue =
+            await db.Transactions
+                .AsNoTracking()
+                .Where(t =>
+                    t.BusinessId == businessId &&
+                    t.TransactionType == TransactionTypes.Sale &&
+                    t.Status == "Completed" &&
+                    t.TransactionDate >= new DateTime(
+                        year, 1, 1, 0, 0, 0, DateTimeKind.Utc) &&
+                    t.TransactionDate < period.PeriodStartDate)
+                .SumAsync(t => (decimal?)t.TotalAmount)
+            ?? 0m;
 
-        // Hiện tại seed chưa áp dụng mức giảm trừ 1 tỷ.
-        // Rule thật sẽ được xử lý trong CalculateAsync.
-        var pitDeductibleRevenue = 0m;
+        var alreadyConsumedDeduction =
+            Math.Min(
+                previousAnnualRevenue,
+                TaxRules.AnnualPitRevenueDeduction2026);
 
-        var pitRevenue = Math.Max(
-            0m,
-            pitTaxableRevenue -
-            pitDeductibleRevenue);
+        var remainingDeduction =
+            Math.Max(
+                0m,
+                TaxRules.AnnualPitRevenueDeduction2026 -
+                alreadyConsumedDeduction);
+
+        var pitDeductibleRevenue =
+            Math.Min(
+                pitTaxableRevenue,
+                remainingDeduction);
+
+        var pitRevenue =
+            Math.Max(
+                0m,
+                pitTaxableRevenue -
+                pitDeductibleRevenue);
+
+        var remainingPitDeductionAfterPeriod =
+            Math.Max(
+                0m,
+                remainingDeduction -
+                pitDeductibleRevenue);
 
         var pitTaxAmount = decimal.Round(
             pitRevenue *
@@ -1267,7 +1334,10 @@ static async Task SeedTaxCalculationsAsync(
 
             ApplicableRevenueThreshold = annualRevenueThreshold,
 
-            RecommendedFormCode = recommendedFormCode
+            RecommendedFormCode = recommendedFormCode,
+            
+            RemainingPitDeduction =
+                remainingPitDeductionAfterPeriod,
         };
 
         calculation.Lines.Add(
