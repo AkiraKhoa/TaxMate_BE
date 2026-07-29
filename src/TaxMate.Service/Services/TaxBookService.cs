@@ -30,7 +30,7 @@ public class TaxBookService : ITaxBookService
         Guid userId,
         Guid businessId,
         int year,
-        int? month,
+        int? quarter,
         CancellationToken cancellationToken = default)
     {
         var business = await _businessProfiles.GetByIdAsync(businessId);
@@ -50,11 +50,12 @@ public class TaxBookService : ITaxBookService
         DateTime endDate;
         string periodLabel;
 
-        if (month.HasValue)
+        if (quarter.HasValue)
         {
-            startDate = new DateTime(year, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
-            endDate = startDate.AddMonths(1).AddTicks(-1);
-            periodLabel = $"Tháng {month.Value}/{year}";
+            int startMonth = (quarter.Value - 1) * 3 + 1;
+            startDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
+            endDate = startDate.AddMonths(3).AddTicks(-1);
+            periodLabel = $"Quý {quarter.Value}/{year}";
         }
         else
         {
