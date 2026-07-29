@@ -167,12 +167,13 @@ public class ProductService : IProductService
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId)
+        Guid? productCategoryId,
+        bool? hasRecipe)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         var (items, totalCount) = await _products.GetPagedByBusinessAsync(
-            businessId, pageNumber, pageSize, search, status, productCategoryId);
+            businessId, pageNumber, pageSize, search, status, productCategoryId, hasRecipe);
 
         return new PagedResult<ProductResponse>
         {
@@ -229,6 +230,7 @@ public class ProductService : IProductService
             CurrentPrice = currentPrice == 0 ? null : currentPrice,
             CostPrice = entity.CostPrice,
             StockQuantity = entity.StockQuantity,
+            HasRecipe = entity.ProductIngredients?.Any() ?? false,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

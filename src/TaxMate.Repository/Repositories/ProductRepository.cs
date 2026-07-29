@@ -21,11 +21,13 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId)
+        Guid? productCategoryId,
+        bool? hasRecipe)
     {
         var query = _appContext.Products
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
+            .Include(x => x.ProductIngredients)
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -43,6 +45,13 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         if (productCategoryId.HasValue)
         {
             query = query.Where(x => x.ProductCategoryId == productCategoryId.Value);
+        }
+
+        if (hasRecipe.HasValue)
+        {
+            query = hasRecipe.Value
+                ? query.Where(x => x.ProductIngredients.Any())
+                : query.Where(x => !x.ProductIngredients.Any());
         }
 
         var totalCount = await query.CountAsync();
