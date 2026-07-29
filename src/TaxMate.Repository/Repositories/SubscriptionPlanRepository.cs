@@ -23,10 +23,25 @@ public class SubscriptionPlanRepository : GenericRepository<SubscriptionPlan>, I
             .ToListAsync();
     }
 
+    public async Task<List<SubscriptionPlan>> GetAllPlansWithFeaturesAsync()
+    {
+        return await _appContext.SubscriptionPlans
+            .Include(x => x.PlanFeatures)
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync();
+    }
+
     public async Task<SubscriptionPlan?> GetByIdWithFeaturesAsync(Guid id)
     {
         return await _appContext.SubscriptionPlans
             .Include(x => x.PlanFeatures)
             .FirstOrDefaultAsync(x => x.Id == id);
+    }
+
+    public async Task<bool> HasAnySubscriptionsAsync(Guid planId)
+    {
+        return await _appContext.UserSubscriptions
+            .AsNoTracking()
+            .AnyAsync(x => x.SubscriptionPlanId == planId);
     }
 }

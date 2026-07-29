@@ -520,13 +520,7 @@ public class ReportRepository : IReportRepository
                 x.BusinessId == businessId &&
                 x.Status == "Completed" &&
                 x.TransactionDate >= startDate &&
-                x.TransactionDate < endDate &&
-                (
-                    x.TransactionType == TransactionTypes.Sale ||
-                    x.TransactionType == TransactionTypes.ServiceRevenue ||
-                    x.TransactionType == TransactionTypes.OtherRevenue ||
-                    x.TransactionType == TransactionTypes.AdjustmentIncrease
-                ))
+                x.TransactionDate < endDate)
             .SumAsync(x => x.TotalAmount);
     }
     
@@ -550,13 +544,7 @@ public class ReportRepository : IReportRepository
                 x.BusinessId == businessId &&
                 x.Status == "Completed" &&
                 x.TransactionDate >= startDate &&
-                x.TransactionDate < endDate &&
-                (
-                    x.TransactionType == TransactionTypes.Sale ||
-                    x.TransactionType == TransactionTypes.ServiceRevenue ||
-                    x.TransactionType == TransactionTypes.OtherRevenue ||
-                    x.TransactionType == TransactionTypes.AdjustmentIncrease
-                ))
+                x.TransactionDate < endDate)
             .GroupBy(x => ((x.TransactionDate.Month - 1) / 3) + 1)
             .Select(g => new
             {

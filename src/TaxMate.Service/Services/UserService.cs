@@ -1,4 +1,5 @@
 using TaxMate.Model.Common;
+using TaxMate.Model.DTO;
 using TaxMate.Model.DTO.Auth;
 using TaxMate.Model.DTO.User;
 using TaxMate.Model.Entities;
@@ -12,12 +13,12 @@ namespace TaxMate.Service.Services;
 public class UserService : IUserService
 {
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IGenericRepository<User> _users;
+    private readonly IUserRepository _users;
     private readonly IPasswordHasher _passwordHasher;
 
     public UserService(
         IUnitOfWork unitOfWork,
-        IGenericRepository<User> users,
+        IUserRepository users,
         IPasswordHasher passwordHasher)
     {
         _unitOfWork = unitOfWork;
@@ -59,21 +60,51 @@ public class UserService : IUserService
         return MapToDto(user);
     }
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResult<AdminUserListItemDto>> GetPagedAsync(
+        int pageNumber,
+        int pageSize,
+        string? search,
+        string? role,
+        string? accountStatus,
+        Guid excludeUserId,
+        CancellationToken cancellationToken = default)
     {
-        var users = await _users.GetAllAsync();
-        return users.Select(MapToDto);
+        if (pageNumber < 1)
+        {
+            pageNumber = 1;
+        }
+
+        if (pageSize < 1)
+        {
+            pageSize = 10;
+        }
+
+        var (items, totalCount) = await _users.GetPagedAsync(
+            pageNumber,
+            pageSize,
+            search,
+            role,
+            accountStatus,
+            excludeUserId);
+
+        return new PagedResult<AdminUserListItemDto>
+        {
+            Items = items.Select(x => MapToListItemDto(x.User, x.BusinessProfileCount)).ToList(),
+            TotalCount = totalCount,
+            PageNumber = pageNumber,
+            PageSize = pageSize
+        };
     }
 
-    public async Task<UserDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<AdminUserDetailDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var user = await _users.GetByIdAsync(id);
+        var user = await _users.GetByIdWithBusinessProfilesAsync(id);
         if (user is null)
         {
             throw new NotFoundException("Không tìm thấy người dùng.");
         }
 
-        return MapToDto(user);
+        return MapToDetailDto(user);
     }
 
     public async Task<UserDto> UpdateAsync(
@@ -132,6 +163,46 @@ public class UserService : IUserService
                 ? null
                 : request.AvatarUrl.Trim();
         }
+
+        user.UpdatedAt = DateTime.UtcNow;
+        _users.Update(user);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return MapToDto(user);
+    }
+
+    public async Task<UserDto> ToggleStatusAsync(
+        Guid id,
+        Guid currentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        if (id == currentUserId)
+        {
+            throw new BadRequestException("Không thể thay đổi trạng thái tài khoản của chính bạn.");
+        }
+
+        var user = await _users.GetByIdAsync(id);
+        if (user is null)
+        {
+            throw new NotFoundException("Không tìm thấy người dùng.");
+        }
+
+        if (user.AccountStatus == AccountStatus.Pending)
+        {
+            throw new BadRequestException(
+                "Không thể thay đổi trạng thái tài khoản đang chờ xác minh email.");
+        }
+
+        if (user.AccountStatus != AccountStatus.Active
+            && user.AccountStatus != AccountStatus.Inactive)
+        {
+            throw new BadRequestException("Trạng thái tài khoản không hợp lệ để chuyển đổi.");
+        }
+
+        user.AccountStatus = user.AccountStatus == AccountStatus.Active
+            ? AccountStatus.Inactive
+            : AccountStatus.Active;
+        user.UpdatedAt = DateTime.UtcNow;
 
         _users.Update(user);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -212,5 +283,57 @@ public class UserService : IUserService
         Phone = user.Phone,
         HasProfileInfo = !string.IsNullOrWhiteSpace(user.TaxCode)
             && !string.IsNullOrWhiteSpace(user.Phone)
+    };
+
+    private static AdminUserListItemDto MapToListItemDto(User user, int businessProfileCount) => new()
+    {
+        Id = user.Id,
+        Email = user.Email,
+        FullName = user.FullName,
+        AvatarUrl = user.AvatarUrl,
+        AccountStatus = user.AccountStatus,
+        Role = user.Role,
+        TaxCode = user.TaxCode,
+        Phone = user.Phone,
+        HasProfileInfo = !string.IsNullOrWhiteSpace(user.TaxCode)
+            && !string.IsNullOrWhiteSpace(user.Phone),
+        BusinessProfileCount = businessProfileCount,
+        CreatedAt = user.CreatedAt
+    };
+
+    private static AdminUserDetailDto MapToDetailDto(User user) => new()
+    {
+        Id = user.Id,
+        Email = user.Email,
+        FullName = user.FullName,
+        AvatarUrl = user.AvatarUrl,
+        AccountStatus = user.AccountStatus,
+        Role = user.Role,
+        TaxCode = user.TaxCode,
+        Phone = user.Phone,
+        HasProfileInfo = !string.IsNullOrWhiteSpace(user.TaxCode)
+            && !string.IsNullOrWhiteSpace(user.Phone),
+        CreatedAt = user.CreatedAt,
+        UpdatedAt = user.UpdatedAt,
+        BusinessProfiles = user.BusinessProfiles
+            .OrderByDescending(bp => bp.CreatedAt)
+            .Select(MapBusinessProfile)
+            .ToList()
+    };
+
+    private static BusinessProfileResponse MapBusinessProfile(BusinessProfile entity) => new()
+    {
+        Id = entity.Id,
+        OwnerId = entity.OwnerId,
+        BusinessName = entity.BusinessName,
+        ProvinceCode = entity.ProvinceCode,
+        WardCode = entity.WardCode,
+        Address = entity.Address,
+        MainCategoryId = entity.MainCategoryId,
+        MainCategoryName = entity.MainCategory?.Name,
+        PreferElectronicInvoice = entity.PreferElectronicInvoice,
+        IsActive = entity.IsActive,
+        CreatedAt = entity.CreatedAt,
+        UpdatedAt = entity.UpdatedAt
     };
 }

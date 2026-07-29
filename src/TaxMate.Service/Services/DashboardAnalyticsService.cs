@@ -1,6 +1,7 @@
 using TaxMate.Model.DTO.Dashboard;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Common;
+using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
@@ -91,12 +92,48 @@ public class DashboardAnalyticsService : IDashboardAnalyticsService
         };
     }
 
-    public async Task<PackageRevenueResponseDto> GetPackageRevenueAsync(CancellationToken cancellationToken = default)
+    public async Task<PackageRevenueResponseDto> GetPackageRevenueAsync(
+        int? year = null,
+        int? month = null,
+        CancellationToken cancellationToken = default)
     {
         var utcNow = DashboardAnalyticsPeriodHelper.UtcNow;
-        var (currentStart, currentEnd) = DashboardAnalyticsPeriodHelper.GetCurrentMonthToDate(utcNow);
+        DateTime periodStart;
+        DateTime periodEnd;
+        int resolvedYear;
+        int resolvedMonth;
+
+        if (year.HasValue || month.HasValue)
+        {
+            resolvedYear = year ?? utcNow.Year;
+            resolvedMonth = month ?? utcNow.Month;
+
+            if (resolvedMonth is < 1 or > 12)
+            {
+                throw new BadRequestException("Tháng phải nằm trong khoảng 1–12.");
+            }
+
+            if (resolvedYear is < 2000 or > 2100)
+            {
+                throw new BadRequestException("Năm không hợp lệ.");
+            }
+
+            (periodStart, periodEnd) = DashboardAnalyticsPeriodHelper.GetMonthRange(
+                resolvedYear,
+                resolvedMonth);
+        }
+        else
+        {
+            (periodStart, periodEnd) = DashboardAnalyticsPeriodHelper.GetCurrentMonthToDate(utcNow);
+            resolvedYear = utcNow.Year;
+            resolvedMonth = utcNow.Month;
+        }
+
         var plans = await _dashboardAnalyticsRepository.GetSubscriptionPlansAsync(cancellationToken);
-        var rows = await _dashboardAnalyticsRepository.GetPackageRevenueAsync(currentStart, currentEnd, cancellationToken);
+        var rows = await _dashboardAnalyticsRepository.GetPackageRevenueAsync(
+            periodStart,
+            periodEnd,
+            cancellationToken);
         var revenueByPlan = rows.ToDictionary(row => row.PlanId);
 
         var packages = plans
@@ -127,9 +164,9 @@ public class DashboardAnalyticsService : IDashboardAnalyticsService
 
         return new PackageRevenueResponseDto
         {
-            Year = utcNow.Year,
-            Month = utcNow.Month,
-            MonthLabel = DashboardAnalyticsPeriodHelper.BuildMonthLabel(utcNow.Year, utcNow.Month),
+            Year = resolvedYear,
+            Month = resolvedMonth,
+            MonthLabel = DashboardAnalyticsPeriodHelper.BuildMonthLabel(resolvedYear, resolvedMonth),
             TotalRevenue = packages.Sum(package => package.Revenue),
             Packages = packages
         };

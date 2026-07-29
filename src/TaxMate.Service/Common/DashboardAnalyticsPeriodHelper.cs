@@ -12,6 +12,12 @@ internal static class DashboardAnalyticsPeriodHelper
         return (start, utcNow);
     }
 
+    public static (DateTime Start, DateTime End) GetMonthRange(int year, int month)
+    {
+        var start = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        return (start, start.AddMonths(1));
+    }
+
     public static (DateTime Start, DateTime End) GetLastMonthSamePeriod(DateTime utcNow)
     {
         var (currentStart, currentEnd) = GetCurrentMonthToDate(utcNow);

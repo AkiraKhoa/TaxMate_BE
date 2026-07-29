@@ -12,15 +12,18 @@ public class ProductService : IProductService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IProductRepository _products;
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
+    private readonly IGenericRepository<BusinessCategory> _businessCategories;
 
     public ProductService(
         IUnitOfWork unitOfWork,
         IProductRepository products,
-        IGenericRepository<BusinessProfile> businessProfiles)
+        IGenericRepository<BusinessProfile> businessProfiles,
+        IGenericRepository<BusinessCategory> businessCategories)
     {
         _unitOfWork = unitOfWork;
         _products = products;
         _businessProfiles = businessProfiles;
+        _businessCategories = businessCategories;
     }
 
     public async Task<ProductResponse> CreateAsync(
@@ -29,6 +32,7 @@ public class ProductService : IProductService
         CreateProductRequest request)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
+        await EnsureBusinessCategoryValidAsync(request.BusinessCategoryId);
 
         var exists = await _products.AnyAsync(x =>
             x.BusinessId == businessId
@@ -37,12 +41,21 @@ public class ProductService : IProductService
         if (exists)
             throw new ConflictException($"Product with name '{request.Name}' already exists in this business.");
 
+        var codeExists = await _products.AnyAsync(x =>
+            x.BusinessId == businessId
+            && x.ProductCode.ToLower() == request.ProductCode.ToLower());
+
+        if (codeExists)
+            throw new ConflictException($"Product with code '{request.ProductCode}' already exists in this business.");
+
         var entity = new Product
         {
             Id = Guid.NewGuid(),
             BusinessId = businessId,
+            ProductCode = request.ProductCode.Trim(),
             Name = request.Name.Trim(),
             ProductCategoryId = request.ProductCategoryId,
+            BusinessCategoryId = request.BusinessCategoryId,
             Description = request.Description,
             Unit = request.Unit,
             ImageUrl = request.ImageUrl,
@@ -67,6 +80,7 @@ public class ProductService : IProductService
             throw new NotFoundException($"Product with id '{id}' not found.");
 
         await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+        await EnsureBusinessCategoryValidAsync(request.BusinessCategoryId);
 
         var duplicate = await _products.AnyAsync(x =>
             x.BusinessId == entity.BusinessId
@@ -76,8 +90,18 @@ public class ProductService : IProductService
         if (duplicate)
             throw new ConflictException($"Product with name '{request.Name}' already exists in this business.");
 
+        var duplicateCode = await _products.AnyAsync(x =>
+            x.BusinessId == entity.BusinessId
+            && x.ProductCode.ToLower() == request.ProductCode.ToLower()
+            && x.Id != id);
+
+        if (duplicateCode)
+            throw new ConflictException($"Product with code '{request.ProductCode}' already exists in this business.");
+
+        entity.ProductCode = request.ProductCode.Trim();
         entity.Name = request.Name.Trim();
         entity.ProductCategoryId = request.ProductCategoryId;
+        entity.BusinessCategoryId = request.BusinessCategoryId;
         entity.Description = request.Description;
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
@@ -166,6 +190,16 @@ public class ProductService : IProductService
         return business;
     }
 
+    private async Task EnsureBusinessCategoryValidAsync(Guid? businessCategoryId)
+    {
+        if (!businessCategoryId.HasValue)
+            return;
+
+        var category = await _businessCategories.GetByIdAsync(businessCategoryId.Value);
+        if (category is null)
+            throw new BadRequestException($"Business category with id '{businessCategoryId}' not found.");
+    }
+
     private static ProductResponse MapToResponse(Product entity)
     {
         var now = DateTime.UtcNow;
@@ -179,9 +213,12 @@ public class ProductService : IProductService
         {
             Id = entity.Id,
             BusinessId = entity.BusinessId,
+            ProductCode = entity.ProductCode,
             Name = entity.Name,
             ProductCategoryId = entity.ProductCategoryId,
             ProductCategoryName = entity.ProductCategory?.Name,
+            BusinessCategoryId = entity.BusinessCategoryId,
+            BusinessCategoryName = entity.BusinessCategory?.Name,
             Description = entity.Description,
             Unit = entity.Unit,
             ImageUrl = entity.ImageUrl,
