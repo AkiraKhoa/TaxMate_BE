@@ -46,6 +46,8 @@ public class ProductService : IProductService
             Description = request.Description,
             Unit = request.Unit,
             ImageUrl = request.ImageUrl,
+            CostPrice = request.CostPrice,
+            StockQuantity = request.StockQuantity,
             Status = ProductStatus.Active
         };
 
@@ -81,6 +83,8 @@ public class ProductService : IProductService
         entity.Description = request.Description;
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
+        if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
+        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -88,6 +92,42 @@ public class ProductService : IProductService
         // Re-load to populate ProductCategory relationship
         var loadedEntity = await _products.GetByIdWithPricesAsync(entity.Id);
         return MapToResponse(loadedEntity ?? entity);
+    }
+
+    public async Task<ProductResponse> UpdateCostPriceAsync(
+        Guid ownerId,
+        Guid id,
+        UpdateProductCostPriceRequest request)
+    {
+        var entity = await _products.GetByIdWithPricesAsync(id);
+        if (entity is null)
+            throw new NotFoundException($"Product with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
+        decimal oldQty = entity.StockQuantity ?? 0;
+        decimal oldCost = entity.CostPrice ?? 0;
+        decimal incomingQty = request.IncomingQuantity;
+        decimal incomingUnitPrice = request.IncomingCostPrice;
+        decimal newQty = oldQty + incomingQty;
+        decimal newCost;
+
+        if (oldQty <= 0)
+        {
+            newCost = incomingUnitPrice;
+        }
+        else
+        {
+            newCost = (oldQty * oldCost + incomingQty * incomingUnitPrice) / newQty;
+        }
+
+        entity.StockQuantity = newQty;
+        entity.CostPrice = Math.Round(newCost, 6, MidpointRounding.AwayFromZero);
+
+        _products.Update(entity);
+        await _unitOfWork.SaveChangesAsync();
+
+        return MapToResponse(entity);
     }
 
     public async Task<ProductResponse> ToggleStatusAsync(Guid ownerId, Guid id)
@@ -187,6 +227,8 @@ public class ProductService : IProductService
             ImageUrl = entity.ImageUrl,
             Status = entity.Status,
             CurrentPrice = currentPrice == 0 ? null : currentPrice,
+            CostPrice = entity.CostPrice,
+            StockQuantity = entity.StockQuantity,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

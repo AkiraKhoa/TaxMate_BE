@@ -18,4 +18,5 @@ public interface IProductService
         string? status,
         Guid? productCategoryId);
     Task<ProductResponse> GetByIdAsync(Guid ownerId, Guid id);
+    Task<ProductResponse> UpdateCostPriceAsync(Guid ownerId, Guid id, UpdateProductCostPriceRequest request);
 }

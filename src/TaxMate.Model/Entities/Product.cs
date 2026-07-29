@@ -25,6 +25,10 @@ public class Product : BaseEntity
     [MaxLength(1000)]
     public string? ImageUrl { get; set; }
 
+    public decimal? CostPrice { get; set; }
+
+    public decimal? StockQuantity { get; set; }
+
     [Required]
     [MaxLength(50)]
     public string Status { get; set; } = ProductStatus.Active;

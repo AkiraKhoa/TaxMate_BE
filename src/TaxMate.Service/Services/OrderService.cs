@@ -22,6 +22,8 @@ public class OrderService : IOrderService
     private readonly IGenericRepository<EInvoiceConfig> _eInvoiceConfigs;
     private readonly IInvoiceRepository _invoices;
     private readonly IEInvoiceService _eInvoiceService;
+    private readonly IProductIngredientRepository _productIngredients;
+    private readonly IIngredientRepository _ingredients;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -35,7 +37,9 @@ public class OrderService : IOrderService
         IInvoiceService invoiceService,
         IGenericRepository<EInvoiceConfig> eInvoiceConfigs,
         IInvoiceRepository invoices,
-        IEInvoiceService eInvoiceService)
+        IEInvoiceService eInvoiceService,
+        IProductIngredientRepository productIngredients,
+        IIngredientRepository ingredients)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -49,6 +53,8 @@ public class OrderService : IOrderService
         _eInvoiceConfigs = eInvoiceConfigs;
         _invoices = invoices;
         _eInvoiceService = eInvoiceService;
+        _productIngredients = productIngredients;
+        _ingredients = ingredients;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -204,10 +210,33 @@ public class OrderService : IOrderService
             unitPrice = prices.OrderBy(p => p.ApplyDate).Select(p => p.Price).First();
         }
 
+        // Tính UnitCost từ BOM (nguyên liệu) hoặc Product.CostPrice
+        decimal unitCost = 0;
+        var pIngredients = await _productIngredients.GetByProductIdAsync(request.ProductId);
+        if (pIngredients != null && pIngredients.Any())
+        {
+            foreach (var pi in pIngredients)
+            {
+                var ingredient = await _ingredients.GetByIdAsync(pi.IngredientId);
+                if (ingredient?.EstimatedPrice.HasValue == true)
+                {
+                    unitCost += ingredient.EstimatedPrice.Value * pi.Quantity;
+                }
+            }
+        }
+        else if (product.CostPrice.HasValue)
+        {
+            unitCost = product.CostPrice.Value;
+        }
+
+        var roundedUnitCost = Math.Round(unitCost, 6, MidpointRounding.AwayFromZero);
+
         var existing = order.TransactionItems.FirstOrDefault(x => x.ProductId == request.ProductId && x.Note == request.Note);
         if (existing != null)
         {
             existing.Quantity += request.Quantity;
+            existing.UnitCost = roundedUnitCost;
+            existing.CostAmount = Math.Round(roundedUnitCost * existing.Quantity, 2, MidpointRounding.AwayFromZero);
             if (!string.IsNullOrEmpty(request.DiscountType))
             {
                 existing.DiscountType = request.DiscountType;
@@ -228,6 +257,8 @@ public class OrderService : IOrderService
                 DiscountType = request.DiscountType,
                 DiscountValue = request.DiscountValue,
                 Note = request.Note,
+                UnitCost = roundedUnitCost,
+                CostAmount = Math.Round(roundedUnitCost * request.Quantity, 2, MidpointRounding.AwayFromZero),
                 CreatedAt = DateTime.UtcNow
             };
             await _transactionItems.AddAsync(item);
@@ -259,6 +290,7 @@ public class OrderService : IOrderService
             else
             {
                 item.Quantity = request.Quantity.Value;
+                item.CostAmount = Math.Round(item.UnitCost * item.Quantity, 2, MidpointRounding.AwayFromZero);
             }
         }
 
@@ -416,6 +448,36 @@ public class OrderService : IOrderService
             }
 
             order.Status = isAwaitingPayment ? TransactionStatus.AwaitingPayment : TransactionStatus.Completed;
+
+            // Trừ tồn kho sản phẩm & nguyên liệu (BOM)
+            foreach (var item in order.TransactionItems)
+            {
+                if (item.ProductId.HasValue)
+                {
+                    var product = await _products.GetByIdAsync(item.ProductId.Value);
+                    // Chỉ trừ tồn nếu Product có quản lý tồn kho (StockQuantity != null)
+                    if (product != null && product.StockQuantity.HasValue)
+                    {
+                        product.StockQuantity -= item.Quantity;
+                        _products.Update(product);
+                    }
+
+                    // Trừ nguyên liệu BOM (nếu có)
+                    var pIngredients = await _productIngredients.GetByProductIdAsync(item.ProductId.Value);
+                    if (pIngredients != null)
+                    {
+                        foreach (var pi in pIngredients)
+                        {
+                            var ingredient = await _ingredients.GetByIdAsync(pi.IngredientId);
+                            if (ingredient != null)
+                            {
+                                ingredient.StockQuantity -= (pi.Quantity * item.Quantity);
+                                _ingredients.Update(ingredient);
+                            }
+                        }
+                    }
+                }
+            }
 
             await _unitOfWork.SaveChangesAsync();
 

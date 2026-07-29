@@ -17,8 +17,9 @@ public class Ingredient : BaseEntity
     [MaxLength(50)]
     public string? Unit { get; set; }
 
-    [Precision(18,2)]
     public decimal? EstimatedPrice { get; set; }
+
+    public decimal StockQuantity { get; set; } = 0;
 
     public bool IsDeleted { get; set; }
 

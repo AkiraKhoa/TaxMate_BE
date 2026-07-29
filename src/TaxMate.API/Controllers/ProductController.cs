@@ -46,6 +46,17 @@ public class ProductController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    [HttpPatch("{id:guid}/cost-price")]
+    public async Task<IActionResult> UpdateCostPrice(Guid id, [FromBody] UpdateProductCostPriceRequest request)
+    {
+        var result = await _productService.UpdateCostPriceAsync(GetUserId(), id, request);
+        return Ok(
+            ApiResponse<ProductResponse>.Ok(
+                result,
+                "Product cost price and stock updated successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     [HttpPatch("{id:guid}/toggle-status")]
     public async Task<IActionResult> ToggleStatus(Guid id)
     {
