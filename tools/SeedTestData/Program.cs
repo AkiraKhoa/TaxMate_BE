@@ -104,6 +104,7 @@ if (business is null)
     {
         Id = productId,
         BusinessId = businessId,
+        ProductCode = "TEST-POS-001",
         Name = "San pham test",
         Unit = "cai",
         Status = ProductStatus.Active,
@@ -820,6 +821,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "PIZZA-001",
             Name = "Pizza",
             Unit = "cái",
             Price = 35000m,
@@ -828,6 +830,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "BURGER-001",
             Name = "Hamburger",
             Unit = "cái",
             Price = 25000m,
@@ -836,6 +839,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "CHICKEN-001",
             Name = "Gà chiên",
             Unit = "phần",
             Price = 30000m,
@@ -849,6 +853,7 @@ static async Task SeedSalesDashboardDataAsync(
         {
             Id = p.Id,
             BusinessId = businessId,
+            ProductCode = p.ProductCode,
             Name = p.Name,
             Unit = p.Unit,
             Status = ProductStatus.Active,
