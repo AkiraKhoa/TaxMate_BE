@@ -10,13 +10,19 @@ namespace TaxMate.API.Controllers;
 
 [ApiController]
 [Route("api/businesses/reports")]
+[Authorize(Roles = UserRoles.Owner)]
+[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 public class ReportController : ControllerBase
 {
     private readonly IReportService _reportService;
+    private readonly IS2aHkdExportService _s2aHkdExportService;
 
-    public ReportController(IReportService reportService)
+    public ReportController(
+        IReportService reportService,
+        IS2aHkdExportService s2aHkdExportService)
     {
         _reportService = reportService;
+        _s2aHkdExportService = s2aHkdExportService;
     }
 
     [HttpGet("{businessId:guid}/sales-dashboard")]
@@ -127,5 +133,52 @@ public class ReportController : ControllerBase
                 result,
                 "Get tax dashboard successfully",
                 HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("{businessId:guid}/s2a-hkd/preview")]
+    public async Task<IActionResult> GetS2aHkdPreview(
+        Guid businessId,
+        [FromQuery] int year,
+        [FromQuery] int quarter)
+    {
+        var result = await _s2aHkdExportService.BuildDocumentModelAsync(
+            GetUserId(),
+            businessId,
+            year,
+            quarter);
+
+        return Ok(
+            ApiResponse<S2aHkdDocumentModel>.Ok(
+                result,
+                "Get S2a-HKD preview successfully",
+                HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("{businessId:guid}/s2a-hkd")]
+    public async Task<IActionResult> ExportS2aHkd(
+        Guid businessId,
+        [FromQuery] int year,
+        [FromQuery] int quarter)
+    {
+        var bytes = await _s2aHkdExportService.ExportDocxAsync(
+            GetUserId(),
+            businessId,
+            year,
+            quarter);
+
+        var fileName = $"S2a-HKD_{businessId:N}_Q{quarter}_{year}.docx";
+        return File(
+            bytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            fileName);
+    }
+
+    private Guid GetUserId()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            throw new UnauthorizedAccessException("Invalid user token.");
+
+        return userId;
     }
 }

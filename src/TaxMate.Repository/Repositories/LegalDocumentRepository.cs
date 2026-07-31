@@ -23,7 +23,16 @@ public class LegalDocumentRepository : GenericRepository<LegalDocument>, ILegalD
         return await _dbSet.AnyAsync(x =>
             x.FileHash == fileHash);
     }
-    
+
+    public async Task<bool> ExistsByFileHashExceptIdAsync(
+        string fileHash,
+        Guid excludeId)
+    {
+        return await _dbSet.AnyAsync(x =>
+            x.FileHash == fileHash &&
+            x.LegalDocumentId != excludeId);
+    }
+
     public async Task<List<LegalDocument>> GetActiveAsync()
     {
         return await _dbSet

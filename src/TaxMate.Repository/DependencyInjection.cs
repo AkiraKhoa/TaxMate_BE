@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<ITransactionRepository, TransactionRepository>();
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IBusinessProfileRepository, BusinessProfileRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IIngredientRepository, IngredientRepository>();
         services.AddScoped<IIngredientPurchaseRepository, IngredientPurchaseRepository>();
         services.AddScoped<ISubscriptionPlanRepository, SubscriptionPlanRepository>();
@@ -32,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<ITaxPeriodRepository, TaxPeriodRepository>();
         services.AddScoped<IUserDeviceRepository, UserDeviceRepository>();
         services.AddScoped<IReportRepository, ReportRepository>();
+        services.AddScoped<IS2aHkdRepository, S2aHkdRepository>();
         services.AddScoped<ITaxCalculationRepository, TaxCalculationRepository>();
         services.AddScoped<ITaxDeclarationRepository, TaxDeclarationRepository>();
 

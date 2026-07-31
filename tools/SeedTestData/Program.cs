@@ -20,6 +20,13 @@ var options = new DbContextOptionsBuilder<AppDbContext>()
 await using var db = new AppDbContext(options);
 var now = DateTime.UtcNow;
 
+var targetBusinessId = ParseBusinessIdArg(args);
+if (targetBusinessId.HasValue)
+{
+    await SeedS2aHkdForBusinessAsync(db, targetBusinessId.Value, now);
+    return;
+}
+
 var business = await db.BusinessProfiles.FirstOrDefaultAsync();
 Guid businessId;
 Product? product = null;
@@ -58,10 +65,34 @@ if (business is null)
         Id = businessId,
         OwnerId = userId,
 
-        MainCategoryId = fnbCategory.BusinessCategoryId,
+        MainCategoryId =
+            fnbCategory.BusinessCategoryId,
 
-        BusinessName = "Cua Hang Test POS",
-        Address = "123 Test St",
+        BusinessName =
+            "Cua Hang Test POS",
+
+        Address =
+            "123 Test St",
+
+        // ===== Tax payment information for 01/CNKD =====
+
+        // Test theo trường hợp Thuế cơ sở quản lý
+        TaxAuthorityLevel =
+            TaxAuthorityLevels.Local,
+
+        // Đây là dữ liệu TEST.
+        // Sau này production phải lấy từ hồ sơ thuế thực tế.
+        TaxAdministrationAreaCode =
+            "TEST-AREA-001",
+
+        ManagingTaxAuthority =
+            "Thuế cơ sở quản lý hộ kinh doanh test",
+
+        CollectingAuthority =
+            "Kho bạc Nhà nước khu vực test",
+
+        BusinessLocationCode =
+            "LOC-001",
 
         CreatedAt = now,
         UpdatedAt = now
@@ -73,6 +104,7 @@ if (business is null)
     {
         Id = productId,
         BusinessId = businessId,
+        ProductCode = "TEST-POS-001",
         Name = "San pham test",
         Unit = "cai",
         Status = ProductStatus.Active,
@@ -96,8 +128,31 @@ if (business is null)
 else
 {
     businessId = business.Id;
-    product = await db.Products.AsNoTracking()
-        .FirstOrDefaultAsync(p => p.BusinessId == businessId);
+
+    // Refresh tax-payment test data
+    business.TaxAuthorityLevel =
+        TaxAuthorityLevels.Local;
+
+    business.TaxAdministrationAreaCode =
+        "TEST-AREA-001";
+
+    business.ManagingTaxAuthority =
+        "Thuế cơ sở quản lý hộ kinh doanh test";
+
+    business.CollectingAuthority =
+        "Kho bạc Nhà nước khu vực test";
+
+    business.BusinessLocationCode =
+        "LOC-001";
+
+    business.UpdatedAt = now;
+
+    await db.SaveChangesAsync();
+
+    product = await db.Products
+        .AsNoTracking()
+        .FirstOrDefaultAsync(
+            p => p.BusinessId == businessId);
 }
 
 var hasSalesData = await db.Transactions
@@ -143,6 +198,398 @@ if (!hasExpenses)
 await SeedTaxPeriodsAsync(db, businessId, now);
 
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
+
+static Guid? ParseBusinessIdArg(string[] args)
+{
+    foreach (var arg in args)
+    {
+        if (arg.StartsWith("--businessId=", StringComparison.OrdinalIgnoreCase))
+        {
+            var value = arg["--businessId=".Length..];
+            if (Guid.TryParse(value, out var id))
+                return id;
+
+            throw new ArgumentException($"Invalid --businessId value: '{value}'");
+        }
+
+        if (Guid.TryParse(arg, out var positional))
+            return positional;
+    }
+
+    return null;
+}
+
+static async Task SeedS2aHkdForBusinessAsync(AppDbContext db, Guid businessId, DateTime now)
+{
+    Console.WriteLine($"Seeding S2a-HKD test data for businessId={businessId}");
+
+    await EnsureTransactionTypeColumnAsync(db);
+    await EnsureTransactionItemCostColumnsAsync(db);
+    await EnsureProductS2aColumnsAsync(db);
+    await EnsureBusinessCategoriesAsync(db, now);
+
+    var business = await db.BusinessProfiles
+        .Include(x => x.Owner)
+        .FirstOrDefaultAsync(x => x.Id == businessId);
+
+    if (business is null)
+        throw new InvalidOperationException($"Business profile '{businessId}' was not found.");
+
+    if (string.IsNullOrWhiteSpace(business.Owner.TaxCode))
+    {
+        business.Owner.TaxCode = "12345566";
+        Console.WriteLine($"Set Owner.TaxCode = {business.Owner.TaxCode}");
+    }
+
+    if (!business.MainCategoryId.HasValue)
+    {
+        business.MainCategoryId = BusinessCategoryIds.DistGoods;
+        Console.WriteLine($"Set MainCategoryId = DIST_GOODS ({BusinessCategoryIds.DistGoods})");
+    }
+
+    await db.SaveChangesAsync();
+
+    var productSpecs = new[]
+    {
+        new { Code = "TM001", Name = "Dầu ăn", CategoryId = BusinessCategoryIds.DistGoods, Unit = "chai", Price = 30_000m },
+        new { Code = "TM002", Name = "Nước mắm", CategoryId = BusinessCategoryIds.DistGoods, Unit = "chai", Price = 40_000m },
+        new { Code = "CK001", Name = "Giặt sấy", CategoryId = BusinessCategoryIds.ServiceConstruct, Unit = "lần", Price = 100_000m },
+        new { Code = "CK002", Name = "Giặt hấp", CategoryId = BusinessCategoryIds.ServiceConstruct, Unit = "lần", Price = 500_000m }
+    };
+
+    var productsByCode = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var spec in productSpecs)
+    {
+        var product = await db.Products
+            .FirstOrDefaultAsync(p =>
+                p.BusinessId == businessId &&
+                p.ProductCode.ToLower() == spec.Code.ToLower());
+
+        if (product is null)
+        {
+            product = new Product
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = businessId,
+                ProductCode = spec.Code,
+                Name = spec.Name,
+                Unit = spec.Unit,
+                BusinessCategoryId = spec.CategoryId,
+                Status = ProductStatus.Active,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.Products.Add(product);
+            Console.WriteLine($"Created product {spec.Code} ({product.Id})");
+        }
+        else
+        {
+            product.Name = spec.Name;
+            product.Unit = spec.Unit;
+            product.BusinessCategoryId = spec.CategoryId;
+            product.Status = ProductStatus.Active;
+            product.UpdatedAt = now;
+            Console.WriteLine($"Updated product {spec.Code} ({product.Id})");
+        }
+
+        productsByCode[spec.Code] = product;
+
+        var hasPrice = await db.ProductPrices.AnyAsync(p => p.ProductId == product.Id);
+        if (!hasPrice)
+        {
+            db.ProductPrices.Add(new ProductPrice
+            {
+                Id = Guid.NewGuid(),
+                ProductId = product.Id,
+                Price = spec.Price,
+                ApplyDate = now.AddDays(-1),
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+    }
+
+    await db.SaveChangesAsync();
+
+    // Replace prior S2a seeds so amounts stay realistic for the 1–3B band.
+    var oldSeedTxIds = await db.Transactions
+        .Where(t => t.BusinessId == businessId && t.TransactionCode.StartsWith("SEED-S2A-"))
+        .Select(t => t.TransactionId)
+        .ToListAsync();
+
+    if (oldSeedTxIds.Count > 0)
+    {
+        var oldItems = db.TransactionItems.Where(i => oldSeedTxIds.Contains(i.TransactionId));
+        db.TransactionItems.RemoveRange(oldItems);
+        var oldTx = db.Transactions.Where(t => oldSeedTxIds.Contains(t.TransactionId));
+        db.Transactions.RemoveRange(oldTx);
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Removed {oldSeedTxIds.Count} existing SEED-S2A transactions.");
+    }
+
+    // Q1 ~800M + Q2 ~900M itemized → YTD 1.7B (inside 1–3B S2a band).
+    var sales = new[]
+    {
+        // Q1 — goods 400M + service 400M
+        new { Quarter = 1, Code = "TM001", Date = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc), Amount = 200_000_000m },
+        new { Quarter = 1, Code = "TM002", Date = new DateTime(2026, 1, 20, 0, 0, 0, DateTimeKind.Utc), Amount = 200_000_000m },
+        new { Quarter = 1, Code = "CK001", Date = new DateTime(2026, 2, 5, 0, 0, 0, DateTimeKind.Utc), Amount = 200_000_000m },
+        new { Quarter = 1, Code = "CK002", Date = new DateTime(2026, 3, 15, 0, 0, 0, DateTimeKind.Utc), Amount = 200_000_000m },
+        // Q2 — goods 450M + service 450M
+        new { Quarter = 2, Code = "TM001", Date = new DateTime(2026, 4, 8, 0, 0, 0, DateTimeKind.Utc), Amount = 225_000_000m },
+        new { Quarter = 2, Code = "TM002", Date = new DateTime(2026, 5, 12, 0, 0, 0, DateTimeKind.Utc), Amount = 225_000_000m },
+        new { Quarter = 2, Code = "CK001", Date = new DateTime(2026, 5, 28, 0, 0, 0, DateTimeKind.Utc), Amount = 225_000_000m },
+        new { Quarter = 2, Code = "CK002", Date = new DateTime(2026, 6, 18, 0, 0, 0, DateTimeKind.Utc), Amount = 225_000_000m }
+    };
+
+    var indexByQuarter = new Dictionary<int, int> { [1] = 1, [2] = 1 };
+    foreach (var sale in sales)
+    {
+        var product = productsByCode[sale.Code];
+        var transactionId = Guid.NewGuid();
+        var seq = indexByQuarter[sale.Quarter]++;
+        var txCode = $"SEED-S2A-Q{sale.Quarter}-{sale.Code}-{seq:000}";
+
+        db.Transactions.Add(new Transaction
+        {
+            TransactionId = transactionId,
+            BusinessId = businessId,
+            TransactionCode = txCode,
+            TransactionDate = sale.Date,
+            TransactionType = TransactionTypes.Sale,
+            Status = "Completed",
+            SubTotal = sale.Amount,
+            DiscountAmount = 0,
+            SurchargeAmount = 0,
+            TotalAmount = sale.Amount,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        db.TransactionItems.Add(new TransactionItem
+        {
+            TransactionItemId = Guid.NewGuid(),
+            TransactionId = transactionId,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            Unit = product.Unit,
+            UnitPrice = sale.Amount,
+            Quantity = 1,
+            UnitCost = sale.Amount * 0.4m,
+            CostAmount = sale.Amount * 0.4m,
+            DiscountAmount = 0,
+            LineTotal = sale.Amount,
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+
+        Console.WriteLine($"Created Q{sale.Quarter} sale {txCode} amount={sale.Amount:N0}");
+    }
+
+    await db.SaveChangesAsync();
+
+    Console.WriteLine();
+    Console.WriteLine("=== S2a seed summary ===");
+    Console.WriteLine($"businessId={businessId}");
+    Console.WriteLine($"ownerTaxCode={business.Owner.TaxCode}");
+    Console.WriteLine($"mainCategoryId={business.MainCategoryId}");
+    foreach (var (code, product) in productsByCode.OrderBy(x => x.Key))
+        Console.WriteLine($"product {code} id={product.Id} category={product.BusinessCategoryId}");
+    var ytd = await db.Transactions
+        .Where(t =>
+            t.BusinessId == businessId &&
+            t.Status == "Completed" &&
+            t.TransactionDate >= new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) &&
+            t.TransactionDate < new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc))
+        .SumAsync(t => (decimal?)t.TotalAmount) ?? 0m;
+
+    var q1Items = await db.TransactionItems
+        .Where(i =>
+            i.Transaction!.BusinessId == businessId &&
+            i.Transaction.Status == "Completed" &&
+            i.Transaction.TransactionDate >= new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) &&
+            i.Transaction.TransactionDate < new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc))
+        .SumAsync(i => (decimal?)i.LineTotal) ?? 0m;
+
+    var q2Items = await db.TransactionItems
+        .Where(i =>
+            i.Transaction!.BusinessId == businessId &&
+            i.Transaction.Status == "Completed" &&
+            i.Transaction.TransactionDate >= new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc) &&
+            i.Transaction.TransactionDate < new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))
+        .SumAsync(i => (decimal?)i.LineTotal) ?? 0m;
+
+    Console.WriteLine($"Actual YTD completed revenue: {ytd:N0} (eligible 1–3B: {ytd is >= 1_000_000_000m and <= 3_000_000_000m})");
+    Console.WriteLine($"Actual Q1 item revenue: {q1Items:N0}");
+    Console.WriteLine($"Actual Q2 item revenue: {q2Items:N0}");
+    Console.WriteLine("Expected Q1 footer: totalVatTax=24000000, totalPitTax=10000000");
+    Console.WriteLine("Expected Q2 footer: totalVatTax=27000000, totalPitTax=11250000");
+    Console.WriteLine("Test:");
+    Console.WriteLine($"  GET /api/businesses/reports/{businessId}/s2a-hkd/preview?year=2026&quarter=1");
+    Console.WriteLine($"  GET /api/businesses/reports/{businessId}/s2a-hkd/preview?year=2026&quarter=2");
+    Console.WriteLine($"  GET /api/businesses/reports/{businessId}/s2a-hkd?year=2026&quarter=1");
+    Console.WriteLine($"  GET /api/businesses/reports/{businessId}/s2a-hkd?year=2026&quarter=2");
+}
+
+static async Task EnsureTransactionItemCostColumnsAsync(AppDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'TransactionItems'
+                  AND column_name = 'UnitCost'
+            ) THEN
+                ALTER TABLE "TransactionItems"
+                ADD COLUMN "UnitCost" numeric(18,2) NOT NULL DEFAULT 0;
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'TransactionItems'
+                  AND column_name = 'CostAmount'
+            ) THEN
+                ALTER TABLE "TransactionItems"
+                ADD COLUMN "CostAmount" numeric(18,2) NOT NULL DEFAULT 0;
+            END IF;
+        END $$;
+        """);
+}
+
+static async Task EnsureProductS2aColumnsAsync(AppDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'Products'
+                  AND column_name = 'ProductCode'
+            ) THEN
+                ALTER TABLE "Products"
+                ADD COLUMN "ProductCode" character varying(50) NOT NULL DEFAULT '';
+                UPDATE "Products"
+                SET "ProductCode" = 'PRD-' || LEFT(REPLACE("Id"::text, '-', ''), 8)
+                WHERE "ProductCode" = '';
+            END IF;
+
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'Products'
+                  AND column_name = 'BusinessCategoryId'
+            ) THEN
+                ALTER TABLE "Products"
+                ADD COLUMN "BusinessCategoryId" uuid NULL;
+            END IF;
+        END $$;
+        """);
+}
+
+static async Task EnsureTransactionTypeColumnAsync(AppDbContext db)
+{
+    await db.Database.ExecuteSqlRawAsync(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'Transactions'
+                  AND column_name = 'TransactionType'
+            ) THEN
+                ALTER TABLE "Transactions"
+                ADD COLUMN "TransactionType" character varying(30) NOT NULL DEFAULT 'Sale';
+            END IF;
+        END $$;
+        """);
+}
+
+static async Task EnsureBusinessCategoriesAsync(AppDbContext db, DateTime now)
+{
+    var seedDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    var required = new[]
+    {
+        new BusinessCategory
+        {
+            BusinessCategoryId = BusinessCategoryIds.DistGoods,
+            Code = "DIST_GOODS",
+            Name = "Phân phối, cung cấp hàng hóa",
+            Description = "GTGT 1%, TNCN 0.5%",
+            VatRate = 1m,
+            PitRate = 0.5m,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        },
+        new BusinessCategory
+        {
+            BusinessCategoryId = BusinessCategoryIds.ProdTransport,
+            Code = "PROD_TRANSPORT",
+            Name = "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL",
+            Description = "GTGT 3%, TNCN 1.5%",
+            VatRate = 3m,
+            PitRate = 1.5m,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        },
+        new BusinessCategory
+        {
+            BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
+            Code = "SERVICE_CONSTRUCT",
+            Name = "Dịch vụ, XD không bao thầu NVL",
+            Description = "GTGT 5%, TNCN 2%",
+            VatRate = 5m,
+            PitRate = 2m,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        },
+        new BusinessCategory
+        {
+            BusinessCategoryId = BusinessCategoryIds.AssetInsurance,
+            Code = "ASSET_INSURANCE",
+            Name = "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…",
+            Description = "GTGT 5%, TNCN 5%",
+            VatRate = 5m,
+            PitRate = 5m,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        },
+        new BusinessCategory
+        {
+            BusinessCategoryId = BusinessCategoryIds.Other,
+            Code = "OTHER",
+            Name = "Hoạt động khác",
+            Description = "GTGT 2%, TNCN 1%",
+            VatRate = 2m,
+            PitRate = 1m,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        }
+    };
+
+    foreach (var category in required)
+    {
+        var exists = await db.BusinessCategories.AnyAsync(x =>
+            x.BusinessCategoryId == category.BusinessCategoryId ||
+            x.Code == category.Code);
+
+        if (!exists)
+        {
+            db.BusinessCategories.Add(category);
+            Console.WriteLine($"Inserted BusinessCategory {category.Code}");
+        }
+    }
+
+    await db.SaveChangesAsync();
+}
+
 static async Task SeedQuarterSalesTrendDataAsync(
     AppDbContext db,
     Guid businessId,
@@ -374,6 +821,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "PIZZA-001",
             Name = "Pizza",
             Unit = "cái",
             Price = 35000m,
@@ -382,6 +830,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "BURGER-001",
             Name = "Hamburger",
             Unit = "cái",
             Price = 25000m,
@@ -390,6 +839,7 @@ static async Task SeedSalesDashboardDataAsync(
         new
         {
             Id = Guid.NewGuid(),
+            ProductCode = "CHICKEN-001",
             Name = "Gà chiên",
             Unit = "phần",
             Price = 30000m,
@@ -403,6 +853,7 @@ static async Task SeedSalesDashboardDataAsync(
         {
             Id = p.Id,
             BusinessId = businessId,
+            ProductCode = p.ProductCode,
             Name = p.Name,
             Unit = p.Unit,
             Status = ProductStatus.Active,
@@ -866,18 +1317,9 @@ static async Task SeedTaxPeriodsAsync(
         var hasCalculatedTax =
             definition.Status is "Calculated" or "Submitted" or "PartiallyPaid" or "Paid";
 
-        // Test rates follow the seeded BusinessCategory convention:
-        // VAT 1% and PIT 0.5%. The real Calculate API must read current rates
-        // from BusinessCategory and snapshot them into TaxCalculationLine.
-        var vatTaxAmount = hasCalculatedTax
-            ? decimal.Round(taxableRevenue * 1.0m / 100m, 2)
-            : 0m;
-
-        var pitTaxAmount = hasCalculatedTax
-            ? decimal.Round(taxableRevenue * 0.5m / 100m, 2)
-            : 0m;
-
-        var estimatedTax = vatTaxAmount + pitTaxAmount;
+        var vatTaxAmount = 0m;
+        var pitTaxAmount = 0m;
+        var estimatedTax = 0m;
 
         var period = await db.TaxPeriods
             .FirstOrDefaultAsync(p =>
@@ -1164,20 +1606,49 @@ static async Task SeedTaxCalculationsAsync(
             2,
             MidpointRounding.AwayFromZero);
 
-        // ==============================
-        // PIT
-        // ==============================
+        var pitTaxableRevenue =
+            taxableRevenue;
 
-        var pitTaxableRevenue = taxableRevenue;
+        var previousAnnualRevenue =
+            await db.Transactions
+                .AsNoTracking()
+                .Where(t =>
+                    t.BusinessId == businessId &&
+                    t.TransactionType == TransactionTypes.Sale &&
+                    t.Status == "Completed" &&
+                    t.TransactionDate >= new DateTime(
+                        year, 1, 1, 0, 0, 0, DateTimeKind.Utc) &&
+                    t.TransactionDate < period.PeriodStartDate)
+                .SumAsync(t => (decimal?)t.TotalAmount)
+            ?? 0m;
 
-        // Hiện tại seed chưa áp dụng mức giảm trừ 1 tỷ.
-        // Rule thật sẽ được xử lý trong CalculateAsync.
-        var pitDeductibleRevenue = 0m;
+        var alreadyConsumedDeduction =
+            Math.Min(
+                previousAnnualRevenue,
+                TaxRules.AnnualPitRevenueDeduction2026);
 
-        var pitRevenue = Math.Max(
-            0m,
-            pitTaxableRevenue -
-            pitDeductibleRevenue);
+        var remainingDeduction =
+            Math.Max(
+                0m,
+                TaxRules.AnnualPitRevenueDeduction2026 -
+                alreadyConsumedDeduction);
+
+        var pitDeductibleRevenue =
+            Math.Min(
+                pitTaxableRevenue,
+                remainingDeduction);
+
+        var pitRevenue =
+            Math.Max(
+                0m,
+                pitTaxableRevenue -
+                pitDeductibleRevenue);
+
+        var remainingPitDeductionAfterPeriod =
+            Math.Max(
+                0m,
+                remainingDeduction -
+                pitDeductibleRevenue);
 
         var pitTaxAmount = decimal.Round(
             pitRevenue *
@@ -1267,7 +1738,10 @@ static async Task SeedTaxCalculationsAsync(
 
             ApplicableRevenueThreshold = annualRevenueThreshold,
 
-            RecommendedFormCode = recommendedFormCode
+            RecommendedFormCode = recommendedFormCode,
+            
+            RemainingPitDeduction =
+                remainingPitDeductionAfterPeriod,
         };
 
         calculation.Lines.Add(

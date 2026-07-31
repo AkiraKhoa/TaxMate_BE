@@ -203,3 +203,4 @@ fabric.properties
 backend.log
 backend_errors.log
 **/backend.log
+migration_script.sql

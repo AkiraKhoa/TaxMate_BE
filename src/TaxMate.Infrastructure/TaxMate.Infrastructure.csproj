@@ -18,6 +18,7 @@
 
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
     <PackageReference Include="QuestPDF" Version="2024.12.1" />
     <PackageReference Include="Twilio" Version="7.14.9" />
   </ItemGroup>
@@ -37,5 +38,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Word\mau-s2a-HKD.docx" CopyToOutputDirectory="PreserveNewest" Link="Word\mau-s2a-HKD.docx" />
+  </ItemGroup>
 
 </Project>

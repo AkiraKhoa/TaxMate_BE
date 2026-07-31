@@ -6,9 +6,13 @@ namespace TaxMate.Model.DTO;
 public class CreateProductRequest
 {
     [Required]
+    [MaxLength(50)]
+    public string ProductCode { get; set; } = null!;
+    [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
     public Guid? ProductCategoryId { get; set; }
+    public Guid? BusinessCategoryId { get; set; }
     [MaxLength(2000)]
     public string? Description { get; set; }
     [MaxLength(50)]
@@ -22,9 +26,13 @@ public class CreateProductRequest
 public class UpdateProductRequest
 {
     [Required]
+    [MaxLength(50)]
+    public string ProductCode { get; set; } = null!;
+    [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
     public Guid? ProductCategoryId { get; set; }
+    public Guid? BusinessCategoryId { get; set; }
     [MaxLength(2000)]
     public string? Description { get; set; }
     [MaxLength(50)]
@@ -48,9 +56,12 @@ public class ProductResponse
 {
     public Guid Id { get; set; }
     public Guid BusinessId { get; set; }
+    public string ProductCode { get; set; } = null!;
     public string Name { get; set; } = null!;
     public Guid? ProductCategoryId { get; set; }
     public string? ProductCategoryName { get; set; }
+    public Guid? BusinessCategoryId { get; set; }
+    public string? BusinessCategoryName { get; set; }
     public string? Description { get; set; }
     public string? Unit { get; set; }
     public string? ImageUrl { get; set; }

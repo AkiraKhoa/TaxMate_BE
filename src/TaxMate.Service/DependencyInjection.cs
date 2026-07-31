@@ -43,6 +43,7 @@ public static class DependencyInjection
 
         services.AddScoped<IIngredientPurchaseService, IngredientPurchaseService>();
         services.AddScoped<ISubscriptionService, SubscriptionService>();
+        services.AddScoped<ISubscriptionPlanAdminService, SubscriptionPlanAdminService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IProductCategoryService, ProductCategoryService>();
         services.AddScoped<ISupplierService, SupplierService>();
@@ -60,6 +61,8 @@ public static class DependencyInjection
         services.AddScoped<ITaxBookService, TaxBookService>();
         
 
+        services.AddScoped<IBusinessCategoryService, BusinessCategoryService>();
+        services.AddScoped<IS2aHkdExportService, S2aHkdExportService>();
         services.Configure<TaxSettings>(
             configuration.GetSection(TaxSettings.SectionName));
         return services;

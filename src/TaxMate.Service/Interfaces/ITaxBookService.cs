@@ -8,6 +8,6 @@ public interface ITaxBookService
         Guid userId,
         Guid businessId,
         int year,
-        int? month,
+        int? quarter,
         CancellationToken cancellationToken = default);
 }
