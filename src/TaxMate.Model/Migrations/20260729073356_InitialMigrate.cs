@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TaxMate.Model.Migrations
 {
     /// <inheritdoc />
-    public partial class ok : Migration
+    public partial class InitialMigrate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -1187,14 +1187,11 @@ namespace TaxMate.Model.Migrations
                 columns: new[] { "BusinessCategoryId", "Code", "CreatedAt", "Description", "EffectiveFrom", "EffectiveTo", "FormIndicatorCode", "FormSectionCode", "IsActive", "Name", "PitRate", "UpdatedAt", "VatRate" },
                 values: new object[,]
                 {
-<<<<<<<< HEAD:src/TaxMate.Model/Migrations/20260727221344_ok.cs
-========
                     { new Guid("a0000001-0000-4000-8000-000000000001"), "DIST_GOODS", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 1%, TNCN 0.5%", null, null, null, null, true, "Phân phối, cung cấp hàng hóa", 0.5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 1m },
                     { new Guid("a0000001-0000-4000-8000-000000000002"), "PROD_TRANSPORT", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 3%, TNCN 1.5%", null, null, null, null, true, "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL", 1.5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 3m },
                     { new Guid("a0000001-0000-4000-8000-000000000003"), "SERVICE_CONSTRUCT", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 5%, TNCN 2%", null, null, null, null, true, "Dịch vụ, XD không bao thầu NVL", 2m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 5m },
                     { new Guid("a0000001-0000-4000-8000-000000000004"), "ASSET_INSURANCE", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 5%, TNCN 5%", null, null, null, null, true, "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…", 5m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 5m },
                     { new Guid("a0000001-0000-4000-8000-000000000005"), "OTHER", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "GTGT 2%, TNCN 1%", null, null, null, null, true, "Hoạt động khác", 1m, new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), 2m },
->>>>>>>> origin/develop:src/TaxMate.Model/Migrations/20260729073356_InitialMigrate.cs
                     { new Guid("d1111111-1111-1111-1111-111111111111"), "FNB", new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, "d", "I", true, "Ăn uống, nhà hàng, F&B", 1.50m, new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), 3.00m },
                     { new Guid("d2222222-2222-2222-2222-222222222222"), "SERVICE", new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), "Dịch vụ, xây dựng không bao thầu nguyên vật liệu.", new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), null, "b", "I", true, "Dịch vụ", 2.00m, new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), 5.00m }
                 });
