@@ -1,3 +1,4 @@
+using TaxMate.Model.Common;
 using TaxMate.Model.Documents.Tax;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
@@ -11,18 +12,18 @@ public class TaxBookService : ITaxBookService
 {
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly IGenericRepository<User> _users;
-    private readonly IInvoiceRepository _invoiceRepository;
+    private readonly IGenericRepository<Transaction> _transactionRepository;
     private readonly IS1aDocumentGenerator _documentGenerator;
 
     public TaxBookService(
         IGenericRepository<BusinessProfile> businessProfiles,
         IGenericRepository<User> users,
-        IInvoiceRepository invoiceRepository,
+        IGenericRepository<Transaction> transactionRepository,
         IS1aDocumentGenerator documentGenerator)
     {
         _businessProfiles = businessProfiles;
         _users = users;
-        _invoiceRepository = invoiceRepository;
+        _transactionRepository = transactionRepository;
         _documentGenerator = documentGenerator;
     }
 
@@ -54,23 +55,24 @@ public class TaxBookService : ITaxBookService
         {
             int startMonth = (quarter.Value - 1) * 3 + 1;
             startDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc);
-            endDate = startDate.AddMonths(3).AddTicks(-1);
+            endDate = startDate.AddMonths(3);
             periodLabel = $"Quý {quarter.Value}/{year}";
         }
         else
         {
             startDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            endDate = startDate.AddYears(1).AddTicks(-1);
+            endDate = startDate.AddYears(1);
             periodLabel = $"Năm {year}";
         }
 
-        var invoices = await _invoiceRepository.FindAsync(x =>
+        var transactions = await _transactionRepository.FindAsync(x =>
             x.BusinessId == businessId &&
-            x.IssueDate >= startDate &&
-            x.IssueDate <= endDate);
+            x.Status == "Completed" &&
+            x.TransactionDate >= startDate &&
+            x.TransactionDate < endDate);
 
-        var groupedInvoices = invoices
-            .GroupBy(x => x.IssueDate.Date)
+        var groupedTransactions = transactions
+            .GroupBy(x => x.TransactionDate.Date)
             .OrderBy(g => g.Key)
             .ToList();
 
@@ -85,7 +87,7 @@ public class TaxBookService : ITaxBookService
             Lines = new List<S1aDocumentLineModel>()
         };
 
-        foreach (var group in groupedInvoices)
+        foreach (var group in groupedTransactions)
         {
             var line = new S1aDocumentLineModel
             {
@@ -99,3 +101,4 @@ public class TaxBookService : ITaxBookService
         return await _documentGenerator.GenerateAsync(model, cancellationToken);
     }
 }
+
