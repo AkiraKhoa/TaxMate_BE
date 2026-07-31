@@ -44,12 +44,12 @@ public class EInvoiceConfigController : ControllerBase
         var config = await _configs.FirstOrDefaultAsync(x => x.BusinessId == businessId);
         if (config == null)
         {
-            return NotFound(new ApiResponse<string>
-            {
-                Success = false,
-                Message = "No E-Invoice configuration found for this business.",
-                TraceId = HttpContext.TraceIdentifier
-            });
+            // Trả về HTTP 200 OK với data = null để Frontend không bị lỗi đỏ 404 Console
+            return Ok(ApiResponse<EInvoiceConfigResponse?>.Ok(
+                null, 
+                "No E-Invoice configuration found for this business.", 
+                HttpContext.TraceIdentifier
+            ));
         }
 
         var response = new EInvoiceConfigResponse
