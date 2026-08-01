@@ -143,15 +143,14 @@ var app = builder.Build();
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
-{
+
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaxMate API V1");
     });
     app.MapScalarApiReference();
-}
+
 
 app.UseCors("Frontend");
 app.UseAuthentication();
