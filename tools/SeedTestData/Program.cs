@@ -287,11 +287,8 @@ static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
         await SeedExpensesAsync(db, business.Id, categories, now);
     }
 
-    var hasCashbook = await db.Incomes.AnyAsync(i => i.BusinessId == business.Id && i.IncomeDate.Year == 2025);
-    if (!hasCashbook)
-    {
-        await SeedCashbookForServiceAsync(db, business.Id, now);
-    }
+    // Always re-seed cashbook for testing threshold changes
+    await SeedCashbookForServiceAsync(db, business.Id, now);
 
     await SeedTaxPeriodsAsync(db, business.Id, now);
 }
@@ -299,6 +296,16 @@ static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
 static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, DateTime now)
 {
     Console.WriteLine("Seeding Cashbook (Thu-Chi) for 2025 and 2026...");
+    
+    // Clear old cashbook data for this business to ensure fresh thresholds
+    var oldIncomes = await db.Incomes.Where(i => i.BusinessId == businessId).ToListAsync();
+    db.Incomes.RemoveRange(oldIncomes);
+    
+    // Only remove expenses if they were generated as part of cashbook (to avoid deleting regular seed expenses, but for this test store, it's fine)
+    var oldExpenses = await db.Expenses.Where(e => e.BusinessId == businessId && (e.ExpenseTitle.StartsWith("Chi phí hoạt động") || e.ExpenseDate.Year == 2025 || e.ExpenseDate.Year == 2026)).ToListAsync();
+    db.Expenses.RemoveRange(oldExpenses);
+    await db.SaveChangesAsync();
+
     var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Thu dịch vụ");
     if (incomeCat == null)
     {
@@ -314,7 +321,7 @@ static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, 
     }
     await db.SaveChangesAsync();
 
-    var random = new Random(42);
+    var random = new Random();
     var years = new[] { 2025, 2026 };
     foreach (var year in years)
     {
@@ -327,13 +334,19 @@ static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, 
                 var incomeDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
                 if (incomeDate > now) incomeDate = now.AddDays(-1);
 
+                // 2025: < 1 tỷ (1-20 triệu * 40 = ~400 triệu)
+                // 2026: > 1 tỷ (25-45 triệu * 40 = ~1.4 tỷ)
+                decimal amount = year == 2025 
+                    ? random.Next(1, 20) * 1000000m 
+                    : random.Next(25, 45) * 1000000m;
+
                 db.Incomes.Add(new Income
                 {
                     IncomeId = Guid.NewGuid(),
                     BusinessId = businessId,
                     IncomeCategoryId = incomeCat.IncomeCategoryId,
                     IncomeTitle = $"Thu dịch vụ khách hàng {i} Q{q}/{year}",
-                    Amount = random.Next(1, 20) * 1000000m,
+                    Amount = amount,
                     IncomeDate = incomeDate,
                     ReceivedDate = incomeDate,
                     PaymentMethod = "Chuyển khoản",
@@ -708,7 +721,7 @@ static async Task EnsureBusinessCategoriesAsync(AppDbContext db, DateTime now)
         {
             BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
             Code = "SERVICE_CONSTRUCT",
-            Name = "Dịch vụ, XD không bao thầu NVL",
+            Name = "Dịch vụ",
             Description = "GTGT 5%, TNCN 2%",
             VatRate = 5m,
             PitRate = 2m,
