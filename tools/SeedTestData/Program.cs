@@ -21,6 +21,9 @@ await using var db = new AppDbContext(options);
 var now = DateTime.UtcNow;
 
 var targetBusinessId = ParseBusinessIdArg(args);
+await EnsureTransactionTypeColumnAsync(db);
+await EnsureTransactionItemCostColumnsAsync(db);
+await EnsureProductS2aColumnsAsync(db);
 if (targetBusinessId.HasValue)
 {
     await SeedS2aHkdForBusinessAsync(db, targetBusinessId.Value, now);
@@ -197,7 +200,169 @@ if (!hasExpenses)
 // revenue snapshots match the data used by the Tax Period APIs.
 await SeedTaxPeriodsAsync(db, businessId, now);
 
+await SeedServiceAccountAndDataAsync(db, now);
+
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
+
+static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
+{
+    var targetEmail = "giangnguyen102004@gmail.com";
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Email == targetEmail);
+    if (user == null)
+    {
+        user = new User
+        {
+            Id = Guid.Parse("e03ad3be-ea8e-41a2-9348-88ce58ac2b56"),
+            Email = targetEmail,
+            PasswordHash = "$2a$12$pJzsQz2RkJAcUaL3J/ypeOLQj4b8Q18aS2vuiPuCsM95a1oEGz11W",
+            FullName = "Nguyen Truong Giang",
+            Phone = "0909910224",
+            TaxCode = "079204022790",
+            Role = "Owner",
+            AccountStatus = AccountStatus.Active,
+            CreatedAt = new DateTime(2026, 07, 29, 12, 16, 10, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 07, 29, 12, 16, 10, DateTimeKind.Utc)
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Seeded user {targetEmail}");
+    }
+
+    var business = await db.BusinessProfiles.FirstOrDefaultAsync(b => b.OwnerId == user.Id && b.BusinessName == "Cửa hàng test service");
+    if (business == null)
+    {
+        await EnsureBusinessCategoriesAsync(db, now);
+        
+        business = new BusinessProfile
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = user.Id,
+            MainCategoryId = BusinessCategoryIds.ServiceConstruct,
+            BusinessName = "Cửa hàng test service",
+            Address = "123 Service St",
+            TaxAuthorityLevel = TaxAuthorityLevels.Local,
+            TaxAdministrationAreaCode = "TEST-AREA-SRV",
+            ManagingTaxAuthority = "Thuế cơ sở quản lý dịch vụ test",
+            CollectingAuthority = "Kho bạc Nhà nước dịch vụ test",
+            BusinessLocationCode = "LOC-SRV",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.BusinessProfiles.Add(business);
+        
+        var productId1 = Guid.NewGuid();
+        var productId2 = Guid.NewGuid();
+        db.Products.Add(new Product { Id = productId1, BusinessId = business.Id, ProductCode = "SRV-001", Name = "Dịch vụ tư vấn thuế", Unit = "lần", BusinessCategoryId = business.MainCategoryId, Status = ProductStatus.Active, CreatedAt = now });
+        db.Products.Add(new Product { Id = productId2, BusinessId = business.Id, ProductCode = "SRV-002", Name = "Dịch vụ làm báo cáo", Unit = "tháng", BusinessCategoryId = business.MainCategoryId, Status = ProductStatus.Active, CreatedAt = now });
+        
+        db.ProductPrices.Add(new ProductPrice { Id = Guid.NewGuid(), ProductId = productId1, Price = 5000000m, ApplyDate = now.AddDays(-30), CreatedAt = now });
+        db.ProductPrices.Add(new ProductPrice { Id = Guid.NewGuid(), ProductId = productId2, Price = 2000000m, ApplyDate = now.AddDays(-30), CreatedAt = now });
+        
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Seeded business 'Cửa hàng test service' for {targetEmail}");
+    }
+
+    var hasSalesData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id);
+    if (!hasSalesData)
+    {
+        await SeedSalesDashboardDataAsync(db, business.Id, now);
+    }
+
+    var hasExtraSalesData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id && t.TransactionCode.StartsWith("SEED-SALES-EXTRA"));
+    if (!hasExtraSalesData)
+    {
+        await SeedExtraMonthlySalesDataAsync(db, business.Id, now);
+    }
+
+    var hasQuarterTrendData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id && t.TransactionCode.StartsWith("SEED-QUARTER-TREND"));
+    if (!hasQuarterTrendData)
+    {
+        await SeedQuarterSalesTrendDataAsync(db, business.Id, now);
+    }
+
+    var hasExpenses = await db.Expenses.AnyAsync(e => e.BusinessId == business.Id);
+    if (!hasExpenses)
+    {
+        var categories = await SeedExpenseCategoriesAsync(db, business.Id, now);
+        await SeedExpensesAsync(db, business.Id, categories, now);
+    }
+
+    var hasCashbook = await db.Incomes.AnyAsync(i => i.BusinessId == business.Id && i.IncomeDate.Year == 2025);
+    if (!hasCashbook)
+    {
+        await SeedCashbookForServiceAsync(db, business.Id, now);
+    }
+
+    await SeedTaxPeriodsAsync(db, business.Id, now);
+}
+
+static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, DateTime now)
+{
+    Console.WriteLine("Seeding Cashbook (Thu-Chi) for 2025 and 2026...");
+    var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Thu dịch vụ");
+    if (incomeCat == null)
+    {
+        incomeCat = new IncomeCategory { IncomeCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Thu dịch vụ", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+        db.IncomeCategories.Add(incomeCat);
+    }
+    
+    var expenseCat = await db.ExpenseCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Chi phí hoạt động");
+    if (expenseCat == null)
+    {
+        expenseCat = new ExpenseCategory { ExpenseCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Chi phí hoạt động", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+        db.ExpenseCategories.Add(expenseCat);
+    }
+    await db.SaveChangesAsync();
+
+    var random = new Random(42);
+    var years = new[] { 2025, 2026 };
+    foreach (var year in years)
+    {
+        for (int q = 1; q <= 4; q++)
+        {
+            var startMonth = (q - 1) * 3 + 1;
+            
+            for (int i = 1; i <= 10; i++)
+            {
+                var incomeDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
+                if (incomeDate > now) incomeDate = now.AddDays(-1);
+
+                db.Incomes.Add(new Income
+                {
+                    IncomeId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    IncomeCategoryId = incomeCat.IncomeCategoryId,
+                    IncomeTitle = $"Thu dịch vụ khách hàng {i} Q{q}/{year}",
+                    Amount = random.Next(1, 20) * 1000000m,
+                    IncomeDate = incomeDate,
+                    ReceivedDate = incomeDate,
+                    PaymentMethod = "Chuyển khoản",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+
+                var expenseDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
+                if (expenseDate > now) expenseDate = now.AddDays(-1);
+
+                db.Expenses.Add(new Expense
+                {
+                    ExpenseId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    ExpenseCategoryId = expenseCat.ExpenseCategoryId,
+                    ExpenseTitle = $"Chi phí hoạt động {i} Q{q}/{year}",
+                    Amount = random.Next(1, 10) * 500000m,
+                    ExpenseDate = expenseDate,
+                    PaidDate = expenseDate,
+                    PaymentMethod = "Tiền mặt",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+            }
+        }
+    }
+    await db.SaveChangesAsync();
+    Console.WriteLine("Cashbook data seeded successfully.");
+}
 
 static Guid? ParseBusinessIdArg(string[] args)
 {
