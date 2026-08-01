@@ -1,0 +1,67 @@
+﻿using TaxMate.Model.DTO.TaxPeriod;
+using TaxMate.Model.Entities;
+
+namespace TaxMate.Repository.Interfaces;
+
+public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
+{
+    Task<bool> BusinessBelongsToUserAsync(
+        Guid businessId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<TaxPeriodSummaryResponse>> GetByBusinessAsync(
+        Guid businessId,
+        GetTaxPeriodsRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriod?> GetByIdAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriodDetailResponse?> GetDetailAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+    
+    Task<TaxPeriodPreviewResponse?> GetPreviewAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task SaveChangesAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<int> GetNextCalculationVersionAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task SetPreviousCalculationsAsSupersededAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task<BusinessProfile?> GetBusinessWithCategoryAsync(
+        Guid businessId,
+        CancellationToken cancellationToken = default);
+    
+    Task<decimal> GetAnnualRevenueAsync(
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default);
+    
+    Task<decimal> GetAnnualRevenueBeforePeriodAsync(
+        Guid businessId,
+        int year,
+        DateTime periodStart,
+        CancellationToken cancellationToken = default);
+    
+    Task<decimal> GetAnnualRevenueByOwnerAsync(
+        Guid ownerId,
+        int year,
+        CancellationToken cancellationToken = default);
+    
+    Task<decimal> GetAnnualRevenueBeforePeriodByOwnerAsync(
+        Guid ownerId,
+        int year,
+        DateTime periodStart,
+        CancellationToken cancellationToken = default);
+
+}

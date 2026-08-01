@@ -18,6 +18,8 @@ packages/
 *~
 
 ## Secrets
+.env
+**/.env
 appsettings.Production.json
 **/appsettings.Development.json
 
@@ -194,3 +196,6 @@ fabric.properties
 
 # End of https://www.toptal.com/developers/gitignore/api/rider,jetbrains
 
+# Firebase Admin SDK
+**/*firebase-adminsdk*.json
+migration_script.sql

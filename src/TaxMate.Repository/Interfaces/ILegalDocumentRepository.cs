@@ -6,4 +6,6 @@ public interface ILegalDocumentRepository : IGenericRepository<LegalDocument>
 {
     Task<bool> ExistsByDocumentCodeAsync(string documentCode);
     Task<bool> ExistsByFileHashAsync(string fileHash);
+    Task<bool> ExistsByFileHashExceptIdAsync(string fileHash, Guid excludeId);
+    Task<List<LegalDocument>> GetActiveAsync();
 }

@@ -25,6 +25,21 @@ public class BusinessCategory : BaseEntity
     [Precision(5,2)]
     public decimal PitRate { get; set; }
     
+    public bool IsActive { get; set; } = true;
+
+    public DateTime? EffectiveFrom { get; set; }
+
+    public DateTime? EffectiveTo { get; set; }
+
+    [MaxLength(50)]
+    public string? FormIndicatorCode { get; set; }
+
+    [MaxLength(20)]
+    public string? FormSectionCode { get; set; }
+    
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();
+
+    public ICollection<Product> Products { get; set; }
+        = new List<Product>();
 }

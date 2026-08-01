@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -10,11 +10,18 @@ public class Product : BaseEntity
     public Guid BusinessId { get; set; }
 
     [Required]
+    [MaxLength(50)]
+    public string ProductCode { get; set; } = null!;
+
+    [Required]
     [MaxLength(200)]
     public string Name { get; set; } = null!;
 
-    [MaxLength(100)]
-    public string? Category { get; set; }
+    public Guid? ProductCategoryId { get; set; }
+    public ProductCategory? ProductCategory { get; set; }
+
+    public Guid? BusinessCategoryId { get; set; }
+    public BusinessCategory? BusinessCategory { get; set; }
 
     [MaxLength(2000)]
     public string? Description { get; set; }
@@ -27,7 +34,7 @@ public class Product : BaseEntity
 
     [Required]
     [MaxLength(50)]
-    public string Status { get; set; } = "Active";
+    public string Status { get; set; } = ProductStatus.Active;
 
     public BusinessProfile Business { get; set; } = null!;
 

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaxMate.Model.Common;
 using TaxMate.Model.Entities;
 
 namespace TaxMate.Model.Data;
@@ -14,9 +15,13 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<BusinessProfile> BusinessProfiles => Set<BusinessProfile>();
     public DbSet<BusinessCategory> BusinessCategories => Set<BusinessCategory>();
+    
+    public DbSet<UserDevice> UserDevices => Set<UserDevice>();
 
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<Payment> Payments => Set<Payment>();
@@ -30,6 +35,9 @@ public class AppDbContext : DbContext
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
 
+    public DbSet<Income> Incomes => Set<Income>();
+    public DbSet<IncomeCategory> IncomeCategories => Set<IncomeCategory>();
+
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<ProductIngredient> ProductIngredients => Set<ProductIngredient>();
     public DbSet<IngredientPurchase> IngredientPurchases => Set<IngredientPurchase>();
@@ -39,9 +47,32 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatReference> ChatReferences => Set<ChatReference>();
     
     public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
 
+    public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
+    public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
+    public DbSet<EInvoiceConfig> EInvoiceConfigs => Set<EInvoiceConfig>();
+    
+    public DbSet<TaxCalculation> TaxCalculations =>
+        Set<TaxCalculation>();
+
+    public DbSet<TaxCalculationLine> TaxCalculationLines =>
+        Set<TaxCalculationLine>();
+
+    public DbSet<TaxDeclaration> TaxDeclarations =>
+        Set<TaxDeclaration>();
+
+    public DbSet<TaxDeclarationLine> TaxDeclarationLines =>
+        Set<TaxDeclarationLine>();
+
+    public DbSet<TaxDeclarationObligation> TaxDeclarationObligations =>
+        Set<TaxDeclarationObligation>();
+    
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -53,7 +84,19 @@ public class AppDbContext : DbContext
             .IsUnique();
 
         modelBuilder.Entity<User>()
-            .HasIndex(x => x.TaxCode);
+            .HasIndex(x => x.TaxCode)
+            .IsUnique()
+            .HasFilter("\"TaxCode\" IS NOT NULL");
+
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.Phone)
+            .IsUnique()
+            .HasFilter("\"Phone\" IS NOT NULL");
+
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.GoogleId)
+            .IsUnique()
+            .HasFilter("\"GoogleId\" IS NOT NULL");
 
         // BusinessProfile
         modelBuilder.Entity<BusinessProfile>()
@@ -67,6 +110,13 @@ public class AppDbContext : DbContext
             .WithMany(x => x.BusinessProfiles)
             .HasForeignKey(x => x.MainCategoryId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // EInvoiceConfig
+        modelBuilder.Entity<EInvoiceConfig>()
+            .HasOne(x => x.Business)
+            .WithOne(x => x.EInvoiceConfig)
+            .HasForeignKey<EInvoiceConfig>(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // BusinessCategory
         modelBuilder.Entity<BusinessCategory>()
@@ -95,6 +145,47 @@ public class AppDbContext : DbContext
                 x.Status
             });
 
+        // ProductCategory relationship
+        modelBuilder.Entity<ProductCategory>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Product>()
+            .HasOne(x => x.ProductCategory)
+            .WithMany(x => x.Products)
+            .HasForeignKey(x => x.ProductCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Product>()
+            .HasOne(x => x.BusinessCategory)
+            .WithMany(x => x.Products)
+            .HasForeignKey(x => x.BusinessCategoryId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Product>()
+            .HasIndex(x => new { x.BusinessId, x.BusinessCategoryId });
+
+        // Supplier relationships
+        modelBuilder.Entity<Supplier>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasOne(x => x.Supplier)
+            .WithMany(x => x.IngredientPurchases)
+            .HasForeignKey(x => x.SupplierId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Expense>()
+            .HasOne(x => x.Supplier)
+            .WithMany(x => x.Expenses)
+            .HasForeignKey(x => x.SupplierId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // ProductPrice
         modelBuilder.Entity<ProductPrice>()
             .HasOne(x => x.Product)
@@ -110,6 +201,14 @@ public class AppDbContext : DbContext
             });
         // Transaction
         modelBuilder.Entity<Transaction>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Transactions)
+            .HasForeignKey(x => x.BusinessId);
+
+        modelBuilder.Entity<Transaction>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Transaction>()
             .HasIndex(x => x.TransactionCode)
             .IsUnique();
 
@@ -122,13 +221,48 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.InvoiceId)
             .HasPrincipalKey(x => x.InvoiceNumber)
             .OnDelete(DeleteBehavior.SetNull);
-        
+
+        // TransactionItem
+        modelBuilder.Entity<TransactionItem>()
+            .HasOne(x => x.Transaction)
+            .WithMany(x => x.TransactionItems)
+            .HasForeignKey(x => x.TransactionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TransactionItem>()
+            .HasOne(x => x.Product)
+            .WithMany()
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<TransactionItem>()
+            .HasIndex(x => x.TransactionId);
+
+        // PaymentAccount
+        modelBuilder.Entity<PaymentAccount>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.PaymentAccounts)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<PaymentAccount>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<PaymentAccount>()
+            .HasIndex(x => new { x.BusinessId, x.IsDefault });
+
         // Payment
         modelBuilder.Entity<Payment>()
             .HasOne(x => x.Transaction)
             .WithMany(x => x.Payments)
             .HasForeignKey(x => x.TransactionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Payment>()
+            .HasOne(x => x.PaymentAccount)
+            .WithMany(x => x.Payments)
+            .HasForeignKey(x => x.PaymentAccountId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Payment>()
             .HasIndex(x => x.TransactionId);
@@ -213,9 +347,6 @@ public class AppDbContext : DbContext
             .WithMany(x => x.TaxPayments)
             .HasForeignKey(x => x.TaxPeriodId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        modelBuilder.Entity<TaxPayment>()
-            .HasIndex(x => x.PaidDate);
         
         // Expense
         modelBuilder.Entity<Expense>()
@@ -244,9 +375,83 @@ public class AppDbContext : DbContext
         
         // Expense Category
         modelBuilder.Entity<ExpenseCategory>()
-            .HasIndex(x => x.CategoryName)
+            .HasOne(x => x.Business)
+            .WithMany() // Assuming BusinessProfile doesn't necessarily need a collection of ExpenseCategories
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ExpenseCategory>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<ExpenseCategory>()
+            .HasIndex(x => new { x.BusinessId, x.CategoryName })
             .IsUnique();
         
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
+        // Income
+        modelBuilder.Entity<Income>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Incomes)
+            .HasForeignKey(x => x.BusinessId);
+
+        modelBuilder.Entity<Income>()
+            .HasOne(x => x.IncomeCategory)
+            .WithMany(x => x.Incomes)
+            .HasForeignKey(x => x.IncomeCategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => x.IncomeDate);
+
+        modelBuilder.Entity<Income>()
+            .HasIndex(x => new
+            {
+                x.BusinessId,
+                x.IncomeDate
+            });
+        
+        // Income Category
+        modelBuilder.Entity<IncomeCategory>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IncomeCategory>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<IncomeCategory>()
+            .HasIndex(x => new { x.BusinessId, x.CategoryName })
+            .IsUnique();
+        
+        // Ingredient
+        modelBuilder.Entity<Ingredient>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.Ingredients)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<Ingredient>()
+            .HasIndex(x => new { x.BusinessId, x.Name });
+
         // Product Ingredient
         modelBuilder.Entity<ProductIngredient>()
             .HasKey(x => new
@@ -258,12 +463,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Product)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.ProductId);
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ProductIngredient>()
             .HasOne(x => x.Ingredient)
             .WithMany(x => x.ProductIngredients)
-            .HasForeignKey(x => x.IngredientId);
+            .HasForeignKey(x => x.IngredientId)
+            .OnDelete(DeleteBehavior.Restrict);
         
         // Ingredient Purchase
         modelBuilder.Entity<IngredientPurchase>()
@@ -273,10 +480,25 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<IngredientPurchase>()
+            .HasOne(x => x.Business)
+            .WithMany(x => x.IngredientPurchases)
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IngredientPurchase>()
             .HasIndex(x => x.PurchaseDate);
 
         modelBuilder.Entity<IngredientPurchase>()
             .HasIndex(x => x.IngredientId);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasIndex(x => x.BusinessId);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasIndex(x => x.InvoiceNumber);
+
+        modelBuilder.Entity<IngredientPurchase>()
+            .HasIndex(x => new { x.BusinessId, x.PurchaseDate });
         
         // Subscription
         modelBuilder.Entity<PlanFeature>()
@@ -301,6 +523,11 @@ public class AppDbContext : DbContext
                 x.SubscriptionPlanId,
                 x.Status
             });
+
+        modelBuilder.Entity<UserSubscription>()
+            .HasIndex(x => x.PaymentOrderCode)
+            .IsUnique()
+            .HasFilter("\"PaymentOrderCode\" IS NOT NULL");
         
         // Notification
         modelBuilder.Entity<Notification>()
@@ -321,6 +548,64 @@ public class AppDbContext : DbContext
                 x.UserId,
                 x.CreatedAt
             });
+
+        // Chat Conversation
+        modelBuilder.Entity<ChatConversation>()
+            .HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasOne(x => x.Business)
+            .WithMany()
+            .HasForeignKey(x => x.BusinessId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => x.UserId);
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => new
+            {
+                x.UserId,
+                x.Status
+            });
+
+        modelBuilder.Entity<ChatConversation>()
+            .HasIndex(x => x.BusinessId);
+
+        // Chat Message
+        modelBuilder.Entity<ChatMessage>()
+            .HasOne(x => x.Conversation)
+            .WithMany(x => x.Messages)
+            .HasForeignKey(x => x.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(x => x.ConversationId);
+
+        modelBuilder.Entity<ChatMessage>()
+            .HasIndex(x => x.CreatedAt);
+
+        // Chat Reference
+        modelBuilder.Entity<ChatReference>()
+            .HasOne(x => x.Message)
+            .WithMany(x => x.References)
+            .HasForeignKey(x => x.MessageId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasOne(x => x.LegalDocument)
+            .WithMany()
+            .HasForeignKey(x => x.LegalDocumentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasIndex(x => x.MessageId);
+
+        modelBuilder.Entity<ChatReference>()
+            .HasIndex(x => x.LegalDocumentId);
         
         // Base Indexes for Dashboard
         modelBuilder.Entity<ProductPrice>()
@@ -348,6 +633,199 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<LegalDocument>()
             .HasIndex(x => x.Status);
+
+        // Seed Business Categories (official GTGT/TNCN rate groups)
+        var seedDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<BusinessCategory>().HasData(
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.DistGoods,
+                Code = "DIST_GOODS",
+                Name = "Phân phối, cung cấp hàng hóa",
+                Description = "GTGT 1%, TNCN 0.5%",
+                VatRate = 1m,
+                PitRate = 0.5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.ProdTransport,
+                Code = "PROD_TRANSPORT",
+                Name = "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL",
+                Description = "GTGT 3%, TNCN 1.5%",
+                VatRate = 3m,
+                PitRate = 1.5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
+                Code = "SERVICE_CONSTRUCT",
+                Name = "Dịch vụ, XD không bao thầu NVL",
+                Description = "GTGT 5%, TNCN 2%",
+                VatRate = 5m,
+                PitRate = 2m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.AssetInsurance,
+                Code = "ASSET_INSURANCE",
+                Name = "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…",
+                Description = "GTGT 5%, TNCN 5%",
+                VatRate = 5m,
+                PitRate = 5m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new BusinessCategory
+            {
+                BusinessCategoryId = BusinessCategoryIds.Other,
+                Code = "OTHER",
+                Name = "Hoạt động khác",
+                Description = "GTGT 2%, TNCN 1%",
+                VatRate = 2m,
+                PitRate = 1m,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            }
+        );
+
+        // Seed Subscription Plans
+        var freePlanId = Guid.Parse("a1d1c694-d271-460b-8835-2b2e6a1b8c1d");
+        var smallPlanId = Guid.Parse("b2d2c694-d271-460b-8835-2b2e6a1b8c2d");
+        var premiumPlanId = Guid.Parse("c3d3c694-d271-460b-8835-2b2e6a1b8c3d");
+
+        modelBuilder.Entity<SubscriptionPlan>().HasData(
+            new SubscriptionPlan
+            {
+                Id = freePlanId,
+                Name = "Gói Miễn Phí",
+                Description = "Trải nghiệm các tính năng quản lý cơ bản",
+                MonthlyPrice = 0m,
+                AnnualPrice = 0m,
+                MaxProducts = 50,
+                MaxTransactionsPerMonth = 100,
+                IsActive = true,
+                SortOrder = 0
+            },
+            new SubscriptionPlan
+            {
+                Id = smallPlanId,
+                Name = "Gói Hộ Kinh Doanh",
+                Description = "Phù hợp cho hộ kinh doanh cá thể nhỏ",
+                MonthlyPrice = 99000m,
+                AnnualPrice = 990000m,
+                MaxProducts = 500,
+                MaxTransactionsPerMonth = 1000,
+                IsActive = true,
+                SortOrder = 1
+            },
+            new SubscriptionPlan
+            {
+                Id = premiumPlanId,
+                Name = "Gói Doanh Nghiệp Cao Cấp",
+                Description = "Giải pháp toàn diện cho doanh nghiệp tăng trưởng",
+                MonthlyPrice = 199000m,
+                AnnualPrice = 1990000m,
+                MaxProducts = null,
+                MaxTransactionsPerMonth = null,
+                IsActive = true,
+                SortOrder = 2
+            }
+        );
+
+        // Seed Plan Features
+        modelBuilder.Entity<PlanFeature>().HasData(
+            // Free Tier features
+            new PlanFeature { Id = Guid.Parse("f1111111-1111-1111-1111-111111111111"), SubscriptionPlanId = freePlanId, FeatureKey = "revenue_recording", FeatureName = "Ghi nhận doanh thu", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("f2222222-2222-2222-2222-222222222222"), SubscriptionPlanId = freePlanId, FeatureKey = "revenue_aggregation_viz", FeatureName = "Tổng hợp doanh thu theo tháng/năm", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("f3333333-3333-3333-3333-333333333333"), SubscriptionPlanId = freePlanId, FeatureKey = "daily_revenue_reporting", FeatureName = "Báo cáo doanh thu hàng ngày", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("f4444444-4444-4444-4444-444444444444"), SubscriptionPlanId = freePlanId, FeatureKey = "order_history_tracking", FeatureName = "Theo dõi lịch sử đơn hàng", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("f5555555-5555-5555-5555-555555555555"), SubscriptionPlanId = freePlanId, FeatureKey = "best_selling_categories", FeatureName = "Danh mục sản phẩm bán chạy nhất", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("f6666666-6666-6666-6666-666666666666"), SubscriptionPlanId = freePlanId, FeatureKey = "product_management", FeatureName = "Quản lý sản phẩm", IsEnabled = true },
+
+            // Small Business features
+            new PlanFeature { Id = Guid.Parse("b1111111-1111-1111-1111-111111111111"), SubscriptionPlanId = smallPlanId, FeatureKey = "revenue_recording", FeatureName = "Ghi nhận doanh thu", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b2222222-2222-2222-2222-222222222222"), SubscriptionPlanId = smallPlanId, FeatureKey = "revenue_aggregation_viz", FeatureName = "Tổng hợp doanh thu theo tháng/năm", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b3333333-3333-3333-3333-333333333333"), SubscriptionPlanId = smallPlanId, FeatureKey = "daily_revenue_reporting", FeatureName = "Báo cáo doanh thu hàng ngày", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b4444444-4444-4444-4444-444444444444"), SubscriptionPlanId = smallPlanId, FeatureKey = "order_history_tracking", FeatureName = "Theo dõi lịch sử đơn hàng", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b5555555-5555-5555-5555-555555555555"), SubscriptionPlanId = smallPlanId, FeatureKey = "best_selling_categories", FeatureName = "Danh mục sản phẩm bán chạy nhất", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b6666666-6666-6666-6666-666666666666"), SubscriptionPlanId = smallPlanId, FeatureKey = "product_management", FeatureName = "Quản lý sản phẩm", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b7777777-7777-7777-7777-777777777777"), SubscriptionPlanId = smallPlanId, FeatureKey = "expense_recording_monitoring", FeatureName = "Ghi nhận & giám sát chi phí", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b8888888-8888-8888-8888-888888888888"), SubscriptionPlanId = smallPlanId, FeatureKey = "estimated_profitability_dashboard", FeatureName = "Bảng điều khiển lợi nhuận ước tính", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("b9999999-9999-9999-9999-999999999999"), SubscriptionPlanId = smallPlanId, FeatureKey = "ai_tax_guidance", FeatureName = "Tư vấn thuế AI", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("baaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), SubscriptionPlanId = smallPlanId, FeatureKey = "rag_legal_retrieval", FeatureName = "Tra cứu thông tin luật RAG", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), SubscriptionPlanId = smallPlanId, FeatureKey = "business_insight_reports", FeatureName = "Báo cáo insight kinh doanh", IsEnabled = true },
+
+            // Premium Business features
+            new PlanFeature { Id = Guid.Parse("e1111111-1111-1111-1111-111111111111"), SubscriptionPlanId = premiumPlanId, FeatureKey = "revenue_recording", FeatureName = "Ghi nhận doanh thu", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e2222222-2222-2222-2222-222222222222"), SubscriptionPlanId = premiumPlanId, FeatureKey = "revenue_aggregation_viz", FeatureName = "Tổng hợp doanh thu theo tháng/năm", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e3333333-3333-3333-3333-333333333333"), SubscriptionPlanId = premiumPlanId, FeatureKey = "daily_revenue_reporting", FeatureName = "Báo cáo doanh thu hàng ngày", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e4444444-4444-4444-4444-444444444444"), SubscriptionPlanId = premiumPlanId, FeatureKey = "order_history_tracking", FeatureName = "Theo dõi lịch sử đơn hàng", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e5555555-5555-5555-5555-555555555555"), SubscriptionPlanId = premiumPlanId, FeatureKey = "best_selling_categories", FeatureName = "Danh mục sản phẩm bán chạy nhất", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e6666666-6666-6666-6666-666666666666"), SubscriptionPlanId = premiumPlanId, FeatureKey = "product_management", FeatureName = "Quản lý sản phẩm", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e7777777-7777-7777-7777-777777777777"), SubscriptionPlanId = premiumPlanId, FeatureKey = "expense_recording_monitoring", FeatureName = "Ghi nhận & giám sát chi phí", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e8888888-8888-8888-8888-888888888888"), SubscriptionPlanId = premiumPlanId, FeatureKey = "estimated_profitability_dashboard", FeatureName = "Bảng điều khiển lợi nhuận ước tính", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("e9999999-9999-9999-9999-999999999999"), SubscriptionPlanId = premiumPlanId, FeatureKey = "ai_tax_guidance", FeatureName = "Tư vấn thuế AI", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), SubscriptionPlanId = premiumPlanId, FeatureKey = "rag_legal_retrieval", FeatureName = "Tra cứu thông tin luật RAG", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("ebbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), SubscriptionPlanId = premiumPlanId, FeatureKey = "business_insight_reports", FeatureName = "Báo cáo insight kinh doanh", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("eaaaaaaa-cccc-cccc-cccc-cccccccccccc"), SubscriptionPlanId = premiumPlanId, FeatureKey = "einvoice_integration", FeatureName = "Tích hợp hóa đơn điện tử", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("ebbbbbbb-dddd-dddd-dddd-dddddddddddd"), SubscriptionPlanId = premiumPlanId, FeatureKey = "advanced_analytics", FeatureName = "Phân tích kinh doanh nâng cao", IsEnabled = true },
+            new PlanFeature { Id = Guid.Parse("ececcccc-eeee-eeee-eeee-eeeeeeeeeeee"), SubscriptionPlanId = premiumPlanId, FeatureKey = "growth_readiness_monitoring", FeatureName = "Giám sát mức độ sẵn sàng tăng trưởng", IsEnabled = true }
+        );
+
+        // Seed Business Categories
+        modelBuilder.Entity<BusinessCategory>().HasData(
+            new BusinessCategory
+            {
+                BusinessCategoryId =
+                    Guid.Parse("d1111111-1111-1111-1111-111111111111"),
+
+                Code = "FNB",
+                Name = "Ăn uống, nhà hàng, F&B",
+
+                Description =
+                    "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
+
+                VatRate = 3.00m,
+                PitRate = 1.50m,
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "d",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+
+            new BusinessCategory
+            {
+                BusinessCategoryId =
+                    Guid.Parse("d2222222-2222-2222-2222-222222222222"),
+
+                Code = "SERVICE",
+                Name = "Dịch vụ",
+
+                Description =
+                    "Dịch vụ, xây dựng không bao thầu nguyên vật liệu.",
+
+                VatRate = 5.00m,
+                PitRate = 2.00m,
+
+                FormSectionCode = "I",
+                FormIndicatorCode = "b",
+
+                IsActive = true,
+
+                EffectiveFrom = new DateTime(
+                    2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+        );
         
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
