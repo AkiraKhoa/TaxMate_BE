@@ -28,7 +28,9 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
             .Include(x => x.ProductIngredients)
+                .ThenInclude(x => x.Ingredient)
             .Include(x => x.BusinessCategory)
+            .AsSplitQuery()
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -72,6 +74,9 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
             .Include(x => x.BusinessCategory)
+            .Include(x => x.ProductIngredients)
+                .ThenInclude(x => x.Ingredient)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id);
     }
 

@@ -268,8 +268,34 @@ public class ProductService : IProductService
             CostPrice = entity.CostPrice,
             StockQuantity = entity.StockQuantity,
             HasRecipe = entity.ProductIngredients?.Any() ?? false,
+            AvailableQuantity = CalculateAvailableQuantity(entity),
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
+    }
+
+    private static decimal? CalculateAvailableQuantity(Product entity)
+    {
+        if (entity.ProductIngredients is not { Count: > 0 })
+            return entity.StockQuantity.HasValue
+                ? Math.Max(0, entity.StockQuantity.Value)
+                : null;
+
+        decimal? availableQuantity = null;
+
+        foreach (var recipeItem in entity.ProductIngredients)
+        {
+            if (recipeItem.Quantity <= 0 || recipeItem.Ingredient is null)
+                return null;
+
+            var quantityFromIngredient = Math.Floor(
+                recipeItem.Ingredient.StockQuantity / recipeItem.Quantity);
+
+            availableQuantity = availableQuantity.HasValue
+                ? Math.Min(availableQuantity.Value, quantityFromIngredient)
+                : quantityFromIngredient;
+        }
+
+        return Math.Max(0, availableQuantity ?? 0);
     }
 }

@@ -70,6 +70,7 @@ public class ProductResponse
     public decimal? CostPrice { get; set; }
     public decimal? StockQuantity { get; set; }
     public bool HasRecipe { get; set; }
+    public decimal? AvailableQuantity { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
