@@ -13,6 +13,7 @@ public class AddOrderItemRequest
     /// <summary>Số lượng sản phẩm.</summary>
     /// <example>2</example>
     [Required]
+    [Range(typeof(decimal), "0.001", "79228162514264337593543950335")]
     public decimal Quantity { get; set; }
 
     /// <summary>Loại giảm giá dòng: Percentage hoặc Fixed.</summary>

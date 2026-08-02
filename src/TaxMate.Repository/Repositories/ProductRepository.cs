@@ -74,4 +74,16 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             .Include(x => x.BusinessCategory)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
+
+    public async Task<bool> DecrementStockAsync(Guid id, decimal quantity)
+    {
+        var updatedAt = DateTime.UtcNow;
+        var affectedRows = await _appContext.Products
+            .Where(x => x.Id == id && x.StockQuantity.HasValue)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.StockQuantity, x => x.StockQuantity - quantity)
+                .SetProperty(x => x.UpdatedAt, updatedAt));
+
+        return affectedRows == 1;
+    }
 }

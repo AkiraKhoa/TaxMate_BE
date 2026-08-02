@@ -11,4 +11,6 @@ public interface IIngredientRepository : IGenericRepository<Ingredient>
         int pageNumber,
         int pageSize,
         string? search);
+
+    Task<bool> DecrementStockAsync(Guid id, decimal quantity);
 }

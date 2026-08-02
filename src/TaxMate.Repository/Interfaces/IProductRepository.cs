@@ -15,4 +15,5 @@ public interface IProductRepository : IGenericRepository<Product>
         bool? hasRecipe);
 
     Task<Product?> GetByIdWithPricesAsync(Guid id);
+    Task<bool> DecrementStockAsync(Guid id, decimal quantity);
 }

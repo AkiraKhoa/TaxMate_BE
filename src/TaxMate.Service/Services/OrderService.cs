@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
@@ -14,7 +13,7 @@ public class OrderService : IOrderService
     private readonly ITransactionRepository _transactions;
     private readonly IPaymentAccountRepository _paymentAccounts;
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
-    private readonly IGenericRepository<Product> _products;
+    private readonly IProductRepository _products;
     private readonly IGenericRepository<ProductPrice> _productPrices;
     private readonly IGenericRepository<TransactionItem> _transactionItems;
     private readonly IGenericRepository<Payment> _payments;
@@ -30,7 +29,7 @@ public class OrderService : IOrderService
         ITransactionRepository transactions,
         IPaymentAccountRepository paymentAccounts,
         IGenericRepository<BusinessProfile> businessProfiles,
-        IGenericRepository<Product> products,
+        IProductRepository products,
         IGenericRepository<ProductPrice> productPrices,
         IGenericRepository<TransactionItem> transactionItems,
         IGenericRepository<Payment> payments,
@@ -193,6 +192,7 @@ public class OrderService : IOrderService
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null) throw new NotFoundException("Order not found.");
         if (order.Status != "Draft") throw new ConflictException("Cannot modify items of a non-draft order.");
+        if (request.Quantity <= 0) throw new BadRequestException("Quantity must be greater than zero.");
 
         var product = await _products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
         if (product == null || product.BusinessId != order.BusinessId)
@@ -400,6 +400,11 @@ public class OrderService : IOrderService
             throw new BadRequestException("Cannot checkout an empty order. Please add at least one product.");
         }
 
+        if (order.TransactionItems.Any(x => x.Quantity <= 0))
+        {
+            throw new BadRequestException("Cannot checkout an order containing a non-positive item quantity.");
+        }
+
         var totalPaidAmount = request.Payments.Sum(x => x.Amount);
         if (Math.Round(totalPaidAmount, 2) < Math.Round(order.TotalAmount, 2))
         {
@@ -429,6 +434,24 @@ public class OrderService : IOrderService
                 }
             }
 
+            if (isAwaitingPayment)
+            {
+                var transitioned = await _transactions.TryTransitionStatusAsync(
+                    order.TransactionId,
+                    TransactionStatus.Draft,
+                    TransactionStatus.AwaitingPayment);
+                if (!transitioned)
+                {
+                    throw new ConflictException("Order status changed while checkout was being processed.");
+                }
+
+                order.Status = TransactionStatus.AwaitingPayment;
+            }
+            else
+            {
+                await CompleteOrderAsync(order, TransactionStatus.Draft);
+            }
+
             foreach (var paymentEntry in request.Payments)
             {
                 var isBankTransfer = paymentEntry.PaymentMethod.Equals("Transfer", StringComparison.OrdinalIgnoreCase);
@@ -445,38 +468,6 @@ public class OrderService : IOrderService
 
                 await _payments.AddAsync(payment);
                 order.Payments.Add(payment);
-            }
-
-            order.Status = isAwaitingPayment ? TransactionStatus.AwaitingPayment : TransactionStatus.Completed;
-
-            // Trừ tồn kho sản phẩm & nguyên liệu (BOM)
-            foreach (var item in order.TransactionItems)
-            {
-                if (item.ProductId.HasValue)
-                {
-                    var product = await _products.GetByIdAsync(item.ProductId.Value);
-                    // Chỉ trừ tồn nếu Product có quản lý tồn kho (StockQuantity != null)
-                    if (product != null && product.StockQuantity.HasValue)
-                    {
-                        product.StockQuantity -= item.Quantity;
-                        _products.Update(product);
-                    }
-
-                    // Trừ nguyên liệu BOM (nếu có)
-                    var pIngredients = await _productIngredients.GetByProductIdAsync(item.ProductId.Value);
-                    if (pIngredients != null)
-                    {
-                        foreach (var pi in pIngredients)
-                        {
-                            var ingredient = await _ingredients.GetByIdAsync(pi.IngredientId);
-                            if (ingredient != null)
-                            {
-                                ingredient.StockQuantity -= (pi.Quantity * item.Quantity);
-                                _ingredients.Update(ingredient);
-                            }
-                        }
-                    }
-                }
             }
 
             await _unitOfWork.SaveChangesAsync();
@@ -593,6 +584,8 @@ public class OrderService : IOrderService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
+            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment);
+
             var paidAt = DateTime.UtcNow;
 
             foreach (var payment in order.Payments)
@@ -603,7 +596,6 @@ public class OrderService : IOrderService
                 }
             }
 
-            order.Status = TransactionStatus.Completed;
             await _unitOfWork.SaveChangesAsync();
 
             Invoice? invoice = null;
@@ -682,6 +674,59 @@ public class OrderService : IOrderService
         {
             await _unitOfWork.RollbackTransactionAsync();
             throw;
+        }
+    }
+
+    private async Task CompleteOrderAsync(Transaction order, string expectedStatus)
+    {
+        var transitioned = await _transactions.TryTransitionStatusAsync(
+            order.TransactionId,
+            expectedStatus,
+            TransactionStatus.Completed);
+        if (!transitioned)
+        {
+            throw new ConflictException("Order status changed while completion was being processed.");
+        }
+
+        order.Status = TransactionStatus.Completed;
+        await DeductInventoryForCompletedOrderAsync(order);
+    }
+
+    private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
+    {
+        var soldQuantitiesByProduct = order.TransactionItems
+            .Where(x => x.ProductId.HasValue && x.Quantity > 0)
+            .GroupBy(x => x.ProductId!.Value)
+            .ToDictionary(group => group.Key, group => group.Sum(x => x.Quantity));
+
+        var productDeltas = new Dictionary<Guid, decimal>();
+        var ingredientDeltas = new Dictionary<Guid, decimal>();
+
+        foreach (var (productId, soldQuantity) in soldQuantitiesByProduct.OrderBy(x => x.Key))
+        {
+            var bom = await _productIngredients.GetByProductIdAsync(productId);
+            if (bom.Count == 0)
+            {
+                productDeltas[productId] = soldQuantity;
+                continue;
+            }
+
+            foreach (var bomItem in bom)
+            {
+                var delta = bomItem.Quantity * soldQuantity;
+                ingredientDeltas[bomItem.IngredientId] =
+                    ingredientDeltas.GetValueOrDefault(bomItem.IngredientId) + delta;
+            }
+        }
+
+        foreach (var (productId, quantity) in productDeltas.OrderBy(x => x.Key))
+        {
+            await _products.DecrementStockAsync(productId, quantity);
+        }
+
+        foreach (var (ingredientId, quantity) in ingredientDeltas.OrderBy(x => x.Key))
+        {
+            await _ingredients.DecrementStockAsync(ingredientId, quantity);
         }
     }
 

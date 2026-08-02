@@ -134,4 +134,19 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
             .Where(x => x.Status == TaxMate.Model.Common.TransactionStatus.AwaitingPayment)
             .ToListAsync();
     }
+
+    public async Task<bool> TryTransitionStatusAsync(
+        Guid transactionId,
+        string expectedStatus,
+        string targetStatus)
+    {
+        var updatedAt = DateTime.UtcNow;
+        var affectedRows = await _dbSet
+            .Where(x => x.TransactionId == transactionId && x.Status == expectedStatus)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, targetStatus)
+                .SetProperty(x => x.UpdatedAt, updatedAt));
+
+        return affectedRows == 1;
+    }
 }
