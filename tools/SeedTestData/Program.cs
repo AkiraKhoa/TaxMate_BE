@@ -200,24 +200,43 @@ if (!hasExpenses)
 // revenue snapshots match the data used by the Tax Period APIs.
 await SeedTaxPeriodsAsync(db, businessId, now);
 
-await SeedServiceAccountAndDataAsync(db, now);
+await SeedServiceAccountAndDataAsync(db, now,
+    Guid.Parse("e03ad3be-ea8e-41a2-9348-88ce58ac2b56"),
+    "giangnguyen102004@gmail.com",
+    "079204022790",
+    "$2a$12$pJzsQz2RkJAcUaL3J/ypeOLQj4b8Q18aS2vuiPuCsM95a1oEGz11W",
+    "Nguyen Truong Giang",
+    "0909910224",
+    "Cửa hàng test service (High Revenue)",
+    true);
+
+await SeedServiceAccountAndDataAsync(db, now,
+    Guid.Parse("4a06664c-9c1e-421e-b200-d6986b4d2af9"),
+    "hyvssett@gmail.com",
+    "079204003641",
+    "$2a$12$TkhaQhIzXzuLJzvnZvdA6uQX0ZvUePow3JT3aR9eJFcjH/iaXjvF6",
+    "Nguyen Duc Hy",
+    "0365502741",
+    "Cửa hàng test service (Low Revenue)",
+    false);
 
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
 
-static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
+static async Task SeedServiceAccountAndDataAsync(
+    AppDbContext db, DateTime now,
+    Guid userId, string targetEmail, string taxCode, string passwordHash, string fullName, string phone, string businessName, bool isHighRevenue)
 {
-    var targetEmail = "giangnguyen102004@gmail.com";
     var user = await db.Users.FirstOrDefaultAsync(u => u.Email == targetEmail);
     if (user == null)
     {
         user = new User
         {
-            Id = Guid.Parse("e03ad3be-ea8e-41a2-9348-88ce58ac2b56"),
+            Id = userId,
             Email = targetEmail,
-            PasswordHash = "$2a$12$pJzsQz2RkJAcUaL3J/ypeOLQj4b8Q18aS2vuiPuCsM95a1oEGz11W",
-            FullName = "Nguyen Truong Giang",
-            Phone = "0909910224",
-            TaxCode = "079204022790",
+            PasswordHash = passwordHash,
+            FullName = fullName,
+            Phone = phone,
+            TaxCode = taxCode,
             Role = "Owner",
             AccountStatus = AccountStatus.Active,
             CreatedAt = new DateTime(2026, 07, 29, 12, 16, 10, DateTimeKind.Utc),
@@ -228,7 +247,7 @@ static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
         Console.WriteLine($"Seeded user {targetEmail}");
     }
 
-    var business = await db.BusinessProfiles.FirstOrDefaultAsync(b => b.OwnerId == user.Id && b.BusinessName == "Cửa hàng test service");
+    var business = await db.BusinessProfiles.FirstOrDefaultAsync(b => b.OwnerId == user.Id && b.BusinessName == businessName);
     if (business == null)
     {
         await EnsureBusinessCategoriesAsync(db, now);
@@ -238,7 +257,7 @@ static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
             Id = Guid.NewGuid(),
             OwnerId = user.Id,
             MainCategoryId = BusinessCategoryIds.ServiceConstruct,
-            BusinessName = "Cửa hàng test service",
+            BusinessName = businessName,
             Address = "123 Service St",
             TaxAuthorityLevel = TaxAuthorityLevels.Local,
             TaxAdministrationAreaCode = "TEST-AREA-SRV",
@@ -288,12 +307,12 @@ static async Task SeedServiceAccountAndDataAsync(AppDbContext db, DateTime now)
     }
 
     // Always re-seed cashbook for testing threshold changes
-    await SeedCashbookForServiceAsync(db, business.Id, now);
+    await SeedCashbookForServiceAsync(db, business.Id, now, isHighRevenue);
 
     await SeedTaxPeriodsAsync(db, business.Id, now);
 }
 
-static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, DateTime now)
+static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, DateTime now, bool isHighRevenue)
 {
     Console.WriteLine("Seeding Cashbook (Thu-Chi) for 2025 and 2026...");
     
@@ -334,11 +353,12 @@ static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, 
                 var incomeDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
                 if (incomeDate > now) incomeDate = now.AddDays(-1);
 
-                // 2025: < 1 tỷ (1-20 triệu * 40 = ~400 triệu)
-                // 2026: > 1 tỷ (25-45 triệu * 40 = ~1.4 tỷ)
-                decimal amount = year == 2025 
-                    ? random.Next(1, 20) * 1000000m 
-                    : random.Next(25, 45) * 1000000m;
+                // 40 transactions per year. 
+                // High Revenue: random 25-45 million => 1 to 1.8 billion
+                // Low Revenue: random 1-20 million => ~40 to 800 million
+                decimal amount = isHighRevenue 
+                    ? random.Next(25, 45) * 1000000m 
+                    : random.Next(1, 20) * 1000000m;
 
                 db.Incomes.Add(new Income
                 {
@@ -842,7 +862,7 @@ static async Task SeedQuarterSalesTrendDataAsync(
             TransactionId = transactionId,
             BusinessId = businessId,
             TransactionCode =
-                $"SEED-QUARTER-TREND-2026{item.Month:00}-{index:000}",
+                $"SEED-QUARTER-TREND-{businessId.ToString()[..4]}-2026{item.Month:00}-{index:000}",
 
             TransactionDate = transactionDate,
 
@@ -939,7 +959,7 @@ static async Task SeedExtraMonthlySalesDataAsync(
                 TransactionId = transactionId,
                 BusinessId = businessId,
                 TransactionCode =
-                    $"SEED-SALES-EXTRA-{month.MonthStart:yyyyMM}-{index:000}",
+                    $"SEED-SALES-EXTRA-{businessId.ToString()[..4]}-{month.MonthStart:yyyyMM}-{index:000}",
 
                 TransactionDate = month.MonthStart.AddDays(3 + i * 8),
 
@@ -1109,7 +1129,7 @@ static async Task SeedSalesDashboardDataAsync(
         {
             TransactionId = transactionId,
             BusinessId = businessId,
-            TransactionCode = $"TXM-{now:yyyyMM}-{index:000}",
+            TransactionCode = $"TXM-{businessId.ToString()[..4]}-{now:yyyyMM}-{index:000}",
 
             TransactionDate = sale.Date,
 
