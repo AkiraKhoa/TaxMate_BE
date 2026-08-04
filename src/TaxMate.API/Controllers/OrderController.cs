@@ -57,16 +57,18 @@ public class OrderController : ControllerBase
     [HttpGet("business/{businessId:guid}")]
     public async Task<IActionResult> GetOrders(
         Guid businessId,
-        [FromQuery] int page = 1,
+        [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] int? page = null,
         [FromQuery] string? status = null,
         [FromQuery] string? paymentMethod = null,
         [FromQuery] decimal? minAmount = null,
         [FromQuery] decimal? maxAmount = null)
     {
+        int activePage = page ?? pageNumber;
         var result = await _orderService.GetOrdersByBusinessAsync(
             businessId,
-            page,
+            activePage,
             pageSize,
             status,
             paymentMethod,
