@@ -153,6 +153,21 @@ public class PaymentAccountController : ControllerBase
     }
 
 
+    /// <summary>
+    /// Khôi phục toàn bộ các tài khoản ngân hàng và CompanyXID bị kẹt trên SePay Sandbox về lại DB local.
+    /// Dành cho Dev khi DB local bị reset/xóa nhưng SePay Sandbox vẫn giữ dữ liệu.
+    /// </summary>
+    [HttpPost("sepay-recover-all")]
+    public async Task<IActionResult> RecoverAllSePayAccounts()
+    {
+        var (recovered, total) = await _paymentAccountService.RecoverAllFromSePayAsync();
+
+        return Ok(ApiResponse<object>.Ok(
+            new { recovered, total },
+            $"Recovered {recovered}/{total} bank accounts directly from SePay Sandbox to local DB.",
+            HttpContext.TraceIdentifier));
+    }
+
     /// <summary>Callback xử lý sau khi liên kết ngân hàng thành công từ SePay.</summary>
     [HttpGet("sepay-callback")]
     public IActionResult SePayCallback()

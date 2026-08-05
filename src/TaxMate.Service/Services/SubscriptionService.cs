@@ -127,8 +127,8 @@ public class SubscriptionService : ISubscriptionService
             payosAmount = 2000;
         }
 
-        string returnUrl = _config["PayOS:ReturnUrl"] ?? "http://localhost:3000/subscription/success";
-        string cancelUrl = _config["PayOS:CancelUrl"] ?? "http://localhost:3000/subscription/cancel";
+        string returnUrl = request.ReturnUrl ?? _config["PayOS:ReturnUrl"] ?? "http://localhost:3000/subscription/success";
+        string cancelUrl = request.CancelUrl ?? _config["PayOS:CancelUrl"] ?? "http://localhost:3000/subscription/cancel";
 
         var item = new PaymentLinkItem { Name = plan.Name, Quantity = 1, Price = payosAmount };
         var paymentData = new CreatePaymentLinkRequest

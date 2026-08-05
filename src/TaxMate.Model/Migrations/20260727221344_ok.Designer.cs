@@ -12,8 +12,8 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260804143745_InitialMigrate")]
-    partial class InitialMigrate
+    [Migration("20260727221344_ok")]
+    partial class ok
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -86,66 +86,6 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("BusinessCategories");
 
                     b.HasData(
-                        new
-                        {
-                            BusinessCategoryId = new Guid("a0000001-0000-4000-8000-000000000001"),
-                            Code = "DIST_GOODS",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "GTGT 1%, TNCN 0.5%",
-                            IsActive = true,
-                            Name = "Phân phối, cung cấp hàng hóa",
-                            PitRate = 0.5m,
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            VatRate = 1m
-                        },
-                        new
-                        {
-                            BusinessCategoryId = new Guid("a0000001-0000-4000-8000-000000000002"),
-                            Code = "PROD_TRANSPORT",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "GTGT 3%, TNCN 1.5%",
-                            IsActive = true,
-                            Name = "Sản xuất, vận tải, dịch vụ gắn HH, XD có NVL",
-                            PitRate = 1.5m,
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            VatRate = 3m
-                        },
-                        new
-                        {
-                            BusinessCategoryId = new Guid("a0000001-0000-4000-8000-000000000003"),
-                            Code = "SERVICE_CONSTRUCT",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "GTGT 5%, TNCN 2%",
-                            IsActive = true,
-                            Name = "Dịch vụ, XD không bao thầu NVL",
-                            PitRate = 2m,
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            VatRate = 5m
-                        },
-                        new
-                        {
-                            BusinessCategoryId = new Guid("a0000001-0000-4000-8000-000000000004"),
-                            Code = "ASSET_INSURANCE",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "GTGT 5%, TNCN 5%",
-                            IsActive = true,
-                            Name = "Cho thuê tài sản / đại lý BH, xổ số, BHĐC…",
-                            PitRate = 5m,
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            VatRate = 5m
-                        },
-                        new
-                        {
-                            BusinessCategoryId = new Guid("a0000001-0000-4000-8000-000000000005"),
-                            Code = "OTHER",
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "GTGT 2%, TNCN 1%",
-                            IsActive = true,
-                            Name = "Hoạt động khác",
-                            PitRate = 1m,
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            VatRate = 2m
-                        },
                         new
                         {
                             BusinessCategoryId = new Guid("d1111111-1111-1111-1111-111111111111"),
@@ -638,8 +578,8 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<decimal?>("EstimatedPrice")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -648,10 +588,6 @@ namespace TaxMate.Model.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
-
-                    b.Property<decimal>("StockQuantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -1373,15 +1309,8 @@ namespace TaxMate.Model.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("BusinessCategoryId")
-                        .HasColumnType("uuid");
-
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
-
-                    b.Property<decimal?>("CostPrice")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -1402,19 +1331,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid?>("ProductCategoryId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ProductCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
-
-                    b.Property<decimal?>("StockQuantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -1425,15 +1345,11 @@ namespace TaxMate.Model.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BusinessCategoryId");
-
                     b.HasIndex("BusinessId");
 
                     b.HasIndex("Name");
 
                     b.HasIndex("ProductCategoryId");
-
-                    b.HasIndex("BusinessId", "BusinessCategoryId");
 
                     b.HasIndex("BusinessId", "Status");
 
@@ -2952,11 +2868,6 @@ namespace TaxMate.Model.Migrations
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
                 {
-                    b.HasOne("TaxMate.Model.Entities.BusinessCategory", "BusinessCategory")
-                        .WithMany("Products")
-                        .HasForeignKey("BusinessCategoryId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
                         .WithMany("Products")
                         .HasForeignKey("BusinessId")
@@ -2969,8 +2880,6 @@ namespace TaxMate.Model.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Business");
-
-                    b.Navigation("BusinessCategory");
 
                     b.Navigation("ProductCategory");
                 });
@@ -3197,8 +3106,6 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.BusinessCategory", b =>
                 {
                     b.Navigation("BusinessProfiles");
-
-                    b.Navigation("Products");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.BusinessProfile", b =>

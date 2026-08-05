@@ -5,7 +5,7 @@ namespace TaxMate.Model.DTO;
 
 /// <summary>
 /// DTO cho SePay IPN biến động số dư (endpoint /sepay).
-/// Auth: Authorization: Apikey <SePay:ApiKey>
+/// Auth: Authorization: Apikey &lt;SePay:ApiKey&gt;
 /// Ref: https://developers.sepay.vn/
 /// </summary>
 public class SePayWebhookRequest
@@ -27,7 +27,7 @@ public class SePayWebhookRequest
 
 /// <summary>
 /// DTO cho SePay Bank Hub Webhook events (endpoint /bankhub).
-/// Auth: X-Secret-Key: <SePay:BankHub:SecretKey>
+/// Auth: X-Secret-Key: &lt;SePay:BankHub:SecretKey&gt;
 /// Events: BANK_ACCOUNT_LINKED, BANK_ACCOUNT_UNLINKED, BANK_ACCOUNT_INACTIVATED
 /// Ref: https://developer.sepay.vn/en/bankhub
 /// </summary>

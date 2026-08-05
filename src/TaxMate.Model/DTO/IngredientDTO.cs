@@ -5,6 +5,7 @@ public class CreateIngredientRequest
     public string Name { get; set; } = null!;
     public string? Unit { get; set; }
     public decimal? EstimatedPrice { get; set; }
+    public decimal StockQuantity { get; set; } = 0;
 }
 
 public class UpdateIngredientRequest
@@ -12,6 +13,7 @@ public class UpdateIngredientRequest
     public string Name { get; set; } = null!;
     public string? Unit { get; set; }
     public decimal? EstimatedPrice { get; set; }
+    public decimal StockQuantity { get; set; } = 0;
 }
 
 public class IngredientResponse
@@ -21,6 +23,7 @@ public class IngredientResponse
     public string Name { get; set; } = null!;
     public string? Unit { get; set; }
     public decimal? EstimatedPrice { get; set; }
+    public decimal StockQuantity { get; set; }
     public bool IsDeleted { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -46,6 +46,17 @@ public class ProductController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    [HttpPatch("{id:guid}/cost-price")]
+    public async Task<IActionResult> UpdateCostPrice(Guid id, [FromBody] UpdateProductCostPriceRequest request)
+    {
+        var result = await _productService.UpdateCostPriceAsync(GetUserId(), id, request);
+        return Ok(
+            ApiResponse<ProductResponse>.Ok(
+                result,
+                "Product cost price and stock updated successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     [HttpPatch("{id:guid}/toggle-status")]
     public async Task<IActionResult> ToggleStatus(Guid id)
     {
@@ -75,10 +86,11 @@ public class ProductController : ControllerBase
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
         [FromQuery] string? status = null,
-        [FromQuery] Guid? productCategoryId = null)
+        [FromQuery] Guid? productCategoryId = null,
+        [FromQuery] bool? hasRecipe = null)
     {
         var result = await _productService.GetPagedByBusinessAsync(
-            GetUserId(), businessId, pageNumber, pageSize, search, status, productCategoryId);
+            GetUserId(), businessId, pageNumber, pageSize, search, status, productCategoryId, hasRecipe);
         return Ok(
             ApiResponse<PagedResult<ProductResponse>>.Ok(
                 result,

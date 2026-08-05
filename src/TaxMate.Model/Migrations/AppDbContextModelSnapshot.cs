@@ -635,8 +635,8 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<decimal?>("EstimatedPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -645,6 +645,10 @@ namespace TaxMate.Model.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<decimal>("StockQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -1372,6 +1376,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal?>("CostPrice")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -1400,6 +1408,10 @@ namespace TaxMate.Model.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<decimal?>("StockQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)

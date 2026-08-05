@@ -46,4 +46,16 @@ public class IngredientRepository : GenericRepository<Ingredient>, IIngredientRe
 
         return (items, totalCount);
     }
+
+    public async Task<bool> DecrementStockAsync(Guid id, decimal quantity)
+    {
+        var updatedAt = DateTime.UtcNow;
+        var affectedRows = await _appContext.Ingredients
+            .Where(x => x.Id == id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.StockQuantity, x => x.StockQuantity - quantity)
+                .SetProperty(x => x.UpdatedAt, updatedAt));
+
+        return affectedRows == 1;
+    }
 }

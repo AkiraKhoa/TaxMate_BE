@@ -22,4 +22,5 @@ public interface ITransactionRepository : IGenericRepository<Transaction>
         decimal? minAmount = null,
         decimal? maxAmount = null);
     Task<IEnumerable<Transaction>> GetAwaitingTransactionsWithPaymentsAsync();
+    Task<bool> TryTransitionStatusAsync(Guid transactionId, string expectedStatus, string targetStatus);
 }

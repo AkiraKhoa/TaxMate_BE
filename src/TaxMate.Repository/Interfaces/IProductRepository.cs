@@ -11,7 +11,9 @@ public interface IProductRepository : IGenericRepository<Product>
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId);
+        Guid? productCategoryId,
+        bool? hasRecipe);
 
     Task<Product?> GetByIdWithPricesAsync(Guid id);
+    Task<bool> DecrementStockAsync(Guid id, decimal quantity);
 }

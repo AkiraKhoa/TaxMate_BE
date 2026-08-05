@@ -12,8 +12,8 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260804143745_InitialMigrate")]
-    partial class InitialMigrate
+    [Migration("20260727225759_AddCostPriceAndStockQuantityWithHighPrecision")]
+    partial class AddCostPriceAndStockQuantityWithHighPrecision
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

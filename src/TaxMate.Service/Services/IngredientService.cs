@@ -154,6 +154,7 @@ public class IngredientService : IIngredientService
             Name = entity.Name,
             Unit = entity.Unit,
             EstimatedPrice = entity.EstimatedPrice,
+            StockQuantity = entity.StockQuantity,
             IsDeleted = entity.IsDeleted,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
