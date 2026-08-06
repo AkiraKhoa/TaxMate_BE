@@ -12,18 +12,18 @@ public class TaxBookService : ITaxBookService
 {
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly IGenericRepository<User> _users;
-    private readonly IGenericRepository<Transaction> _transactionRepository;
+    private readonly IGenericRepository<Income> _incomeRepository;
     private readonly IS1aDocumentGenerator _documentGenerator;
 
     public TaxBookService(
         IGenericRepository<BusinessProfile> businessProfiles,
         IGenericRepository<User> users,
-        IGenericRepository<Transaction> transactionRepository,
+        IGenericRepository<Income> incomeRepository,
         IS1aDocumentGenerator documentGenerator)
     {
         _businessProfiles = businessProfiles;
         _users = users;
-        _transactionRepository = transactionRepository;
+        _incomeRepository = incomeRepository;
         _documentGenerator = documentGenerator;
     }
 
@@ -65,15 +65,14 @@ public class TaxBookService : ITaxBookService
             periodLabel = $"Năm {year}";
         }
 
-        var transactions = await _transactionRepository.FindAsync(x =>
+        var incomes = await _incomeRepository.FindAsync(x =>
             x.BusinessId == businessId &&
-            x.Status == "Completed" &&
-            x.TransactionDate >= startDate &&
-            x.TransactionDate < endDate);
+            x.IncomeDate >= startDate &&
+            x.IncomeDate < endDate);
 
-        var groupedTransactions = transactions
-            .GroupBy(x => x.TransactionDate.Date)
-            .OrderBy(g => g.Key)
+        var groupedIncomes = incomes
+            .GroupBy(x => new { x.IncomeDate.Date, x.IncomeTitle })
+            .OrderBy(g => g.Key.Date)
             .ToList();
 
         var model = new S1aDocumentModel
@@ -87,13 +86,15 @@ public class TaxBookService : ITaxBookService
             Lines = new List<S1aDocumentLineModel>()
         };
 
-        foreach (var group in groupedTransactions)
+        foreach (var group in groupedIncomes)
         {
             var line = new S1aDocumentLineModel
             {
-                Date = group.Key.ToString("dd/MM/yyyy"),
-                Description = "Doanh thu bán hàng hóa, dịch vụ",
-                RevenueAmount = group.Sum(x => x.TotalAmount)
+                Date = group.Key.Date.ToString("dd/MM/yyyy"),
+                Description = string.IsNullOrWhiteSpace(group.Key.IncomeTitle) 
+                    ? "Doanh thu bán hàng hóa, dịch vụ" 
+                    : group.Key.IncomeTitle,
+                RevenueAmount = group.Sum(x => x.Amount)
             };
             model.Lines.Add(line);
         }
