@@ -208,6 +208,19 @@ public class OrderController : ControllerBase
         return Ok();
     }
 
+    /// <summary>Hủy toàn bộ đơn hàng nháp của cửa hàng.</summary>
+    /// <param name="businessId">ID cửa hàng / hộ kinh doanh.</param>
+    [HttpPost("business/{businessId:guid}/cancel-drafts")]
+    public async Task<IActionResult> CancelAllDrafts(Guid businessId)
+    {
+        await _orderService.CancelAllDraftsAsync(businessId);
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "All draft orders cancelled successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     /// <summary>Xác nhận đã nhận tiền (đối soát thủ công cho VietQR).</summary>
     /// <param name="id">ID đơn hàng.</param>
     [HttpPost("{id:guid}/confirm-payment")]
