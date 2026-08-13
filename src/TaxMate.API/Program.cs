@@ -120,7 +120,8 @@ var frontendBaseUrls = builder.Configuration
     .Get<string[]>() ?? new[]
 {
     "http://localhost:3000",
-    "http://localhost:8081"
+    "http://localhost:8081",
+    "https://tax-mate-web.vercel.app"
 };
 
 
