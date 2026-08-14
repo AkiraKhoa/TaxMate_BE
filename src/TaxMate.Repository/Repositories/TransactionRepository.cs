@@ -107,8 +107,22 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         var dateStr = localToday.ToString("yyyyMMdd");
         var prefix = $"DH-{dateStr}-";
         
-        var count = await _dbSet.CountAsync(x => x.TransactionCode.StartsWith(prefix));
-        var sequence = count + 1;
+        var maxCode = await _dbSet
+            .Where(x => x.BusinessId == businessId && x.TransactionCode.StartsWith(prefix))
+            .OrderByDescending(x => x.TransactionCode)
+            .Select(x => x.TransactionCode)
+            .FirstOrDefaultAsync();
+
+        var sequence = 1;
+        if (!string.IsNullOrEmpty(maxCode))
+        {
+            var parts = maxCode.Split('-');
+            if (parts.Length > 0 && int.TryParse(parts[^1], out var lastSeq))
+            {
+                sequence = lastSeq + 1;
+            }
+        }
+        
         return $"{prefix}{sequence:D3}";
     }
 
@@ -119,5 +133,20 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
                 .ThenInclude(p => p.PaymentAccount)
             .Where(x => x.Status == TaxMate.Model.Common.TransactionStatus.AwaitingPayment)
             .ToListAsync();
+    }
+
+    public async Task<bool> TryTransitionStatusAsync(
+        Guid transactionId,
+        string expectedStatus,
+        string targetStatus)
+    {
+        var updatedAt = DateTime.UtcNow;
+        var affectedRows = await _dbSet
+            .Where(x => x.TransactionId == transactionId && x.Status == expectedStatus)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, targetStatus)
+                .SetProperty(x => x.UpdatedAt, updatedAt));
+
+        return affectedRows == 1;
     }
 }

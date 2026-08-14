@@ -93,9 +93,12 @@ public interface ISePayService
 
 
 
-    /// <summary>Gọi SePay GET /v1/bank-account để lấy danh sách tài khoản đã liên kết của company.</summary>
-    Task<List<SePayBankAccountDto>> GetLinkedBankAccountsAsync(string companyXid);
+    /// <summary>Gọi SePay GET /v1/bank-account để lấy danh sách tài khoản đã liên kết của company (hoặc tất cả nếu null).</summary>
+    Task<List<SePayBankAccountDto>> GetLinkedBankAccountsAsync(string? companyXid = null);
 
+
+    /// <summary>Gọi SePay GET /v1/bank-account/{xid} để lấy chi tiết tài khoản ngân hàng từ SePay.</summary>
+    Task<SePayBankAccountDto?> GetBankAccountDetailAsync(string bankAccountXid);
 
     /// <summary>
     /// Đăng ký Webhook URL với SePay Bank Hub qua POST /v1/webhook.

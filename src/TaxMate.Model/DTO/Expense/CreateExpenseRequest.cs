@@ -4,8 +4,7 @@ namespace TaxMate.Model.DTO.Expense;
 
 public class CreateExpenseRequest
 {
-    [Required]
-    public Guid ExpenseCategoryId { get; set; }
+    public Guid? ExpenseCategoryId { get; set; }
 
     [Required]
     [MaxLength(200)]

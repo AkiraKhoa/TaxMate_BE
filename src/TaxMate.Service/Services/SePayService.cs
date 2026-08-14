@@ -257,14 +257,17 @@ public class SePayService : ISePayService
         return (hostedLinkUrl, linkTokenXid ?? "");
     }
 
-    public async Task<List<SePayBankAccountDto>> GetLinkedBankAccountsAsync(string companyXid)
+    public async Task<List<SePayBankAccountDto>> GetLinkedBankAccountsAsync(string? companyXid = null)
     {
-        _logger.LogInformation("[SePay] GetLinkedBankAccounts for CompanyXid={Xid}", companyXid);
+        _logger.LogInformation("[SePay] GetLinkedBankAccounts for CompanyXid={Xid}", companyXid ?? "ALL");
 
         var accessToken = await GetAccessTokenAsync();
         var client = CreateSePayClient();
 
-        var url = $"{_baseUrl}/v1/bank-account?company_xid={Uri.EscapeDataString(companyXid)}&per_page=100";
+        var url = string.IsNullOrEmpty(companyXid)
+            ? $"{_baseUrl}/v1/bank-account?per_page=100"
+            : $"{_baseUrl}/v1/bank-account?company_xid={Uri.EscapeDataString(companyXid)}&per_page=100";
+            
         var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
@@ -283,6 +286,41 @@ public class SePayService : ISePayService
 
         var result = JsonSerializer.Deserialize<SePayBankAccountListResponse>(responseContent, _jsonOptions);
         return result?.Data ?? new List<SePayBankAccountDto>();
+    }
+
+    public async Task<SePayBankAccountDto?> GetBankAccountDetailAsync(string bankAccountXid)
+    {
+        if (string.IsNullOrEmpty(bankAccountXid)) return null;
+
+        _logger.LogInformation("[SePay] GetBankAccountDetail for BankAccountXid={Xid}", bankAccountXid);
+
+        var accessToken = await GetAccessTokenAsync();
+        var client = CreateSePayClient();
+
+        var url = $"{_baseUrl}/v1/bank-account/{Uri.EscapeDataString(bankAccountXid)}";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var response = await client.SendAsync(request);
+        var responseContent = await response.Content.ReadAsStringAsync();
+
+        _logger.LogInformation("[SePay] GET /v1/bank-account/{Xid} → Status={Status}, Body={Body}",
+            bankAccountXid, (int)response.StatusCode, responseContent);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("[SePay] GetBankAccountDetail failed ({Status}): {Body}",
+                (int)response.StatusCode, responseContent);
+            return null;
+        }
+
+        using var doc = JsonDocument.Parse(responseContent);
+        if (doc.RootElement.TryGetProperty("data", out var dataProp))
+        {
+            return JsonSerializer.Deserialize<SePayBankAccountDto>(dataProp.GetRawText(), _jsonOptions);
+        }
+
+        return null;
     }
 
     public async Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host)

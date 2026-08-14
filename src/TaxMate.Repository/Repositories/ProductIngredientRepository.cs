@@ -17,6 +17,7 @@ public class ProductIngredientRepository : GenericRepository<ProductIngredient>,
     public async Task<List<ProductIngredient>> GetByProductIdAsync(Guid productId)
     {
         return await _appContext.ProductIngredients
+            .AsNoTracking()
             .Include(x => x.Ingredient)
             .Where(x => x.ProductId == productId)
             .OrderBy(x => x.Ingredient.Name)

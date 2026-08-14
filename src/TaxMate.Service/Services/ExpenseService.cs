@@ -33,13 +33,37 @@ public class ExpenseService : IExpenseService
     public async Task<ExpenseDTO> CreateAsync(Guid ownerId, Guid businessId, CreateExpenseRequest request)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
-        await EnsureCategoryIsValidAsync(request.ExpenseCategoryId, businessId);
+
+        Guid categoryId;
+        if (request.ExpenseCategoryId.HasValue && request.ExpenseCategoryId.Value != Guid.Empty)
+        {
+            await EnsureCategoryIsValidAsync(request.ExpenseCategoryId.Value, businessId);
+            categoryId = request.ExpenseCategoryId.Value;
+        }
+        else
+        {
+            var defaultCat = await _expenseCategories.FirstOrDefaultAsync(x => x.BusinessId == businessId && x.CategoryName == "Chưa phân loại");
+            if (defaultCat == null)
+            {
+                defaultCat = new ExpenseCategory
+                {
+                    ExpenseCategoryId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    CategoryName = "Chưa phân loại",
+                    Description = "Chi phí vận hành khác",
+                    IsDefault = true
+                };
+                await _expenseCategories.AddAsync(defaultCat);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            categoryId = defaultCat.ExpenseCategoryId;
+        }
 
         var entity = new Expense
         {
             ExpenseId = Guid.NewGuid(),
             BusinessId = businessId,
-            ExpenseCategoryId = request.ExpenseCategoryId,
+            ExpenseCategoryId = categoryId,
             ExpenseTitle = request.ExpenseTitle.Trim(),
             Amount = request.Amount,
             ExpenseDate = request.ExpenseDate,

@@ -59,6 +59,8 @@ public class ProductService : IProductService
             Description = request.Description,
             Unit = request.Unit,
             ImageUrl = request.ImageUrl,
+            CostPrice = request.CostPrice,
+            StockQuantity = request.StockQuantity,
             Status = ProductStatus.Active
         };
 
@@ -105,6 +107,8 @@ public class ProductService : IProductService
         entity.Description = request.Description;
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
+        if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
+        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -112,6 +116,42 @@ public class ProductService : IProductService
         // Re-load to populate ProductCategory relationship
         var loadedEntity = await _products.GetByIdWithPricesAsync(entity.Id);
         return MapToResponse(loadedEntity ?? entity);
+    }
+
+    public async Task<ProductResponse> UpdateCostPriceAsync(
+        Guid ownerId,
+        Guid id,
+        UpdateProductCostPriceRequest request)
+    {
+        var entity = await _products.GetByIdWithPricesAsync(id);
+        if (entity is null)
+            throw new NotFoundException($"Product with id '{id}' not found.");
+
+        await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
+        decimal oldQty = entity.StockQuantity ?? 0;
+        decimal oldCost = entity.CostPrice ?? 0;
+        decimal incomingQty = request.IncomingQuantity;
+        decimal incomingUnitPrice = request.IncomingCostPrice;
+        decimal newQty = oldQty + incomingQty;
+        decimal newCost;
+
+        if (oldQty <= 0)
+        {
+            newCost = incomingUnitPrice;
+        }
+        else
+        {
+            newCost = (oldQty * oldCost + incomingQty * incomingUnitPrice) / newQty;
+        }
+
+        entity.StockQuantity = newQty;
+        entity.CostPrice = Math.Round(newCost, 6, MidpointRounding.AwayFromZero);
+
+        _products.Update(entity);
+        await _unitOfWork.SaveChangesAsync();
+
+        return MapToResponse(entity);
     }
 
     public async Task<ProductResponse> ToggleStatusAsync(Guid ownerId, Guid id)
@@ -151,12 +191,13 @@ public class ProductService : IProductService
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId)
+        Guid? productCategoryId,
+        bool? hasRecipe)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         var (items, totalCount) = await _products.GetPagedByBusinessAsync(
-            businessId, pageNumber, pageSize, search, status, productCategoryId);
+            businessId, pageNumber, pageSize, search, status, productCategoryId, hasRecipe);
 
         return new PagedResult<ProductResponse>
         {
@@ -224,8 +265,37 @@ public class ProductService : IProductService
             ImageUrl = entity.ImageUrl,
             Status = entity.Status,
             CurrentPrice = currentPrice == 0 ? null : currentPrice,
+            CostPrice = entity.CostPrice,
+            StockQuantity = entity.StockQuantity,
+            HasRecipe = entity.ProductIngredients?.Any() ?? false,
+            AvailableQuantity = CalculateAvailableQuantity(entity),
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };
+    }
+
+    private static decimal? CalculateAvailableQuantity(Product entity)
+    {
+        if (entity.ProductIngredients is not { Count: > 0 })
+            return entity.StockQuantity.HasValue
+                ? Math.Max(0, entity.StockQuantity.Value)
+                : null;
+
+        decimal? availableQuantity = null;
+
+        foreach (var recipeItem in entity.ProductIngredients)
+        {
+            if (recipeItem.Quantity <= 0 || recipeItem.Ingredient is null)
+                return null;
+
+            var quantityFromIngredient = Math.Floor(
+                recipeItem.Ingredient.StockQuantity / recipeItem.Quantity);
+
+            availableQuantity = availableQuantity.HasValue
+                ? Math.Min(availableQuantity.Value, quantityFromIngredient)
+                : quantityFromIngredient;
+        }
+
+        return Math.Max(0, availableQuantity ?? 0);
     }
 }

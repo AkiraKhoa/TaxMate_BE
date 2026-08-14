@@ -16,6 +16,8 @@ public interface IProductService
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId);
+        Guid? productCategoryId,
+        bool? hasRecipe);
     Task<ProductResponse> GetByIdAsync(Guid ownerId, Guid id);
+    Task<ProductResponse> UpdateCostPriceAsync(Guid ownerId, Guid id, UpdateProductCostPriceRequest request);
 }

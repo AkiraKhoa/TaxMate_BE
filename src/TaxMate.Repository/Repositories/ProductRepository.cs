@@ -21,12 +21,16 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
         int pageSize,
         string? search,
         string? status,
-        Guid? productCategoryId)
+        Guid? productCategoryId,
+        bool? hasRecipe)
     {
         var query = _appContext.Products
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
+            .Include(x => x.ProductIngredients)
+                .ThenInclude(x => x.Ingredient)
             .Include(x => x.BusinessCategory)
+            .AsSplitQuery()
             .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
@@ -46,6 +50,13 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             query = query.Where(x => x.ProductCategoryId == productCategoryId.Value);
         }
 
+        if (hasRecipe.HasValue)
+        {
+            query = hasRecipe.Value
+                ? query.Where(x => x.ProductIngredients.Any())
+                : query.Where(x => !x.ProductIngredients.Any());
+        }
+
         var totalCount = await query.CountAsync();
 
         var items = await query
@@ -63,6 +74,21 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             .Include(x => x.ProductPrices)
             .Include(x => x.ProductCategory)
             .Include(x => x.BusinessCategory)
+            .Include(x => x.ProductIngredients)
+                .ThenInclude(x => x.Ingredient)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id);
+    }
+
+    public async Task<bool> DecrementStockAsync(Guid id, decimal quantity)
+    {
+        var updatedAt = DateTime.UtcNow;
+        var affectedRows = await _appContext.Products
+            .Where(x => x.Id == id && x.StockQuantity.HasValue)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.StockQuantity, x => x.StockQuantity - quantity)
+                .SetProperty(x => x.UpdatedAt, updatedAt));
+
+        return affectedRows == 1;
     }
 }

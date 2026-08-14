@@ -16,6 +16,7 @@ public interface IPaymentAccountService
     Task CreateMockPaymentAsync(Guid transactionId, Guid paymentAccountId);
     Task<string> GetSePayDisconnectUrlAsync(Guid paymentAccountId, string scheme, string host);
     Task DeleteBySePayBankAccountXidAsync(string bankAccountXid);
+    Task<(int Recovered, int Total)> RecoverAllFromSePayAsync();
 }
 
 

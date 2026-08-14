@@ -467,7 +467,9 @@ public class PaymentAccountService : IPaymentAccountService
         if (business == null)
             throw new NotFoundException("Business profile not found.");
 
-        var companyXid = business.SePayCompanyXid;
+        // Tra cứu trực tiếp từ SePay Server để lấy chính xác CompanyXID đang sở hữu tài khoản ngân hàng này
+        var sePayAccountDetail = await _sePayService.GetBankAccountDetailAsync(account.SePayBankAccountXid);
+        var companyXid = sePayAccountDetail?.CompanyXid ?? business.SePayCompanyXid;
         if (string.IsNullOrEmpty(companyXid))
             throw new ArgumentException("Business has no SePay company linked.");
 
@@ -537,6 +539,59 @@ public class PaymentAccountService : IPaymentAccountService
             _logger.LogWarning("[SePay Unlink Webhook] Webhook requested delete for account Xid {Xid} but it was not found in DB.",
                 bankAccountXid);
         }
+    }
+
+    /// <summary>
+    /// Khôi phục toàn bộ danh sách tài khoản ngân hàng từ SePay Sandbox Server về DB local.
+    /// Dành cho việc Test/Dev khi DB local đã bị xóa/reset nhưng SePay Sandbox vẫn giữ dữ liệu cũ.
+    /// </summary>
+    public async Task<(int Recovered, int Total)> RecoverAllFromSePayAsync()
+    {
+        var allSePayAccounts = await _sePayService.GetLinkedBankAccountsAsync(companyXid: null);
+        if (!allSePayAccounts.Any())
+        {
+            return (0, 0);
+        }
+
+        var allBusinesses = (await _businessProfiles.GetAllAsync()).ToList();
+        if (!allBusinesses.Any())
+        {
+            return (0, allSePayAccounts.Count);
+        }
+
+        int recoveredCount = 0;
+        foreach (var acc in allSePayAccounts)
+        {
+            try
+            {
+                var targetBusiness = allBusinesses.FirstOrDefault(b => b.SePayCompanyXid == acc.CompanyXid)
+                                    ?? allBusinesses.FirstOrDefault(b => string.IsNullOrEmpty(b.SePayCompanyXid))
+                                    ?? allBusinesses.First();
+
+                if (targetBusiness.SePayCompanyXid != acc.CompanyXid)
+                {
+                    targetBusiness.SePayCompanyXid = acc.CompanyXid;
+                    _businessProfiles.Update(targetBusiness);
+                    await _unitOfWork.SaveChangesAsync();
+                }
+
+                await CreateOrUpdateFromSePayAsync(
+                    companyXid: acc.CompanyXid,
+                    bankAccountXid: acc.Xid,
+                    bankName: acc.BrandName,
+                    bankCode: acc.BrandName,
+                    accountNumber: acc.AccountNumber,
+                    accountName: acc.AccountHolderName
+                );
+                recoveredCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[SePay Recover] Failed to recover account {AccountNumber} (Company: {CompanyXid})", acc.AccountNumber, acc.CompanyXid);
+            }
+        }
+
+        return (recoveredCount, allSePayAccounts.Count);
     }
 }
 

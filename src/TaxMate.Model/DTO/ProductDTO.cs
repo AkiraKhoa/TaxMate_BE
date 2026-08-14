@@ -19,6 +19,8 @@ public class CreateProductRequest
     public string? Unit { get; set; }
     [MaxLength(1000)]
     public string? ImageUrl { get; set; }
+    public decimal? CostPrice { get; set; }
+    public decimal? StockQuantity { get; set; }
 }
 
 public class UpdateProductRequest
@@ -37,6 +39,17 @@ public class UpdateProductRequest
     public string? Unit { get; set; }
     [MaxLength(1000)]
     public string? ImageUrl { get; set; }
+    public decimal? CostPrice { get; set; }
+    public decimal? StockQuantity { get; set; }
+}
+
+public class UpdateProductCostPriceRequest
+{
+    [Required]
+    public decimal IncomingQuantity { get; set; }
+
+    [Required]
+    public decimal IncomingCostPrice { get; set; }
 }
 
 public class ProductResponse
@@ -54,6 +67,10 @@ public class ProductResponse
     public string? ImageUrl { get; set; }
     public string Status { get; set; } = null!;
     public decimal? CurrentPrice { get; set; }
+    public decimal? CostPrice { get; set; }
+    public decimal? StockQuantity { get; set; }
+    public bool HasRecipe { get; set; }
+    public decimal? AvailableQuantity { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

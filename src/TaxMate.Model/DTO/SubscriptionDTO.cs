@@ -45,6 +45,8 @@ public class SubscribeRequest
     public Guid SubscriptionPlanId { get; set; }
     public string BillingCycle { get; set; } = "Monthly"; // "Monthly" or "Annual"
     public bool AutoRenew { get; set; }
+    public string? ReturnUrl { get; set; }
+    public string? CancelUrl { get; set; }
 }
 
 public class SubscribeResponse

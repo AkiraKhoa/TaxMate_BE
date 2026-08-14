@@ -63,6 +63,30 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             UpdatedAt = DateTime.UtcNow
         };
 
+        // Update Ingredient StockQuantity and EstimatedPrice using Moving Weighted Average
+        if (request.Quantity > 0)
+        {
+            decimal oldQty = ingredient.StockQuantity;
+            decimal oldCost = ingredient.EstimatedPrice ?? 0;
+            decimal incomingQty = request.Quantity;
+            decimal incomingUnitPrice = request.TotalCost / request.Quantity;
+            decimal newQty = oldQty + incomingQty;
+            decimal newCost;
+
+            if (oldQty <= 0)
+            {
+                newCost = incomingUnitPrice;
+            }
+            else
+            {
+                newCost = (oldQty * oldCost + incomingQty * incomingUnitPrice) / newQty;
+            }
+
+            ingredient.StockQuantity = newQty;
+            ingredient.EstimatedPrice = Math.Round(newCost, 6, MidpointRounding.AwayFromZero);
+            _ingredients.Update(ingredient);
+        }
+
         await _purchases.AddAsync(entity);
         await _unitOfWork.SaveChangesAsync();
 
@@ -194,6 +218,30 @@ public class IngredientPurchaseService : IIngredientPurchaseService
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
+            // Update Ingredient StockQuantity and EstimatedPrice using Moving Weighted Average
+            if (item.Quantity > 0)
+            {
+                decimal oldQty = ingredient.StockQuantity;
+                decimal oldCost = ingredient.EstimatedPrice ?? 0;
+                decimal incomingQty = item.Quantity;
+                decimal incomingUnitPrice = item.TotalCost / item.Quantity;
+                decimal newQty = oldQty + incomingQty;
+                decimal newCost;
+
+                if (oldQty <= 0)
+                {
+                    newCost = incomingUnitPrice;
+                }
+                else
+                {
+                    newCost = (oldQty * oldCost + incomingQty * incomingUnitPrice) / newQty;
+                }
+
+                ingredient.StockQuantity = newQty;
+                ingredient.EstimatedPrice = Math.Round(newCost, 6, MidpointRounding.AwayFromZero);
+                _ingredients.Update(ingredient);
+            }
+
             entitiesToAdd.Add(entity);
         }
 

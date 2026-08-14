@@ -145,6 +145,12 @@ public class AppDbContext : DbContext
                 x.Status
             });
 
+        modelBuilder.Entity<Product>()
+            .Property(e => e.CostPrice).HasPrecision(18, 6);
+
+        modelBuilder.Entity<Product>()
+            .Property(e => e.StockQuantity).HasPrecision(18, 4);
+
         // ProductCategory relationship
         modelBuilder.Entity<ProductCategory>()
             .HasOne(x => x.Business)
@@ -399,6 +405,12 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<Ingredient>()
             .HasIndex(x => new { x.BusinessId, x.Name });
+
+        modelBuilder.Entity<Ingredient>()
+            .Property(e => e.EstimatedPrice).HasPrecision(18, 6);
+
+        modelBuilder.Entity<Ingredient>()
+            .Property(e => e.StockQuantity).HasPrecision(18, 4);
 
         // Income
         modelBuilder.Entity<Income>()
