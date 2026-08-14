@@ -704,6 +704,12 @@ public class OrderService : IOrderService
 
     private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
     {
+        var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
+        if (business == null || !business.IsStockTrackingEnabled)
+        {
+            return;
+        }
+
         var soldQuantitiesByProduct = order.TransactionItems
             .Where(x => x.ProductId.HasValue && x.Quantity > 0)
             .GroupBy(x => x.ProductId!.Value)

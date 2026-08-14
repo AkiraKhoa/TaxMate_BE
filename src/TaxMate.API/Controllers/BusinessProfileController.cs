@@ -40,6 +40,17 @@ public class BusinessProfileController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
+    [HttpPatch("{id:guid}/toggle-stock-tracking")]
+    public async Task<IActionResult> ToggleStockTracking(Guid id, [FromBody] ToggleStockTrackingRequest request)
+    {
+        var result = await _businessProfileService.ToggleStockTrackingAsync(id, request.IsStockTrackingEnabled);
+        return Ok(
+            ApiResponse<BusinessProfileResponse>.Ok(
+                result,
+                "Business profile stock tracking toggled successfully",
+                HttpContext.TraceIdentifier));
+    }
+
     [HttpPatch("{id:guid}/deactivate")]
     public async Task<IActionResult> Deactivate(Guid id)
     {

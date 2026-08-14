@@ -51,6 +51,7 @@ public class BusinessProfileService : IBusinessProfileService
             Address = request.Address,
             MainCategoryId = request.MainCategoryId,
             PreferElectronicInvoice = request.PreferElectronicInvoice,
+            IsStockTrackingEnabled = request.IsStockTrackingEnabled,
             IsActive = true
         };
 
@@ -85,11 +86,32 @@ public class BusinessProfileService : IBusinessProfileService
         entity.Address = request.Address;
         entity.MainCategoryId = request.MainCategoryId;
         entity.PreferElectronicInvoice = request.PreferElectronicInvoice;
+        if (request.IsStockTrackingEnabled.HasValue)
+        {
+            entity.IsStockTrackingEnabled = request.IsStockTrackingEnabled.Value;
+        }
 
         _businessProfiles.Update(entity);
         await _unitOfWork.SaveChangesAsync();
 
         // Reload with category
+        var updated = await _businessProfiles.GetByIdWithCategoryAsync(id);
+        return MapToResponse(updated!);
+    }
+
+    public async Task<BusinessProfileResponse> ToggleStockTrackingAsync(Guid id, bool isEnabled)
+    {
+        var entity = await _businessProfiles.GetByIdWithCategoryAsync(id);
+        if (entity is null)
+            throw new NotFoundException($"Business profile with id '{id}' not found.");
+
+        if (!entity.IsActive)
+            throw new ConflictException($"Business profile with id '{id}' has been deactivated.");
+
+        entity.IsStockTrackingEnabled = isEnabled;
+        _businessProfiles.Update(entity);
+        await _unitOfWork.SaveChangesAsync();
+
         var updated = await _businessProfiles.GetByIdWithCategoryAsync(id);
         return MapToResponse(updated!);
     }
@@ -145,6 +167,7 @@ public class BusinessProfileService : IBusinessProfileService
             MainCategoryId = entity.MainCategoryId,
             MainCategoryName = entity.MainCategory?.Name,
             PreferElectronicInvoice = entity.PreferElectronicInvoice,
+            IsStockTrackingEnabled = entity.IsStockTrackingEnabled,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

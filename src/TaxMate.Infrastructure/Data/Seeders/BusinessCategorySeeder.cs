@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Data;
 using TaxMate.Model.Entities;
 
@@ -13,7 +13,7 @@ public static class BusinessCategorySeeder
         {
             context.BusinessCategories.Add(new BusinessCategory
             {
-                BusinessCategoryId = Guid.NewGuid(),
+                BusinessCategoryId = Guid.Parse("d1111111-1111-1111-1111-111111111111"),
                 Code = "FNB",
                 Name = "Ăn uống, nhà hàng, F&B",
                 Description = "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
@@ -38,9 +38,9 @@ public static class BusinessCategorySeeder
         {
             context.BusinessCategories.Add(new BusinessCategory
             {
-                BusinessCategoryId = Guid.NewGuid(),
+                BusinessCategoryId = Guid.Parse("d2222222-2222-2222-2222-222222222222"),
                 Code = "SERVICE",
-                Name = "Dịch vụ",
+                Name = "Dịch vụ (Service)",
                 Description =
                     "Dịch vụ, xây dựng không bao thầu nguyên vật liệu.",
 
