@@ -86,23 +86,17 @@ static async Task<User> EnsureStandaloneSeedUserAsync(
     AppDbContext db,
     Guid userId)
 {
-    var createdAt =
-        DateTime.SpecifyKind(
-            DateTime.Parse(
-                "2026-07-29 12:16:10.598651"),
-            DateTimeKind.Utc);
+    var createdAt = new DateTime(
+        2026, 7, 29, 12, 16, 10, 598,
+        DateTimeKind.Utc);
 
-    var updatedAt =
-        DateTime.SpecifyKind(
-            DateTime.Parse(
-                "2026-07-29 12:16:10.598652"),
-            DateTimeKind.Utc);
+    var updatedAt = new DateTime(
+        2026, 7, 29, 12, 16, 10, 598,
+        DateTimeKind.Utc);
 
-    var tokenExpiresAt =
-        DateTime.SpecifyKind(
-            DateTime.Parse(
-                "2026-07-30 12:16:09.787328"),
-            DateTimeKind.Utc);
+    var tokenExpiresAt = new DateTime(
+        2026, 7, 30, 12, 16, 9, 787,
+        DateTimeKind.Utc);
 
     var user = await db.Users.FirstOrDefaultAsync(x => x.Id == userId);
 
@@ -136,11 +130,9 @@ static async Task<BusinessProfile> EnsureStandaloneSeedBusinessAsync(
     Guid userId,
     Guid fnbCategoryId)
 {
-    var createdAt =
-        DateTime.SpecifyKind(
-            DateTime.Parse(
-                "2026-07-29 16:23:48.653135"),
-            DateTimeKind.Utc);
+    var createdAt = new DateTime(
+        2026, 7, 29, 16, 23, 48, 653,
+        DateTimeKind.Utc);
 
     var business = await db.BusinessProfiles
         .FirstOrDefaultAsync(x => x.Id == businessId);
@@ -173,6 +165,163 @@ static async Task<BusinessProfile> EnsureStandaloneSeedBusinessAsync(
     return business;
 }
 
+
+static async Task<(PaymentAccount Cash, PaymentAccount Bank)> EnsureStandalonePaymentAccountsAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    var seedCreatedAt = new DateTime(2025, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+
+    var cash = await db.PaymentAccounts.FirstOrDefaultAsync(x =>
+        x.BusinessId == businessId &&
+        x.AccountNumber == "CASH");
+
+    if (cash is null)
+    {
+        cash = new PaymentAccount
+        {
+            PaymentAccountId = Guid.NewGuid(),
+            BusinessId = businessId,
+            BankShortName = "CASH",
+            BankName = "Tiền mặt",
+            AccountNumber = "CASH",
+            AccountName = "Thu Ngân - Ăn Trưa Công Sở",
+            IsDefault = true,
+            Description = "Tài khoản thu tiền mặt tại quầy.",
+            CreatedAt = seedCreatedAt,
+            UpdatedAt = seedCreatedAt
+        };
+        db.PaymentAccounts.Add(cash);
+    }
+    else
+    {
+        cash.BankShortName = "CASH";
+        cash.BankName = "Tiền mặt";
+        cash.AccountName = "Thu Ngân - Ăn Trưa Công Sở";
+        cash.IsDefault = true;
+        cash.Description = "Tài khoản thu tiền mặt tại quầy.";
+        cash.UpdatedAt = now;
+    }
+
+    var bank = await db.PaymentAccounts.FirstOrDefaultAsync(x =>
+        x.BusinessId == businessId &&
+        x.AccountNumber == "999988886666");
+
+    if (bank is null)
+    {
+        bank = new PaymentAccount
+        {
+            PaymentAccountId = Guid.NewGuid(),
+            BusinessId = businessId,
+            BankShortName = "MBBank",
+            BankName = "Ngân hàng MB",
+            AccountNumber = "999988886666",
+            AccountName = "NGUYEN TRUONG GIANG",
+            SePayBankAccountXid = "SEPAY-ACC-ANTRUACONGSO-2025",
+            IsDefault = false,
+            Description = "Tài khoản nhận chuyển khoản của cửa hàng.",
+            CreatedAt = seedCreatedAt,
+            UpdatedAt = seedCreatedAt
+        };
+        db.PaymentAccounts.Add(bank);
+    }
+    else
+    {
+        bank.BankShortName = "MBBank";
+        bank.BankName = "Ngân hàng MB";
+        bank.AccountName = "NGUYEN TRUONG GIANG";
+        bank.SePayBankAccountXid = "SEPAY-ACC-ANTRUACONGSO-2025";
+        bank.IsDefault = false;
+        bank.Description = "Tài khoản nhận chuyển khoản của cửa hàng.";
+        bank.UpdatedAt = now;
+    }
+
+    await db.SaveChangesAsync();
+    return (cash, bank);
+}
+
+static async Task<EInvoiceConfig> EnsureStandaloneEInvoiceConfigAsync(
+    AppDbContext db,
+    Guid businessId,
+    DateTime now)
+{
+    var seedCreatedAt = new DateTime(2025, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+
+    var config = await db.EInvoiceConfigs
+        .FirstOrDefaultAsync(x => x.BusinessId == businessId);
+
+    if (config is null)
+    {
+        config = new EInvoiceConfig
+        {
+            BusinessId = businessId,
+            Provider = "SePay",
+            BaseUrl = "https://bankhub-api-sandbox.sepay.vn",
+            ClientId = "BH-SB-AN-TRUA-CONG-SO",
+            ClientSecret = "SECRET-DEMO-AN-TRUA-CONG-SO",
+            ProviderAccountId = null,
+            InvoiceTemplateCode = "1/001",
+            Symbol = "C25TM",
+            IsEnabled = true,
+            QuotaWarningThreshold = 100,
+            CreatedAt = seedCreatedAt,
+            UpdatedAt = seedCreatedAt
+        };
+        db.EInvoiceConfigs.Add(config);
+    }
+    else
+    {
+        config.Provider = "SePay";
+        config.BaseUrl = "https://bankhub-api-sandbox.sepay.vn";
+        config.ClientId = "BH-SB-AN-TRUA-CONG-SO";
+        config.ClientSecret = "SECRET-DEMO-AN-TRUA-CONG-SO";
+        config.InvoiceTemplateCode = "1/001";
+        config.Symbol = "C25TM";
+        config.IsEnabled = true;
+        config.QuotaWarningThreshold = 100;
+        config.UpdatedAt = now;
+    }
+
+    await db.SaveChangesAsync();
+    return config;
+}
+
+static FnbBuyerSeed? BuildFnbInvoiceBuyer(Random random, int mainQuantity)
+{
+    // Office lunch shop: company-information invoices are uncommon,
+    // but become more likely on larger group orders.
+    var chance = mainQuantity >= 3 ? 22 : 6;
+    if (random.Next(100) >= chance)
+        return null;
+
+    var buyers = new[]
+    {
+        new FnbBuyerSeed(
+            "0312345678",
+            "Công Ty TNHH Giải Pháp Văn Phòng Minh Khang",
+            "Phú Nhuận, TP.HCM",
+            "ketoan@minhkhang.test"),
+        new FnbBuyerSeed(
+            "0317654321",
+            "Công Ty TNHH Thương Mại An Gia",
+            "Bình Thạnh, TP.HCM",
+            "ketoan@angia.test"),
+        new FnbBuyerSeed(
+            "0309988776",
+            "Công Ty Cổ Phần Công Nghệ Nam Việt",
+            "Quận 3, TP.HCM",
+            "accounting@namviet.test"),
+        new FnbBuyerSeed(
+            "0315566778",
+            "Công Ty TNHH Dịch Vụ Thành Công",
+            "Phú Nhuận, TP.HCM",
+            "ketoan@thanhcong.test")
+    };
+
+    return buyers[random.Next(buyers.Length)];
+}
+
 static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
 {
     var userId = Guid.Parse("e03ad3be-ea8e-41a2-9348-88ce58ac2b56");
@@ -203,6 +352,20 @@ static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
     Console.WriteLine($"User ready     : {user.Email} ({user.Id})");
     Console.WriteLine($"Business ready : {business.BusinessName} ({business.Id})");
 
+    var paymentAccounts = await EnsureStandalonePaymentAccountsAsync(
+        db,
+        businessId,
+        now);
+
+    var eInvoiceConfig = await EnsureStandaloneEInvoiceConfigAsync(
+        db,
+        businessId,
+        now);
+
+    Console.WriteLine($"Cash account   : {paymentAccounts.Cash.PaymentAccountId}");
+    Console.WriteLine($"Bank account   : {paymentAccounts.Bank.PaymentAccountId}");
+    Console.WriteLine($"E-Invoice      : {eInvoiceConfig.Provider} | {eInvoiceConfig.InvoiceTemplateCode} | {eInvoiceConfig.Symbol}");
+
     await DeletePreviousFnbH1_2025ScenarioAsync(db, businessId, seedPrefix, seedNote);
 
     var suppliers = await EnsureFnbH1_2025SuppliersAsync(db, businessId, now);
@@ -229,6 +392,13 @@ static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
     var monthlySales = new Dictionary<int, decimal>();
     var monthlyOrderCount = new Dictionary<int, int>();
     var monthlyItemCount = new Dictionary<int, int>();
+    var paymentMethodCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Cash"] = 0,
+        ["Transfer"] = 0
+    };
+    var invoiceCount = 0;
+    var businessInvoiceCount = 0;
 
     var monthlyRevenueTargets = new Dictionary<int, decimal>
     {
@@ -348,11 +518,33 @@ static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
                     }
                 }
 
-                db.Transactions.Add(new Transaction
+                var transactionCode =
+                    $"{seedPrefix}-TX-{transactionTime:yyyyMMdd}-{orderSeq:0000}";
+
+                var mainQuantity = basket
+                    .Where(x => x.ProductCode.StartsWith("FNB25-FOOD-", StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.Quantity);
+
+                // Only the two payment methods observed in the real POS seed:
+                // Cash and Transfer.
+                var transferChance = mainQuantity >= 3 ? 48 : 34;
+                var paymentMethod =
+                    random.Next(100) < transferChance
+                        ? "Transfer"
+                        : "Cash";
+
+                var paymentAccount =
+                    paymentMethod == "Transfer"
+                        ? paymentAccounts.Bank
+                        : paymentAccounts.Cash;
+
+                var buyer = BuildFnbInvoiceBuyer(random, mainQuantity);
+
+                var tx = new Transaction
                 {
                     TransactionId = transactionId,
                     BusinessId = businessId,
-                    TransactionCode = $"{seedPrefix}-TX-{transactionTime:yyyyMMdd}-{orderSeq:0000}",
+                    TransactionCode = transactionCode,
                     TransactionDate = transactionTime,
                     SubTotal = subTotal,
                     DiscountType = null,
@@ -363,15 +555,83 @@ static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
                     SurchargeValue = null,
                     SurchargeAmount = 0m,
                     TotalAmount = subTotal,
-                    InvoiceId = null,
+                    InvoiceId = transactionCode,
                     Status = "Completed",
                     Note = seedNote,
                     TransactionType = TransactionTypes.Sale,
                     CreatedAt = transactionTime,
                     UpdatedAt = transactionTime
+                };
+
+                tx.Payments.Add(new Payment
+                {
+                    PaymentId = Guid.NewGuid(),
+                    TransactionId = transactionId,
+                    PaymentMethod = paymentMethod,
+                    Amount = subTotal,
+                    PaymentAccountId = paymentAccount.PaymentAccountId,
+                    PaidAt = transactionTime,
+                    CreatedAt = transactionTime,
+                    UpdatedAt = transactionTime
                 });
 
+                var invoice = new Invoice
+                {
+                    InvoiceNumber = transactionCode,
+                    InvoiceTemplateCode = eInvoiceConfig.InvoiceTemplateCode,
+                    Symbol = eInvoiceConfig.Symbol,
+                    BusinessId = businessId,
+                    TotalAmount = subTotal,
+                    IssueDate = transactionTime,
+                    Status = InvoiceStatus.Issued,
+                    PdfUrl = null,
+                    BuyerTaxCode = buyer?.TaxCode,
+                    BuyerCompanyName = buyer?.CompanyName,
+                    BuyerAddress = buyer?.Address,
+                    BuyerEmail = buyer?.Email,
+                    TaxAuthorityCode = buyer is null
+                        ? null
+                        : "CQT-" + Guid.NewGuid().ToString("N")[..10].ToUpperInvariant(),
+                    OfficialPdfUrl = buyer is null
+                        ? null
+                        : $"https://sinvoice.sepay.vn/pdf/{transactionCode}.pdf",
+                    OfficialXmlUrl = buyer is null
+                        ? null
+                        : $"https://sinvoice.sepay.vn/xml/{transactionCode}.xml",
+                    SePayTrackingCode = buyer is null
+                        ? null
+                        : $"TRACK-{transactionTime:yyyyMMdd}-{transactionId.ToString("N")[..8].ToUpperInvariant()}",
+                    SePayReferenceCode = buyer is null
+                        ? null
+                        : $"REF-{transactionCode}",
+                    SePayMessage = buyer is null
+                        ? null
+                        : "Hóa đơn điện tử đã phát hành thành công trong dữ liệu test.",
+                    CreatedAt = transactionTime,
+                    UpdatedAt = transactionTime
+                };
+
+                foreach (var item in transactionItems)
+                {
+                    invoice.InvoiceDetails.Add(new InvoiceDetail
+                    {
+                        ProductId = item.ProductId!.Value,
+                        InvoiceId = transactionCode,
+                        ProductName = item.ProductName,
+                        UnitPrice = item.UnitPrice,
+                        Quantity = item.Quantity,
+                        LineTotal = item.LineTotal
+                    });
+                }
+
+                db.Transactions.Add(tx);
                 db.TransactionItems.AddRange(transactionItems);
+                db.Invoices.Add(invoice);
+
+                paymentMethodCounts[paymentMethod]++;
+                invoiceCount++;
+                if (buyer is not null)
+                    businessInvoiceCount++;
 
                 dailyRevenue += subTotal;
                 monthRevenue += subTotal;
@@ -458,6 +718,10 @@ static async Task SeedFnbH1_2025Async(AppDbContext db, DateTime now)
     Console.WriteLine($"TOTAL REVENUE       : {totalRevenue:N0}");
     Console.WriteLine($"TOTAL ORDERS        : {totalOrders:N0}");
     Console.WriteLine($"TOTAL ITEMS         : {totalItems:N0}");
+    Console.WriteLine($"PAYMENTS - CASH     : {paymentMethodCounts["Cash"]:N0}");
+    Console.WriteLine($"PAYMENTS - TRANSFER : {paymentMethodCounts["Transfer"]:N0}");
+    Console.WriteLine($"INVOICES            : {invoiceCount:N0}");
+    Console.WriteLine($"BUSINESS E-INVOICES : {businessInvoiceCount:N0}");
     Console.WriteLine($"INGREDIENT PURCHASES: {generatedPurchaseCount:N0}");
     Console.WriteLine($"TOTAL EXPENSES      : {generatedExpense:N0}");
     Console.WriteLine($"OTHER INCOME        : {generatedOtherIncome:N0}");
@@ -478,8 +742,32 @@ static async Task DeletePreviousFnbH1_2025ScenarioAsync(
 
     if (oldTxIds.Count > 0)
     {
-        db.TransactionItems.RemoveRange(db.TransactionItems.Where(x => oldTxIds.Contains(x.TransactionId)));
-        db.Transactions.RemoveRange(db.Transactions.Where(x => oldTxIds.Contains(x.TransactionId)));
+        var oldInvoiceIds = await db.Transactions
+            .Where(x => oldTxIds.Contains(x.TransactionId) && x.InvoiceId != null)
+            .Select(x => x.InvoiceId!)
+            .ToListAsync();
+
+        db.Payments.RemoveRange(
+            db.Payments.Where(x => oldTxIds.Contains(x.TransactionId)));
+
+        db.TransactionItems.RemoveRange(
+            db.TransactionItems.Where(x => oldTxIds.Contains(x.TransactionId)));
+
+        db.Transactions.RemoveRange(
+            db.Transactions.Where(x => oldTxIds.Contains(x.TransactionId)));
+
+        await db.SaveChangesAsync();
+
+        if (oldInvoiceIds.Count > 0)
+        {
+            db.InvoiceDetails.RemoveRange(
+                db.InvoiceDetails.Where(x => oldInvoiceIds.Contains(x.InvoiceId)));
+
+            await db.SaveChangesAsync();
+
+            db.Invoices.RemoveRange(
+                db.Invoices.Where(x => oldInvoiceIds.Contains(x.InvoiceNumber)));
+        }
     }
 
     db.IngredientPurchases.RemoveRange(
@@ -1271,4 +1559,5 @@ record FnbProductSeedSpec(
 
 record FnbRecipeLineSeed(string IngredientName, decimal Quantity);
 record FnbBasketLineSeed(string ProductCode, int Quantity);
+record FnbBuyerSeed(string TaxCode, string CompanyName, string Address, string Email);
 
