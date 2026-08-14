@@ -21,6 +21,9 @@ await using var db = new AppDbContext(options);
 var now = DateTime.UtcNow;
 
 var targetBusinessId = ParseBusinessIdArg(args);
+await EnsureTransactionTypeColumnAsync(db);
+await EnsureTransactionItemCostColumnsAsync(db);
+await EnsureProductS2aColumnsAsync(db);
 if (targetBusinessId.HasValue)
 {
     await SeedS2aHkdForBusinessAsync(db, targetBusinessId.Value, now);
@@ -197,7 +200,262 @@ if (!hasExpenses)
 // revenue snapshots match the data used by the Tax Period APIs.
 await SeedTaxPeriodsAsync(db, businessId, now);
 
+await SeedServiceAccountAndDataAsync(db, now,
+    Guid.Parse("e03ad3be-ea8e-41a2-9348-88ce58ac2b56"),
+    "giangnguyen102004@gmail.com",
+    "079204022790",
+    "$2a$12$pJzsQz2RkJAcUaL3J/ypeOLQj4b8Q18aS2vuiPuCsM95a1oEGz11W",
+    "Nguyen Truong Giang",
+    "0909910224",
+    "Cửa hàng test service (High Revenue)",
+    true);
+
+await SeedServiceAccountAndDataAsync(db, now,
+    Guid.Parse("4a06664c-9c1e-421e-b200-d6986b4d2af9"),
+    "hyvssett@gmail.com",
+    "079204003641",
+    "$2a$12$TkhaQhIzXzuLJzvnZvdA6uQX0ZvUePow3JT3aR9eJFcjH/iaXjvF6",
+    "Nguyen Duc Hy",
+    "0365502741",
+    "Cửa hàng test service (Low Revenue)",
+    false);
+
 await PrintOutputAsync(db, businessId, product, seededBase, seededExpenseData);
+
+static async Task SeedServiceAccountAndDataAsync(
+    AppDbContext db, DateTime now,
+    Guid userId, string targetEmail, string taxCode, string passwordHash, string fullName, string phone, string businessName, bool isHighRevenue)
+{
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Email == targetEmail);
+    if (user == null)
+    {
+        user = new User
+        {
+            Id = userId,
+            Email = targetEmail,
+            PasswordHash = passwordHash,
+            FullName = fullName,
+            Phone = phone,
+            TaxCode = taxCode,
+            Role = "Owner",
+            AccountStatus = AccountStatus.Active,
+            CreatedAt = new DateTime(2026, 07, 29, 12, 16, 10, DateTimeKind.Utc),
+            UpdatedAt = new DateTime(2026, 07, 29, 12, 16, 10, DateTimeKind.Utc)
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Seeded user {targetEmail}");
+    }
+
+    var business = await db.BusinessProfiles.FirstOrDefaultAsync(b => b.OwnerId == user.Id && b.BusinessName == businessName);
+    if (business == null)
+    {
+        await EnsureBusinessCategoriesAsync(db, now);
+        
+        business = new BusinessProfile
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = user.Id,
+            MainCategoryId = BusinessCategoryIds.ServiceConstruct,
+            BusinessName = businessName,
+            Address = "123 Service St",
+            TaxAuthorityLevel = TaxAuthorityLevels.Local,
+            TaxAdministrationAreaCode = "TEST-AREA-SRV",
+            ManagingTaxAuthority = "Thuế cơ sở quản lý dịch vụ test",
+            CollectingAuthority = "Kho bạc Nhà nước dịch vụ test",
+            BusinessLocationCode = "LOC-SRV",
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        db.BusinessProfiles.Add(business);
+        
+        var productId1 = Guid.NewGuid();
+        var productId2 = Guid.NewGuid();
+        db.Products.Add(new Product { Id = productId1, BusinessId = business.Id, ProductCode = "SRV-001", Name = "Dịch vụ tư vấn thuế", Unit = "lần", BusinessCategoryId = business.MainCategoryId, Status = ProductStatus.Active, CreatedAt = now });
+        db.Products.Add(new Product { Id = productId2, BusinessId = business.Id, ProductCode = "SRV-002", Name = "Dịch vụ làm báo cáo", Unit = "tháng", BusinessCategoryId = business.MainCategoryId, Status = ProductStatus.Active, CreatedAt = now });
+        
+        db.ProductPrices.Add(new ProductPrice { Id = Guid.NewGuid(), ProductId = productId1, Price = 5000000m, ApplyDate = now.AddDays(-30), CreatedAt = now });
+        db.ProductPrices.Add(new ProductPrice { Id = Guid.NewGuid(), ProductId = productId2, Price = 2000000m, ApplyDate = now.AddDays(-30), CreatedAt = now });
+        
+        await db.SaveChangesAsync();
+        Console.WriteLine($"Seeded business 'Cửa hàng test service' for {targetEmail}");
+    }
+
+    var hasSalesData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id);
+    if (!hasSalesData)
+    {
+        await SeedSalesDashboardDataAsync(db, business.Id, now);
+    }
+
+    var hasExtraSalesData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id && t.TransactionCode.StartsWith("SEED-SALES-EXTRA"));
+    if (!hasExtraSalesData)
+    {
+        await SeedExtraMonthlySalesDataAsync(db, business.Id, now);
+    }
+
+    var hasQuarterTrendData = await db.Transactions.AnyAsync(t => t.BusinessId == business.Id && t.TransactionCode.StartsWith("SEED-QUARTER-TREND"));
+    if (!hasQuarterTrendData)
+    {
+        await SeedQuarterSalesTrendDataAsync(db, business.Id, now);
+    }
+
+    var hasExpenses = await db.Expenses.AnyAsync(e => e.BusinessId == business.Id);
+    if (!hasExpenses)
+    {
+        var categories = await SeedExpenseCategoriesAsync(db, business.Id, now);
+        await SeedExpensesAsync(db, business.Id, categories, now);
+    }
+
+    // Always re-seed cashbook for testing threshold changes
+    await SeedCashbookForServiceAsync(db, business.Id, now, isHighRevenue);
+
+    await SeedStandardServiceOrdersAsync(db, business.Id, now);
+
+    await SeedTaxPeriodsAsync(db, business.Id, now);
+}
+
+static async Task SeedCashbookForServiceAsync(AppDbContext db, Guid businessId, DateTime now, bool isHighRevenue)
+{
+    Console.WriteLine("Seeding Cashbook (Thu-Chi) for 2025 and 2026...");
+    
+    // Clear old cashbook data for this business to ensure fresh thresholds
+    var oldIncomes = await db.Incomes.Where(i => i.BusinessId == businessId).ToListAsync();
+    db.Incomes.RemoveRange(oldIncomes);
+    
+    // Only remove expenses if they were generated as part of cashbook (to avoid deleting regular seed expenses, but for this test store, it's fine)
+    var oldExpenses = await db.Expenses.Where(e => e.BusinessId == businessId && (e.ExpenseTitle.StartsWith("Chi phí hoạt động") || e.ExpenseDate.Year == 2025 || e.ExpenseDate.Year == 2026)).ToListAsync();
+    db.Expenses.RemoveRange(oldExpenses);
+    await db.SaveChangesAsync();
+
+    var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Thu dịch vụ");
+    if (incomeCat == null)
+    {
+        incomeCat = new IncomeCategory { IncomeCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Thu dịch vụ", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+        db.IncomeCategories.Add(incomeCat);
+    }
+    
+    var expenseCat = await db.ExpenseCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Chi phí hoạt động");
+    if (expenseCat == null)
+    {
+        expenseCat = new ExpenseCategory { ExpenseCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Chi phí hoạt động", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+        db.ExpenseCategories.Add(expenseCat);
+    }
+    await db.SaveChangesAsync();
+
+    var random = new Random();
+    var years = new[] { 2025, 2026 };
+    foreach (var year in years)
+    {
+        for (int q = 1; q <= 4; q++)
+        {
+            var startMonth = (q - 1) * 3 + 1;
+            
+            for (int i = 1; i <= 10; i++)
+            {
+                var incomeDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
+                if (incomeDate > now) incomeDate = now.AddDays(-1);
+
+                // 40 transactions per year. 
+                // High Revenue: random 25-45 million => 1 to 1.8 billion
+                // Low Revenue: random 1-20 million => ~40 to 800 million
+                decimal amount = isHighRevenue 
+                    ? random.Next(25, 45) * 1000000m 
+                    : random.Next(1, 20) * 1000000m;
+
+                db.Incomes.Add(new Income
+                {
+                    IncomeId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    IncomeCategoryId = incomeCat.IncomeCategoryId,
+                    IncomeTitle = $"Thu dịch vụ khách hàng {i} Q{q}/{year}",
+                    Amount = amount,
+                    IncomeDate = incomeDate,
+                    ReceivedDate = incomeDate,
+                    PaymentMethod = "Chuyển khoản",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+
+                var expenseDate = new DateTime(year, startMonth, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(random.Next(0, 89));
+                if (expenseDate > now) expenseDate = now.AddDays(-1);
+
+                db.Expenses.Add(new Expense
+                {
+                    ExpenseId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    ExpenseCategoryId = expenseCat.ExpenseCategoryId,
+                    ExpenseTitle = $"Chi phí hoạt động {i} Q{q}/{year}",
+                    Amount = random.Next(1, 10) * 500000m,
+                    ExpenseDate = expenseDate,
+                    PaidDate = expenseDate,
+                    PaymentMethod = "Tiền mặt",
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+            }
+        }
+    }
+    await db.SaveChangesAsync();
+    Console.WriteLine("Cashbook data seeded successfully.");
+}
+
+static async Task SeedStandardServiceOrdersAsync(AppDbContext db, Guid businessId, DateTime now)
+{
+    var prefix = $"{businessId.ToString().Substring(0,4).ToUpper()}-SRV-ORDER-";
+    var hasStandardOrders = await db.Transactions.AnyAsync(t => t.BusinessId == businessId && t.TransactionCode.StartsWith(prefix));
+    if (hasStandardOrders) return;
+
+    var products = await db.Products.Where(p => p.BusinessId == businessId && p.ProductCode.StartsWith("SRV")).ToListAsync();
+    if (products.Count == 0) return;
+
+    var incomeCategory = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.CategoryName == "Thu dịch vụ");
+    if (incomeCategory == null) return;
+
+    Console.WriteLine("Seeding standard service orders with Invoices and Payments...");
+
+    var random = new Random();
+    for (int i = 1; i <= 3; i++)
+    {
+        var product = products[random.Next(products.Count)];
+        var txId = Guid.NewGuid();
+        var amount = product.Name.Contains("báo cáo") ? 2000000m : 5000000m;
+        
+        var tx = new Transaction
+        {
+            TransactionId = txId,
+            BusinessId = businessId,
+            TransactionCode = $"{businessId.ToString().Substring(0,4).ToUpper()}-SRV-ORDER-00{i}",
+            TransactionDate = now.AddDays(-i),
+            TransactionType = TransactionTypes.Sale,
+            Status = "Completed",
+            SubTotal = amount,
+            TotalAmount = amount,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        var item = new TransactionItem
+        {
+            TransactionItemId = Guid.NewGuid(),
+            TransactionId = txId,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            Unit = product.Unit,
+            UnitPrice = amount,
+            Quantity = 1,
+            LineTotal = amount,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        tx.TransactionItems.Add(item);
+        db.Transactions.Add(tx);
+        
+        // This existing method will create Invoice, InvoiceDetails, Payment, and Income records
+        AddInvoiceAndIncomeForTransaction(db, tx, now, incomeCategory.IncomeCategoryId);
+    }
+    await db.SaveChangesAsync();
+}
 
 static Guid? ParseBusinessIdArg(string[] args)
 {
@@ -543,7 +801,7 @@ static async Task EnsureBusinessCategoriesAsync(AppDbContext db, DateTime now)
         {
             BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
             Code = "SERVICE_CONSTRUCT",
-            Name = "Dịch vụ, XD không bao thầu NVL",
+            Name = "Dịch vụ",
             Description = "GTGT 5%, TNCN 2%",
             VatRate = 5m,
             PitRate = 2m,
@@ -659,12 +917,12 @@ static async Task SeedQuarterSalesTrendDataAsync(
         var quantity = Math.Max(1, (int)(item.Revenue / price));
         var unitCost = price * 0.5m;
         
-        db.Transactions.Add(new Transaction
+        var tx = new Transaction
         {
             TransactionId = transactionId,
             BusinessId = businessId,
             TransactionCode =
-                $"SEED-QUARTER-TREND-2026{item.Month:00}-{index:000}",
+                $"SEED-QUARTER-TREND-{businessId.ToString()[..4]}-2026{item.Month:00}-{index:000}",
 
             TransactionDate = transactionDate,
 
@@ -679,9 +937,9 @@ static async Task SeedQuarterSalesTrendDataAsync(
 
             CreatedAt = now,
             UpdatedAt = now
-        });
+        };
 
-        db.TransactionItems.Add(new TransactionItem
+        var txItem = new TransactionItem
         {
             TransactionItemId = Guid.NewGuid(),
             TransactionId = transactionId,
@@ -696,7 +954,18 @@ static async Task SeedQuarterSalesTrendDataAsync(
             LineTotal = item.Revenue,
             CreatedAt = now,
             UpdatedAt = now
-        });
+        };
+
+        tx.TransactionItems.Add(txItem);
+        db.Transactions.Add(tx);
+        
+        var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && (c.CategoryName == "Thu bán hàng" || c.CategoryName == "Thu dịch vụ"));
+        if (incomeCat == null) {
+            incomeCat = new IncomeCategory { IncomeCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Thu bán hàng", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+            db.IncomeCategories.Add(incomeCat);
+            await db.SaveChangesAsync();
+        }
+        AddInvoiceAndIncomeForTransaction(db, tx, now, incomeCat.IncomeCategoryId);
 
         index++;
     }
@@ -756,12 +1025,12 @@ static async Task SeedExtraMonthlySalesDataAsync(
             var lineTotal = price * quantity;
             var unitCost = price * 0.45m;
             
-            db.Transactions.Add(new Transaction
+            var tx = new Transaction
             {
                 TransactionId = transactionId,
                 BusinessId = businessId,
                 TransactionCode =
-                    $"SEED-SALES-EXTRA-{month.MonthStart:yyyyMM}-{index:000}",
+                    $"SEED-SALES-EXTRA-{businessId.ToString()[..4]}-{month.MonthStart:yyyyMM}-{index:000}",
 
                 TransactionDate = month.MonthStart.AddDays(3 + i * 8),
 
@@ -776,9 +1045,9 @@ static async Task SeedExtraMonthlySalesDataAsync(
 
                 CreatedAt = now,
                 UpdatedAt = now
-            });
+            };
 
-            db.TransactionItems.Add(new TransactionItem
+            var txItem = new TransactionItem
             {
                 TransactionItemId = Guid.NewGuid(),
                 TransactionId = transactionId,
@@ -793,7 +1062,18 @@ static async Task SeedExtraMonthlySalesDataAsync(
                 LineTotal = lineTotal,
                 CreatedAt = now,
                 UpdatedAt = now
-            });
+            };
+
+            tx.TransactionItems.Add(txItem);
+            db.Transactions.Add(tx);
+
+            var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && (c.CategoryName == "Thu bán hàng" || c.CategoryName == "Thu dịch vụ"));
+            if (incomeCat == null) {
+                incomeCat = new IncomeCategory { IncomeCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Thu bán hàng", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+                db.IncomeCategories.Add(incomeCat);
+                await db.SaveChangesAsync();
+            }
+            AddInvoiceAndIncomeForTransaction(db, tx, now, incomeCat.IncomeCategoryId);
 
             index++;
         }
@@ -927,11 +1207,11 @@ static async Task SeedSalesDashboardDataAsync(
         var lineTotal = sale.UnitPrice * sale.Quantity;
         var costAmount = sale.UnitCost * sale.Quantity;
 
-        db.Transactions.Add(new Transaction
+        var tx = new Transaction
         {
             TransactionId = transactionId,
             BusinessId = businessId,
-            TransactionCode = $"TXM-{now:yyyyMM}-{index:000}",
+            TransactionCode = $"TXM-{businessId.ToString()[..4]}-{now:yyyyMM}-{index:000}",
 
             TransactionDate = sale.Date,
 
@@ -946,9 +1226,9 @@ static async Task SeedSalesDashboardDataAsync(
 
             CreatedAt = now,
             UpdatedAt = now
-        });
+        };
 
-        db.TransactionItems.Add(new TransactionItem
+        var txItem = new TransactionItem
         {
             TransactionItemId = Guid.NewGuid(),
             TransactionId = transactionId,
@@ -963,7 +1243,18 @@ static async Task SeedSalesDashboardDataAsync(
             LineTotal = lineTotal,
             CreatedAt = now,
             UpdatedAt = now
-        });
+        };
+
+        tx.TransactionItems.Add(txItem);
+        db.Transactions.Add(tx);
+
+        var incomeCat = await db.IncomeCategories.FirstOrDefaultAsync(c => c.BusinessId == businessId && (c.CategoryName == "Thu bán hàng" || c.CategoryName == "Thu dịch vụ"));
+        if (incomeCat == null) {
+            incomeCat = new IncomeCategory { IncomeCategoryId = Guid.NewGuid(), BusinessId = businessId, CategoryName = "Thu bán hàng", IsDefault = false, CreatedAt = now, UpdatedAt = now };
+            db.IncomeCategories.Add(incomeCat);
+            await db.SaveChangesAsync();
+        }
+        AddInvoiceAndIncomeForTransaction(db, tx, now, incomeCat.IncomeCategoryId);
 
         index++;
     }
@@ -1516,6 +1807,61 @@ static async Task PrintOutputAsync(
             $"status={period.Status} | revenue={period.TotalRevenue:N0} | " +
             $"tax={period.EstimatedTax:N0} | debt={period.TaxAmountDebt:N0}");
     }
+}
+
+
+static void AddInvoiceAndIncomeForTransaction(AppDbContext db, Transaction tx, DateTime now, Guid incomeCategoryId)
+{
+    var invoice = new Invoice
+    {
+        InvoiceNumber = "INV-" + tx.TransactionCode,
+        BusinessId = tx.BusinessId,
+        TotalAmount = tx.TotalAmount,
+        IssueDate = tx.TransactionDate,
+        Status = "Issued",
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+    db.Invoices.Add(invoice);
+
+    foreach (var item in tx.TransactionItems)
+    {
+        db.InvoiceDetails.Add(new InvoiceDetail
+        {
+            InvoiceId = invoice.InvoiceNumber,
+            ProductId = item.ProductId.GetValueOrDefault(),
+            ProductName = item.ProductName,
+            UnitPrice = item.UnitPrice,
+            Quantity = item.Quantity,
+            LineTotal = item.LineTotal
+        });
+    }
+    tx.InvoiceId = invoice.InvoiceNumber;
+
+    db.Payments.Add(new Payment
+    {
+        PaymentId = Guid.NewGuid(),
+        TransactionId = tx.TransactionId,
+        PaymentMethod = "BankTransfer",
+        Amount = tx.TotalAmount,
+        PaidAt = tx.TransactionDate,
+        CreatedAt = now,
+        UpdatedAt = now
+    });
+
+    db.Incomes.Add(new Income
+    {
+        IncomeId = Guid.NewGuid(),
+        BusinessId = tx.BusinessId,
+        IncomeCategoryId = incomeCategoryId,
+        IncomeTitle = $"Thu tiền hóa đơn {invoice.InvoiceNumber}",
+        Amount = tx.TotalAmount,
+        IncomeDate = tx.TransactionDate,
+        ReceivedDate = tx.TransactionDate,
+        PaymentMethod = "BankTransfer",
+        CreatedAt = now,
+        UpdatedAt = now
+    });
 }
 
 static async Task SeedTaxCalculationsAsync(
