@@ -568,6 +568,16 @@ public class OrderService : IOrderService
         await _unitOfWork.SaveChangesAsync();
     }
 
+    public async Task CancelAllDraftsAsync(Guid businessId)
+    {
+        var draftOrders = await _transactions.FindAsync(x => x.BusinessId == businessId && (x.Status == "Draft" || x.Status == "AwaitingPayment"));
+        foreach (var order in draftOrders)
+        {
+            order.Status = "Cancelled";
+        }
+        await _unitOfWork.SaveChangesAsync();
+    }
+
     public async Task<InvoiceDetailResponse> ConfirmPaymentAsync(Guid transactionId)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
