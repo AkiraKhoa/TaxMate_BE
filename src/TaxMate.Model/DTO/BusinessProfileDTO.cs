@@ -9,6 +9,7 @@ public class CreateBusinessProfileRequest
     public string? Address { get; set; }
     public Guid? MainCategoryId { get; set; }
     public bool PreferElectronicInvoice { get; set; }
+    public bool IsStockTrackingEnabled { get; set; } = true;
 }
 
 public class UpdateBusinessProfileRequest
@@ -19,6 +20,12 @@ public class UpdateBusinessProfileRequest
     public string? Address { get; set; }
     public Guid? MainCategoryId { get; set; }
     public bool PreferElectronicInvoice { get; set; }
+    public bool? IsStockTrackingEnabled { get; set; }
+}
+
+public class ToggleStockTrackingRequest
+{
+    public bool IsStockTrackingEnabled { get; set; }
 }
 
 public class BusinessProfileResponse
@@ -32,6 +39,7 @@ public class BusinessProfileResponse
     public Guid? MainCategoryId { get; set; }
     public string? MainCategoryName { get; set; }
     public bool PreferElectronicInvoice { get; set; }
+    public bool IsStockTrackingEnabled { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
