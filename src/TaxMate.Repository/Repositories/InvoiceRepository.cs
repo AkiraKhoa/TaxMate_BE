@@ -25,6 +25,21 @@ public class InvoiceRepository : GenericRepository<Invoice>, IInvoiceRepository
     {
         var dateStr = date.ToString("yyyyMMdd");
         var prefix = $"HD-{dateStr}-";
-        return await _dbSet.CountAsync(x => x.BusinessId == businessId && x.InvoiceNumber.StartsWith(prefix));
+        var maxInvoice = await _dbSet
+            .Where(x => x.InvoiceNumber.StartsWith(prefix))
+            .OrderByDescending(x => x.InvoiceNumber)
+            .Select(x => x.InvoiceNumber)
+            .FirstOrDefaultAsync();
+
+        if (!string.IsNullOrEmpty(maxInvoice))
+        {
+            var parts = maxInvoice.Split('-');
+            if (parts.Length > 0 && int.TryParse(parts[^1], out var lastSeq))
+            {
+                return lastSeq;
+            }
+        }
+
+        return await _dbSet.CountAsync(x => x.InvoiceNumber.StartsWith(prefix));
     }
 }
