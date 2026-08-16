@@ -156,12 +156,14 @@ public class ProductCategoryService : IProductCategoryService
 
         await EnsureBusinessOwnerAsync(categoryEntity.BusinessId, ownerId);
 
-        var products = await _productRepository.FindAsync(x => x.ProductCategoryId == productCategoryId);
+        var products = await _productRepository.FindAsync(x =>
+            x.ProductCategoryId == productCategoryId && !x.IsDeleted);
 
         return products.Select(p => new ProductResponse
         {
             Id = p.Id,
             BusinessId = p.BusinessId,
+            ProductCode = p.ProductCode,
             Name = p.Name,
             ProductCategoryId = p.ProductCategoryId,
             ProductCategoryName = categoryEntity.Name,
@@ -169,6 +171,7 @@ public class ProductCategoryService : IProductCategoryService
             Unit = p.Unit,
             ImageUrl = p.ImageUrl,
             Status = p.Status,
+            IsDeleted = p.IsDeleted,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt
         }).ToList();
