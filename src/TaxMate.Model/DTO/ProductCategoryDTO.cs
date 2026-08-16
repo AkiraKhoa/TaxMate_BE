@@ -10,8 +10,6 @@ public class CreateProductCategoryRequest
 
     [MaxLength(500)]
     public string? Description { get; set; }
-
-    public int SortOrder { get; set; } = 0;
 }
 
 public class UpdateProductCategoryRequest
@@ -22,8 +20,6 @@ public class UpdateProductCategoryRequest
 
     [MaxLength(500)]
     public string? Description { get; set; }
-
-    public int SortOrder { get; set; } = 0;
 }
 
 public class ProductCategoryResponse
@@ -32,7 +28,6 @@ public class ProductCategoryResponse
     public Guid BusinessId { get; set; }
     public string Name { get; set; } = null!;
     public string? Description { get; set; }
-    public int SortOrder { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }
