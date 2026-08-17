@@ -40,6 +40,8 @@ public class Product : BaseEntity
     [MaxLength(50)]
     public string Status { get; set; } = ProductStatus.Active;
 
+    public bool IsDeleted { get; set; }
+
     public BusinessProfile Business { get; set; } = null!;
 
     public ICollection<ProductPrice> ProductPrices { get; set; }

@@ -124,7 +124,7 @@ public class ProductPriceService : IProductPriceService
     private async Task EnsureProductOwnerAsync(Guid ownerId, Guid productId)
     {
         var product = await _products.GetByIdAsync(productId);
-        if (product is null)
+        if (product is null || product.IsDeleted)
             throw new NotFoundException($"Sản phẩm với mã '{productId}' không tồn tại.");
 
         var business = await _businessProfiles.GetByIdAsync(product.BusinessId);
