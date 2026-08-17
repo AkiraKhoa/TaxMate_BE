@@ -318,6 +318,23 @@ static async Task SeedBusinessFullAsync(
     db.EInvoiceConfigs.Add(eInvoiceConfig);
     await db.SaveChangesAsync();
 
+    // 2.5 ─ Product Categories
+    var productCategoryEntities = new Dictionary<string, ProductCategory>();
+    var uniqueCategories = biz.Products.Select(p => p.CategoryName).Distinct();
+    foreach (var catName in uniqueCategories)
+    {
+        var pc = new ProductCategory
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = biz.Id,
+            Name = catName,
+            CreatedAt = now, UpdatedAt = now
+        };
+        db.ProductCategories.Add(pc);
+        productCategoryEntities[catName] = pc;
+    }
+    await db.SaveChangesAsync();
+
     // 3 ─ Products + Prices
     var productEntities = new Dictionary<string, Product>();
     foreach (var p in biz.Products)
@@ -330,10 +347,11 @@ static async Task SeedBusinessFullAsync(
             Name = p.Name,
             Unit = p.Unit,
             BusinessCategoryId = biz.CategoryId,
+            ProductCategoryId = productCategoryEntities[p.CategoryName].Id,
             CostPrice = p.UnitCost,
             StockQuantity = 1000,
             Status = ProductStatus.Active,
-            ImageUrl = null, // sẽ upload sau
+            ImageUrl = p.ImageUrl,
             CreatedAt = now, UpdatedAt = now
         };
         db.Products.Add(product);
@@ -351,27 +369,35 @@ static async Task SeedBusinessFullAsync(
 
     // 3.1 ─ Ingredients
     var ingredientEntities = new Dictionary<string, Ingredient>();
-    foreach (var p in biz.Products)
+    var allUniqueIngs = biz.Products.SelectMany(p => p.Ingredients).GroupBy(i => i.Name).Select(g => g.First());
+    foreach (var ingDef in allUniqueIngs)
     {
         var ingredient = new Ingredient
         {
             Id = Guid.NewGuid(),
             BusinessId = biz.Id,
-            Name = p.Name + " - Nguyên liệu",
-            Unit = p.Unit,
-            EstimatedPrice = p.UnitCost,
+            Name = ingDef.Name,
+            Unit = ingDef.Unit,
+            EstimatedPrice = ingDef.EstPrice,
             StockQuantity = 10000,
             IsDeleted = false,
             CreatedAt = now, UpdatedAt = now
         };
         db.Ingredients.Add(ingredient);
+        ingredientEntities[ingDef.Name] = ingredient;
+    }
 
-        db.ProductIngredients.Add(new ProductIngredient
+    foreach (var p in biz.Products)
+    {
+        foreach (var pIng in p.Ingredients)
         {
-            ProductId = productEntities[p.Code].Id,
-            IngredientId = ingredient.Id,
-            Quantity = 1
-        });
+            db.ProductIngredients.Add(new ProductIngredient
+            {
+                ProductId = productEntities[p.Code].Id,
+                IngredientId = ingredientEntities[pIng.Name].Id,
+                Quantity = pIng.Quantity
+            });
+        }
     }
     await db.SaveChangesAsync();
 
@@ -966,11 +992,30 @@ static async Task<decimal> GetYearRevenue(
 // ── SpaMate (Service) ── Target 2026: ~450M, 2025: ~350M
 static ProductDef[] SpaMateProducts() =>
 [
-    new("SM-001", "Massage",       "lần", 300_000m, 100_000m),
-    new("SM-002", "Chăm sóc da",   "lần", 250_000m,  80_000m),
-    new("SM-003", "Tẩy da chết",   "lần", 350_000m, 120_000m),
-    new("SM-004", "Xông hơi",      "lần", 150_000m,  50_000m),
-    new("SM-005", "Gội dưỡng sinh", "lần",  80_000m,  30_000m),
+    new("SM-001", "Massage",       "lần", 300_000m, 100_000m, "Chăm sóc cơ thể", [
+        new("Dầu massage", 50, "ml", 500m),
+        new("Khăn lau", 1, "cái", 5000m),
+        new("Tinh dầu", 10, "ml", 1000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958054/taxmate-images/r7ucrxkygwmjaevyxjbp.png"),
+    new("SM-002", "Chăm sóc da",   "lần", 250_000m,  80_000m, "Chăm sóc cơ thể", [
+        new("Kem dưỡng", 20, "gram", 1000m),
+        new("Mặt nạ", 1, "cái", 20000m),
+        new("Khăn lau", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958112/taxmate-images/zdova5tcihyijgf7derl.jpg"),
+    new("SM-003", "Tẩy da chết",   "lần", 350_000m, 120_000m, "Chăm sóc cơ thể", [
+        new("Muối tắm", 100, "gram", 200m),
+        new("Kem tẩy", 30, "gram", 1500m),
+        new("Khăn lau", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958081/taxmate-images/nds219asqifbhzmpkxyh.jpg"),
+    new("SM-004", "Xông hơi",      "lần", 150_000m,  50_000m, "Chăm sóc cơ thể", [
+        new("Tinh dầu", 20, "ml", 1000m),
+        new("Thảo dược", 1, "gói", 15000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958069/taxmate-images/f92gleotommi284qdp6a.jpg"),
+    new("SM-005", "Gội dưỡng sinh", "lần",  80_000m,  30_000m, "Chăm sóc tóc", [
+        new("Dầu gội", 30, "ml", 300m),
+        new("Dầu xả", 20, "ml", 400m),
+        new("Khăn lau", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958096/taxmate-images/izzdld8fdy7tjh7bjx79.jpg"),
 ];
 
 static MonthTarget[] SpaMateTargets() =>
@@ -990,13 +1035,42 @@ static MonthTarget[] SpaMateTargets() =>
 // ── LunchMate (FnB) ── Target 2026: ~1.05B, 2025: ~700M
 static ProductDef[] LunchMateProducts() =>
 [
-    new("LM-001", "Cơm gà",       "phần", 45_000m, 22_000m),
-    new("LM-002", "Bún bò",       "tô",   50_000m, 25_000m),
-    new("LM-003", "Phở bò",       "tô",   55_000m, 27_000m),
-    new("LM-004", "Cơm tấm",      "phần", 40_000m, 20_000m),
-    new("LM-005", "Mì xào",       "đĩa",  60_000m, 30_000m),
-    new("LM-006", "Trà đá",       "ly",    5_000m,  2_000m),
-    new("LM-007", "Nước cam",      "ly",   20_000m,  8_000m),
+    new("LM-001", "Cơm gà",       "phần", 45_000m, 22_000m, "Cơm", [
+        new("Gạo", 0.15m, "kg", 20000m),
+        new("Thịt gà", 0.2m, "kg", 60000m),
+        new("Rau", 0.05m, "kg", 30000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958731/taxmate-images/mncpfgdmdcaj32ptfcsh.jpg"),
+    new("LM-002", "Bún bò",       "tô",   50_000m, 25_000m, "Món nước", [
+        new("Bún", 0.2m, "kg", 15000m),
+        new("Thịt bò", 0.1m, "kg", 120000m),
+        new("Hành lá", 0.02m, "kg", 40000m),
+        new("Nước lèo", 1, "lít", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958679/taxmate-images/iod14dxwoqsu3vxfmyym.jpg"),
+    new("LM-003", "Phở bò",       "tô",   55_000m, 27_000m, "Món nước", [
+        new("Bánh phở", 0.2m, "kg", 18000m),
+        new("Thịt bò", 0.1m, "kg", 120000m),
+        new("Hành lá", 0.02m, "kg", 40000m),
+        new("Nước lèo", 1, "lít", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958703/taxmate-images/mpzftucak5doppnkznyq.jpg"),
+    new("LM-004", "Cơm tấm",      "phần", 40_000m, 20_000m, "Cơm", [
+        new("Gạo tấm", 0.15m, "kg", 22000m),
+        new("Sườn nướng", 0.1m, "kg", 80000m),
+        new("Nước mắm", 0.05m, "lít", 25000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958716/taxmate-images/k7ajrz9cpl2vwvsyrvee.jpg"),
+    new("LM-005", "Mì xào",       "đĩa",  60_000m, 30_000m, "Món khô", [
+        new("Mì sợi", 0.2m, "kg", 25000m),
+        new("Thịt bò", 0.05m, "kg", 120000m),
+        new("Rau", 0.1m, "kg", 30000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958758/taxmate-images/bnxe09s24jqzyccquvx0.jpg"),
+    new("LM-006", "Trà đá",       "ly",    5_000m,  2_000m, "Đồ uống", [
+        new("Trà", 0.01m, "kg", 150000m),
+        new("Đá viên", 0.2m, "kg", 2000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958771/taxmate-images/mg1qsm0dsikrj2h64fq0.jpg"),
+    new("LM-007", "Nước cam",      "ly",   20_000m,  8_000m, "Đồ uống", [
+        new("Cam tươi", 0.3m, "kg", 20000m),
+        new("Đường", 0.02m, "kg", 25000m),
+        new("Đá viên", 0.2m, "kg", 2000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786958745/taxmate-images/oxis1x4cwithocs1wefv.jpg"),
 ];
 
 static MonthTarget[] LunchMateTargets() =>
@@ -1016,11 +1090,29 @@ static MonthTarget[] LunchMateTargets() =>
 // ── HairCutMate (Service) ── Target 2026: ~650M (dưới 1 tỷ)
 static ProductDef[] HairCutMateProducts() =>
 [
-    new("HC-001", "Cắt tóc nam",  "lần",  80_000m, 20_000m),
-    new("HC-002", "Cắt tóc nữ",   "lần", 120_000m, 30_000m),
-    new("HC-003", "Nhuộm tóc",    "lần", 250_000m, 80_000m),
-    new("HC-004", "Uốn tóc",      "lần", 300_000m,100_000m),
-    new("HC-005", "Gội massage",   "lần",  50_000m, 15_000m),
+    new("HC-001", "Cắt tóc nam",  "lần",  80_000m, 20_000m, "Chăm sóc tóc", [
+        new("Lưỡi lam", 1, "cái", 2000m),
+        new("Khăn lau tóc", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786959189/taxmate-images/kl692rajqrvmm67jxlfn.jpg"),
+    new("HC-002", "Cắt tóc nữ",   "lần", 120_000m, 30_000m, "Chăm sóc tóc", [
+        new("Lưỡi lam", 1, "cái", 2000m),
+        new("Khăn lau tóc", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786959272/taxmate-images/dhijf9von6abokn4pjto.jpg"),
+    new("HC-003", "Nhuộm tóc",    "lần", 250_000m, 80_000m, "Chăm sóc tóc", [
+        new("Thuốc nhuộm", 50, "ml", 800m),
+        new("Găng tay", 1, "đôi", 3000m),
+        new("Khăn lau tóc", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786959307/taxmate-images/k5sz8dbvwrsk4jbxlta4.jpg"),
+    new("HC-004", "Uốn tóc",      "lần", 300_000m,100_000m, "Chăm sóc tóc", [
+        new("Thuốc uốn", 50, "ml", 1000m),
+        new("Giấy uốn", 10, "tờ", 200m),
+        new("Khăn lau tóc", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786959216/taxmate-images/p5s4bobjuzco4nes7hsg.jpg"),
+    new("HC-005", "Gội massage",   "lần",  50_000m, 15_000m, "Chăm sóc tóc", [
+        new("Dầu gội", 30, "ml", 300m),
+        new("Dầu xả", 20, "ml", 400m),
+        new("Khăn lau tóc", 1, "cái", 5000m)
+    ], "https://res.cloudinary.com/smybjo7f/image/upload/v1786959249/taxmate-images/uxzzxdkp4ax6cygmppop.jpg"),
 ];
 
 static MonthTarget[] HairCutMateTargets() =>
@@ -1035,8 +1127,10 @@ static MonthTarget[] HairCutMateTargets() =>
 //  TYPES
 // ════════════════════════════════════════════════════════════════════
 
+record ProductIngredientDef(string Name, decimal Quantity, string Unit, decimal EstPrice);
+
 record ProductDef(string Code, string Name, string Unit,
-    decimal Price, decimal UnitCost);
+    decimal Price, decimal UnitCost, string CategoryName, ProductIngredientDef[] Ingredients, string? ImageUrl = null);
 
 record MonthTarget(int Year, int Month, decimal Revenue);
 
