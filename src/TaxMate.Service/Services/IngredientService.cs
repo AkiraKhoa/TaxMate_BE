@@ -45,7 +45,7 @@ public class IngredientService : IIngredientService
             Name = request.Name.Trim(),
             Unit = request.Unit,
             EstimatedPrice = request.EstimatedPrice,
-            StockQuantity = request.StockQuantity,
+            StockQuantity = InventoryFeature.Enabled ? request.StockQuantity : 0,
             IsDeleted = false
         };
 
@@ -81,7 +81,10 @@ public class IngredientService : IIngredientService
         entity.Name = request.Name.Trim();
         entity.Unit = request.Unit;
         entity.EstimatedPrice = request.EstimatedPrice;
-        entity.StockQuantity = request.StockQuantity;
+        if (InventoryFeature.Enabled)
+        {
+            entity.StockQuantity = request.StockQuantity;
+        }
 
         _ingredients.Update(entity);
         await _unitOfWork.SaveChangesAsync();

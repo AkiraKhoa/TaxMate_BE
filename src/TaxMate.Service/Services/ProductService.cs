@@ -60,7 +60,7 @@ public class ProductService : IProductService
             Unit = request.Unit,
             ImageUrl = request.ImageUrl,
             CostPrice = request.CostPrice,
-            StockQuantity = request.StockQuantity,
+            StockQuantity = InventoryFeature.Enabled ? request.StockQuantity : null,
             Status = ProductStatus.Active
         };
 
@@ -108,7 +108,8 @@ public class ProductService : IProductService
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
         if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
-        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
+        if (InventoryFeature.Enabled && request.StockQuantity.HasValue)
+            entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();

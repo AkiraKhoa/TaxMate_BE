@@ -704,6 +704,11 @@ public class OrderService : IOrderService
 
     private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
     {
+        if (!InventoryFeature.Enabled)
+        {
+            return;
+        }
+
         var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
         if (business == null || !business.IsStockTrackingEnabled)
         {
