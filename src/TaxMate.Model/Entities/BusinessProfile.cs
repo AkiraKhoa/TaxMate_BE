@@ -26,7 +26,7 @@ public class BusinessProfile : BaseEntity
 
     public bool PreferElectronicInvoice { get; set; }
 
-    public bool IsStockTrackingEnabled { get; set; } = false;
+    public bool IsStockTrackingEnabled { get; set; } = true;
 
     [MaxLength(100)]
     public string? SePayCompanyXid { get; set; }
