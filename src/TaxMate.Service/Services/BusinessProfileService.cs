@@ -51,7 +51,7 @@ public class BusinessProfileService : IBusinessProfileService
             Address = request.Address,
             MainCategoryId = request.MainCategoryId,
             PreferElectronicInvoice = request.PreferElectronicInvoice,
-            IsStockTrackingEnabled = request.IsStockTrackingEnabled,
+            IsStockTrackingEnabled = InventoryFeature.Enabled,
             IsActive = true
         };
 
@@ -86,10 +86,7 @@ public class BusinessProfileService : IBusinessProfileService
         entity.Address = request.Address;
         entity.MainCategoryId = request.MainCategoryId;
         entity.PreferElectronicInvoice = request.PreferElectronicInvoice;
-        if (request.IsStockTrackingEnabled.HasValue)
-        {
-            entity.IsStockTrackingEnabled = request.IsStockTrackingEnabled.Value;
-        }
+        entity.IsStockTrackingEnabled = InventoryFeature.Enabled;
 
         _businessProfiles.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -108,7 +105,7 @@ public class BusinessProfileService : IBusinessProfileService
         if (!entity.IsActive)
             throw new ConflictException($"Business profile with id '{id}' has been deactivated.");
 
-        entity.IsStockTrackingEnabled = isEnabled;
+        entity.IsStockTrackingEnabled = InventoryFeature.Enabled;
         _businessProfiles.Update(entity);
         await _unitOfWork.SaveChangesAsync();
 
@@ -167,7 +164,7 @@ public class BusinessProfileService : IBusinessProfileService
             MainCategoryId = entity.MainCategoryId,
             MainCategoryName = entity.MainCategory?.Name,
             PreferElectronicInvoice = entity.PreferElectronicInvoice,
-            IsStockTrackingEnabled = entity.IsStockTrackingEnabled,
+            IsStockTrackingEnabled = InventoryFeature.Enabled && entity.IsStockTrackingEnabled,
             IsActive = entity.IsActive,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt

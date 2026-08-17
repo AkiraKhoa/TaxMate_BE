@@ -107,7 +107,7 @@ public class ProductIngredientService : IProductIngredientService
     private async Task<Product> EnsureProductOwnerAsync(Guid ownerId, Guid productId)
     {
         var product = await _products.GetByIdAsync(productId);
-        if (product is null)
+        if (product is null || product.IsDeleted)
             throw new NotFoundException($"Product with id '{productId}' not found.");
 
         var business = await _businessProfiles.GetByIdAsync(product.BusinessId);

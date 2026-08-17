@@ -36,14 +36,16 @@ public class ProductService : IProductService
 
         var exists = await _products.AnyAsync(x =>
             x.BusinessId == businessId
-            && x.Name.ToLower() == request.Name.ToLower());
+            && x.Name.ToLower() == request.Name.ToLower()
+            && !x.IsDeleted);
 
         if (exists)
             throw new ConflictException($"Product with name '{request.Name}' already exists in this business.");
 
         var codeExists = await _products.AnyAsync(x =>
             x.BusinessId == businessId
-            && x.ProductCode.ToLower() == request.ProductCode.ToLower());
+            && x.ProductCode.ToLower() == request.ProductCode.ToLower()
+            && !x.IsDeleted);
 
         if (codeExists)
             throw new ConflictException($"Product with code '{request.ProductCode}' already exists in this business.");
@@ -61,7 +63,8 @@ public class ProductService : IProductService
             ImageUrl = request.ImageUrl,
             CostPrice = request.CostPrice,
             StockQuantity = request.StockQuantity,
-            Status = ProductStatus.Active
+            Status = ProductStatus.Active,
+            IsDeleted = false
         };
 
         await _products.AddAsync(entity);
@@ -82,12 +85,17 @@ public class ProductService : IProductService
             throw new NotFoundException($"Product with id '{id}' not found.");
 
         await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
+        if (entity.IsDeleted)
+            throw new ConflictException($"Product with id '{id}' has been deleted.");
+
         await EnsureBusinessCategoryValidAsync(request.BusinessCategoryId);
 
         var duplicate = await _products.AnyAsync(x =>
             x.BusinessId == entity.BusinessId
             && x.Name.ToLower() == request.Name.ToLower()
-            && x.Id != id);
+            && x.Id != id
+            && !x.IsDeleted);
 
         if (duplicate)
             throw new ConflictException($"Product with name '{request.Name}' already exists in this business.");
@@ -95,7 +103,8 @@ public class ProductService : IProductService
         var duplicateCode = await _products.AnyAsync(x =>
             x.BusinessId == entity.BusinessId
             && x.ProductCode.ToLower() == request.ProductCode.ToLower()
-            && x.Id != id);
+            && x.Id != id
+            && !x.IsDeleted);
 
         if (duplicateCode)
             throw new ConflictException($"Product with code '{request.ProductCode}' already exists in this business.");
@@ -108,7 +117,8 @@ public class ProductService : IProductService
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
         if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
-        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
+        if (InventoryFeature.Enabled && request.StockQuantity.HasValue)
+            entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -128,6 +138,9 @@ public class ProductService : IProductService
             throw new NotFoundException($"Product with id '{id}' not found.");
 
         await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
+
+        if (entity.IsDeleted)
+            throw new ConflictException($"Product with id '{id}' has been deleted.");
 
         decimal oldQty = entity.StockQuantity ?? 0;
         decimal oldCost = entity.CostPrice ?? 0;
@@ -162,6 +175,9 @@ public class ProductService : IProductService
 
         await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
 
+        if (entity.IsDeleted)
+            throw new ConflictException($"Product with id '{id}' has been deleted.");
+
         entity.Status = entity.Status == ProductStatus.Active
             ? ProductStatus.Inactive
             : ProductStatus.Active;
@@ -180,7 +196,12 @@ public class ProductService : IProductService
 
         await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
 
-        _products.Remove(entity);
+        if (entity.IsDeleted)
+            throw new ConflictException($"Product with id '{id}' has already been deleted.");
+
+        entity.IsDeleted = true;
+        entity.Status = ProductStatus.Inactive;
+        _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
     }
 
