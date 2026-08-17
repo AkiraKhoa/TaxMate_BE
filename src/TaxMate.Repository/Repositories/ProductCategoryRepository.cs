@@ -18,8 +18,7 @@ public class ProductCategoryRepository : GenericRepository<ProductCategory>, IPr
     {
         return await _appContext.ProductCategories
             .Where(x => x.BusinessId == businessId)
-            .OrderBy(x => x.SortOrder)
-            .ThenBy(x => x.Name)
+            .OrderByDescending(x => x.CreatedAt)
             .ToListAsync();
     }
 

@@ -48,8 +48,7 @@ public class ProductCategoryService : IProductCategoryService
             Id = Guid.NewGuid(),
             BusinessId = businessId,
             Name = request.Name.Trim(),
-            Description = request.Description,
-            SortOrder = request.SortOrder
+            Description = request.Description
         };
 
         await _productCategories.AddAsync(entity);
@@ -76,7 +75,6 @@ public class ProductCategoryService : IProductCategoryService
 
         entity.Name = request.Name.Trim();
         entity.Description = request.Description;
-        entity.SortOrder = request.SortOrder;
 
         _productCategories.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -192,7 +190,6 @@ public class ProductCategoryService : IProductCategoryService
             BusinessId = entity.BusinessId,
             Name = entity.Name,
             Description = entity.Description,
-            SortOrder = entity.SortOrder,
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt
         };

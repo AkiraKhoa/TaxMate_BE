@@ -108,7 +108,7 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         var prefix = $"DH-{dateStr}-";
         
         var maxCode = await _dbSet
-            .Where(x => x.BusinessId == businessId && x.TransactionCode.StartsWith(prefix))
+            .Where(x => x.TransactionCode.StartsWith(prefix))
             .OrderByDescending(x => x.TransactionCode)
             .Select(x => x.TransactionCode)
             .FirstOrDefaultAsync();
