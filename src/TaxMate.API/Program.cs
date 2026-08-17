@@ -116,50 +116,71 @@ builder.Services.AddSwaggerGen(options =>
 
 // ── CORS ───────────────────────────────────────────────────
 
-var frontendBaseUrls = builder.Configuration
+var configuredUrls = builder.Configuration
     .GetSection("App:FrontendBaseUrls")
-    .Get<string[]>() ?? new[]
+    .Get<string[]>() ?? Array.Empty<string>();
+
+var defaultUrls = new[]
 {
     "http://localhost:3000",
-    "http://localhost:8081"
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+    "https://localhost:5173",
+    "http://localhost:5173",
+    "https://tax-mate-web.vercel.app"
 };
 
+var allowedOrigins = configuredUrls.Concat(defaultUrls)
+    .Where(u => !string.IsNullOrWhiteSpace(u))
+    .Select(u => u.TrimEnd('/'))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-
-        policy.WithOrigins(frontendBaseUrls.Select(x => x.TrimEnd('/')).ToArray())
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
-
+        policy.SetIsOriginAllowed(origin =>
+        {
+            if (string.IsNullOrWhiteSpace(origin)) return false;
+            try
+            {
+                var uri = new Uri(origin);
+                return uri.Host == "localhost"
+                    || uri.Host == "127.0.0.1"
+                    || uri.Host.EndsWith("vercel.app", StringComparison.OrdinalIgnoreCase)
+                    || allowedOrigins.Contains(origin.TrimEnd('/'), StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        })
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
     });
 });
 
 var app = builder.Build();
 
+// ── 1. CORS PHẢI ĐẶT ĐẦU TIÊN để xử lý Preflight (OPTIONS) request ──
+app.UseCors("Frontend");
+
 // ── Middleware pipeline ────────────────────────────────────
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaxMate API V1");
-    });
-    app.MapScalarApiReference();
-}
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaxMate API V1");
+});
+app.MapScalarApiReference();
 
-app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<PaymentHub>("/paymentHub");
-
-// SePayCompanyXid is persisted across restarts.
 
 app.Run();
