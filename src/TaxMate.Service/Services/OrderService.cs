@@ -194,7 +194,7 @@ public class OrderService : IOrderService
         if (order.Status != "Draft") throw new ConflictException("Cannot modify items of a non-draft order.");
         if (request.Quantity <= 0) throw new BadRequestException("Quantity must be greater than zero.");
 
-        var product = await _products.FirstOrDefaultAsync(p => p.Id == request.ProductId);
+        var product = await _products.FirstOrDefaultAsync(p => p.Id == request.ProductId && !p.IsDeleted);
         if (product == null || product.BusinessId != order.BusinessId)
             throw new NotFoundException("Product not found or does not belong to this business.");
 

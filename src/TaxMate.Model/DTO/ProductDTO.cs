@@ -66,6 +66,7 @@ public class ProductResponse
     public string? Unit { get; set; }
     public string? ImageUrl { get; set; }
     public string Status { get; set; } = null!;
+    public bool IsDeleted { get; set; }
     public decimal? CurrentPrice { get; set; }
     public decimal? CostPrice { get; set; }
     public decimal? StockQuantity { get; set; }

@@ -31,7 +31,7 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
                 .ThenInclude(x => x.Ingredient)
             .Include(x => x.BusinessCategory)
             .AsSplitQuery()
-            .Where(x => x.BusinessId == businessId)
+            .Where(x => x.BusinessId == businessId && !x.IsDeleted)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -77,14 +77,14 @@ public class ProductRepository : GenericRepository<Product>, IProductRepository
             .Include(x => x.ProductIngredients)
                 .ThenInclude(x => x.Ingredient)
             .AsSplitQuery()
-            .FirstOrDefaultAsync(x => x.Id == id);
+            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
     }
 
     public async Task<bool> DecrementStockAsync(Guid id, decimal quantity)
     {
         var updatedAt = DateTime.UtcNow;
         var affectedRows = await _appContext.Products
-            .Where(x => x.Id == id && x.StockQuantity.HasValue)
+            .Where(x => x.Id == id && x.StockQuantity.HasValue && !x.IsDeleted)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.StockQuantity, x => x.StockQuantity - quantity)
                 .SetProperty(x => x.UpdatedAt, updatedAt));
