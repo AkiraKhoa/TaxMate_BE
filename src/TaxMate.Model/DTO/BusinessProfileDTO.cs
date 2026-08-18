@@ -9,7 +9,7 @@ public class CreateBusinessProfileRequest
     public string? Address { get; set; }
     public Guid? MainCategoryId { get; set; }
     public bool PreferElectronicInvoice { get; set; }
-    public bool IsStockTrackingEnabled { get; set; } = false;
+    public bool IsStockTrackingEnabled { get; set; } = true;
 }
 
 public class UpdateBusinessProfileRequest

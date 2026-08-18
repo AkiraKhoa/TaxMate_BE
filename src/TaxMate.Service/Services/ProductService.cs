@@ -117,8 +117,7 @@ public class ProductService : IProductService
         entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
         if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
-        if (InventoryFeature.Enabled && request.StockQuantity.HasValue)
-            entity.StockQuantity = request.StockQuantity;
+        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
