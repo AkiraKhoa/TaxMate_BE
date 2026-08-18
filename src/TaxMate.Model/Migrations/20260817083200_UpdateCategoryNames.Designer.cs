@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TaxMate.Model.Data;
@@ -11,9 +12,11 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260817083200_UpdateCategoryNames")]
+    partial class UpdateCategoryNames
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -153,7 +156,7 @@ namespace TaxMate.Model.Migrations
                             FormIndicatorCode = "d",
                             FormSectionCode = "I",
                             IsActive = true,
-                            Name = "FNB",
+                            Name = "F&B",
                             PitRate = 1.50m,
                             UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             VatRate = 3.00m

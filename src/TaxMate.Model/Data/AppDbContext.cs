@@ -675,7 +675,7 @@ public class AppDbContext : DbContext
             {
                 BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
                 Code = "SERVICE_CONSTRUCT",
-                Name = "Dịch vụ, XD không bao thầu NVL",
+                Name = "Dịch vụ",
                 Description = "GTGT 5%, TNCN 2%",
                 VatRate = 5m,
                 PitRate = 2m,
@@ -798,7 +798,7 @@ public class AppDbContext : DbContext
                     Guid.Parse("d1111111-1111-1111-1111-111111111111"),
 
                 Code = "FNB",
-                Name = "Ăn uống, nhà hàng, F&B",
+                Name = "FNB",
 
                 Description =
                     "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
