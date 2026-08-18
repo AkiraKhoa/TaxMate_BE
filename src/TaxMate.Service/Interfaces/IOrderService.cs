@@ -28,6 +28,7 @@ public interface IOrderService
     */
 
     Task<InvoiceDetailResponse> CheckoutAsync(Guid transactionId, CheckoutRequest request);
+    Task ReopenForEditingAsync(Guid transactionId);
     Task CancelOrderAsync(Guid transactionId);
     Task CancelAllDraftsAsync(Guid businessId);
     Task<InvoiceDetailResponse> ConfirmPaymentAsync(Guid transactionId);

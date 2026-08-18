@@ -199,13 +199,30 @@ public class OrderController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
-    /// <summary>Hủy đơn hàng nháp.</summary>
+    /// <summary>Mở lại đơn chờ thanh toán về trạng thái nháp để chỉnh sửa hoặc đổi phương thức thanh toán.</summary>
+    /// <param name="id">ID đơn hàng.</param>
+    [HttpPost("{id:guid}/reopen")]
+    public async Task<IActionResult> ReopenOrder(Guid id)
+    {
+        await _orderService.ReopenForEditingAsync(id);
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Order reopened for editing successfully",
+                HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Hủy đơn hàng nháp hoặc chờ thanh toán.</summary>
     /// <param name="id">ID đơn hàng.</param>
     [HttpPost("{id:guid}/cancel")]
     public async Task<IActionResult> CancelOrder(Guid id)
     {
         await _orderService.CancelOrderAsync(id);
-        return Ok();
+        return Ok(
+            ApiResponse<string>.Ok(
+                "Success",
+                "Order cancelled successfully",
+                HttpContext.TraceIdentifier));
     }
 
     /// <summary>Hủy toàn bộ đơn hàng nháp của cửa hàng.</summary>
