@@ -464,6 +464,12 @@ static async Task SeedBusinessFullAsync(
     // 7 ─ Sales Data (Transactions + Invoices + Payments + Incomes)
     await SeedSalesAsync(db, biz, productEntities, incomeCatId, paymentAccounts, eInvoiceConfig, random, now);
 
+    // 7.5 ─ Ingredient Purchases
+    if (biz.Name == "LunchMate")
+    {
+        await SeedIngredientPurchasesAsync(db, biz, ingredientEntities, expCats["Nguyên liệu"], random, now);
+    }
+
     // 8 ─ Expenses
     await SeedExpensesAsync(db, biz.Id, biz.Targets, expCats, random, now);
 
@@ -673,6 +679,108 @@ static async Task SeedSalesAsync(
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PURCHASES
+// ════════════════════════════════════════════════════════════════════
+
+static async Task SeedIngredientPurchasesAsync(
+    AppDbContext db, BizSeed biz,
+    Dictionary<string, Ingredient> ingredients,
+    Guid materialExpenseCatId,
+    Random random, DateTime now)
+{
+    var ings = ingredients.Values.ToList();
+    if (ings.Count == 0) return;
+
+    var supplierId = Guid.NewGuid();
+    var supplier = new Supplier
+    {
+        Id = supplierId,
+        BusinessId = biz.Id,
+        Name = $"Nhà cung cấp {biz.Name}",
+        ContactName = "Đại lý",
+        PhoneNumber = "0909123456",
+        CreatedAt = now, UpdatedAt = now
+    };
+    db.Suppliers.Add(supplier);
+
+    var invoiceSeq = 1;
+
+    foreach (var target in biz.Targets)
+    {
+        if (target.Year > now.Year || (target.Year == now.Year && target.Month > now.Month))
+            continue;
+
+        // Generate 4 weekly purchases for the month
+        var matRate = 0.10m + (decimal)random.NextDouble() * 0.05m;
+        var monthMaterialCost = decimal.Round(target.Revenue * matRate, 0);
+        var weeklyBudget = monthMaterialCost / 4;
+
+        for (int week = 1; week <= 4; week++)
+        {
+            var day = (week - 1) * 7 + random.Next(1, 7);
+            if (day > DateTime.DaysInMonth(target.Year, target.Month)) 
+                day = DateTime.DaysInMonth(target.Year, target.Month);
+                
+            var pDate = new DateTime(target.Year, target.Month, day, 8, 0, 0, DateTimeKind.Utc);
+            if (pDate > now) continue;
+
+            var invoice = $"{biz.Prefix}-IP-{pDate:yyyyMMdd}-{invoiceSeq:000}";
+            
+            // Pick some random ingredients
+            var numItems = random.Next(2, Math.Min(6, ings.Count + 1));
+            var selectedIngs = ings.OrderBy(_ => random.Next()).Take(numItems).ToList();
+            
+            decimal invoiceTotal = 0;
+            
+            // Distribute weeklyBudget among selectedIngs
+            foreach (var ing in selectedIngs)
+            {
+                var portion = weeklyBudget / numItems * (0.8m + (decimal)random.NextDouble() * 0.4m);
+                var unitCost = ing.EstimatedPrice.HasValue && ing.EstimatedPrice.Value > 0 ? ing.EstimatedPrice.Value : 10000m;
+                var qty = decimal.Round(portion / unitCost, 2);
+                if (qty <= 0) qty = 1;
+                
+                var totalCost = qty * unitCost;
+                invoiceTotal += totalCost;
+
+                db.IngredientPurchases.Add(new IngredientPurchase
+                {
+                    Id = Guid.NewGuid(),
+                    IngredientId = ing.Id,
+                    BusinessId = biz.Id,
+                    SupplierId = supplier.Id,
+                    SupplierName = supplier.Name,
+                    Quantity = qty,
+                    TotalCost = totalCost,
+                    PurchaseDate = pDate,
+                    InvoiceNumber = invoice,
+                    CreatedAt = pDate, UpdatedAt = pDate
+                });
+            }
+
+            db.Expenses.Add(new Expense
+            {
+                ExpenseId = Guid.NewGuid(),
+                BusinessId = biz.Id,
+                ExpenseCategoryId = materialExpenseCatId,
+                ExpenseTitle = $"Nhập nguyên liệu tuần {week} - T{target.Month}/{target.Year}",
+                Amount = invoiceTotal,
+                ExpenseDate = pDate,
+                PaymentMethod = "BankTransfer",
+                Note = $"Hóa đơn {invoice}",
+                DueDate = pDate.AddDays(2),
+                PaidDate = pDate.AddDays(random.Next(0, 3)),
+                SupplierId = supplier.Id,
+                CreatedAt = pDate, UpdatedAt = pDate
+            });
+
+            invoiceSeq++;
+        }
+    }
+    await db.SaveChangesAsync();
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  EXPENSES
 // ════════════════════════════════════════════════════════════════════
 
@@ -716,16 +824,6 @@ static async Task SeedExpensesAsync(
             db.Expenses.Add(MakeExpense(businessId, expCats["Điện nước"],
                 $"Điện nước T{month}/{year}", util,
                 utilDate, "BankTransfer", now));
-        }
-
-        var matDate = baseDate.AddDays(8);
-        if (matDate <= now)
-        {
-            var matRate = 0.10m + (decimal)random.NextDouble() * 0.05m;
-            var material = decimal.Round(target.Revenue * matRate, 0);
-            db.Expenses.Add(MakeExpense(businessId, expCats["Nguyên liệu"],
-                $"Nguyên liệu T{month}/{year}", material,
-                matDate, "Cash", now));
         }
 
         var mktDate = baseDate.AddDays(12);
