@@ -139,6 +139,7 @@ namespace TaxMate.Model.Migrations
                     Address = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     MainCategoryId = table.Column<Guid>(type: "uuid", nullable: true),
                     PreferElectronicInvoice = table.Column<bool>(type: "boolean", nullable: false),
+                    IsStockTrackingEnabled = table.Column<bool>(type: "boolean", nullable: false),
                     SePayCompanyXid = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     LastSePayLinkTokenXid = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
@@ -659,6 +660,7 @@ namespace TaxMate.Model.Migrations
                     CostPrice = table.Column<decimal>(type: "numeric(18,6)", precision: 18, scale: 6, nullable: true),
                     StockQuantity = table.Column<decimal>(type: "numeric(18,4)", precision: 18, scale: 4, nullable: true),
                     Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false),
                     UpdatedAt = table.Column<DateTime>(type: "timestamp without time zone", nullable: false)
                 },

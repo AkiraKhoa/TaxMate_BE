@@ -259,14 +259,16 @@ public class ReportService : IReportService
         throw new NotFoundException("Business profile not found.");
     }
 
+    var ownerId = business.OwnerId;
+
     var accumulatedRevenue =
-        await _reportRepository.GetAccumulatedRevenueAsync(
-            businessId,
+        await _reportRepository.GetAccumulatedRevenueByOwnerAsync(
+            ownerId,
             year);
 
     var quarters =
-        await _reportRepository.GetQuarterRevenuesAsync(
-            businessId,
+        await _reportRepository.GetQuarterRevenuesByOwnerAsync(
+            ownerId,
             year);
 
     var threshold =

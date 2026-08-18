@@ -21,6 +21,14 @@ public class TaxCalculationResponse
     public decimal TotalExemptionAmount { get; set; }
 
     public decimal TotalTaxPayableAmount { get; set; }
+    
+    public decimal AnnualRevenueAtCalculation { get; set; }
+
+    public decimal ApplicableRevenueThreshold { get; set; }
+
+    public string RecommendedFormCode { get; set; } = null!;
+
+    public decimal RemainingPitDeduction { get; set; }
 
     public string Status { get; set; } = null!;
 

@@ -568,4 +568,104 @@ public class ReportRepository : IReportRepository
 
         return result;
     }
+    
+    public async Task<decimal> GetAccumulatedRevenueByOwnerAsync(
+        Guid ownerId,
+        int year)
+    {
+        var startDate = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddYears(1);
+
+        return await _context.Transactions
+                   .Where(x =>
+                       x.Business.OwnerId == ownerId &&
+                       x.Status == TransactionStatus.Completed &&
+                       x.TransactionDate >= startDate &&
+                       x.TransactionDate < endDate)
+                   .SumAsync(x => (decimal?)x.TotalAmount)
+               ?? 0m;
+    }
+    
+    public async Task<List<TaxQuarterRevenueResponse>>
+        GetQuarterRevenuesByOwnerAsync(
+            Guid ownerId,
+            int year)
+    {
+        var startDate = new DateTime(
+            year,
+            1,
+            1,
+            0,
+            0,
+            0,
+            DateTimeKind.Utc);
+
+        var endDate = startDate.AddYears(1);
+
+        var revenues = await _context.Transactions
+            .Where(x =>
+                x.Business.OwnerId == ownerId &&
+                x.Status == "Completed" &&
+                x.TransactionDate >= startDate &&
+                x.TransactionDate < endDate)
+            .GroupBy(x =>
+                ((x.TransactionDate.Month - 1) / 3) + 1)
+            .Select(g => new
+            {
+                Quarter = g.Key,
+                Revenue = g.Sum(x => x.TotalAmount)
+            })
+            .ToListAsync();
+
+        var result = new List<TaxQuarterRevenueResponse>();
+
+        for (var quarter = 1; quarter <= 4; quarter++)
+        {
+            result.Add(
+                new TaxQuarterRevenueResponse
+                {
+                    Quarter = quarter,
+
+                    Revenue = revenues
+                        .FirstOrDefault(x =>
+                            x.Quarter == quarter)
+                        ?.Revenue ?? 0m
+                });
+        }
+
+        return result;
+    }
+
+    public async Task<List<OwnerProfileRevenueRow>> GetOwnerRevenueByProfileAsync(
+        Guid ownerId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.BusinessProfiles
+            .AsNoTracking()
+            .Where(profile => profile.OwnerId == ownerId && profile.IsActive)
+            .Select(profile => new OwnerProfileRevenueRow
+            {
+                BusinessId = profile.Id,
+                BusinessName = profile.BusinessName,
+                Revenue = profile.Transactions
+                    .Where(transaction =>
+                        transaction.TransactionType == TransactionTypes.Sale &&
+                        transaction.Status == "Completed" &&
+                        transaction.TransactionDate >= startDate &&
+                        transaction.TransactionDate < endDate)
+                    .Sum(transaction => (decimal?)transaction.TotalAmount) ?? 0m
+            })
+            .OrderBy(row => row.BusinessName)
+            .ToListAsync(cancellationToken);
+    }
 }   

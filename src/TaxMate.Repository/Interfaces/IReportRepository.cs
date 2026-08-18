@@ -61,4 +61,18 @@ public interface IReportRepository
     Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesAsync(
         Guid businessId,
         int year);
+
+    Task<List<OwnerProfileRevenueRow>> GetOwnerRevenueByProfileAsync(
+        Guid ownerId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
+    
+    Task<decimal> GetAccumulatedRevenueByOwnerAsync(
+        Guid ownerId,
+        int year);
+
+    Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesByOwnerAsync(
+        Guid ownerId,
+        int year);
 }

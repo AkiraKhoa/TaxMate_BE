@@ -114,7 +114,7 @@ namespace TaxMate.Model.Migrations
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "GTGT 5%, TNCN 2%",
                             IsActive = true,
-                            Name = "Dịch vụ, XD không bao thầu NVL",
+                            Name = "Dịch vụ",
                             PitRate = 2m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             VatRate = 5m
@@ -153,7 +153,7 @@ namespace TaxMate.Model.Migrations
                             FormIndicatorCode = "d",
                             FormSectionCode = "I",
                             IsActive = true,
-                            Name = "Ăn uống, nhà hàng, F&B",
+                            Name = "FNB",
                             PitRate = 1.50m,
                             UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             VatRate = 3.00m
@@ -202,6 +202,9 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsStockTrackingEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("LastSePayLinkTokenXid")
@@ -977,6 +980,48 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quarter")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<decimal>("TotalRevenue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("WindowEnd")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("WindowStart")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "Year")
+                        .IsUnique();
+
+                    b.ToTable("RevenueThresholdAlerts");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Payment", b =>
                 {
                     b.Property<Guid>("PaymentId")
@@ -1390,6 +1435,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2907,6 +2955,17 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.User", "Owner")
+                        .WithMany("RevenueThresholdAlerts")
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Owner");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Payment", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.PaymentAccount", "PaymentAccount")
@@ -3321,6 +3380,8 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("BusinessProfiles");
 
                     b.Navigation("Notifications");
+
+                    b.Navigation("RevenueThresholdAlerts");
 
                     b.Navigation("UserSubscriptions");
                 });

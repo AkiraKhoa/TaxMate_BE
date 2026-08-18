@@ -250,61 +250,136 @@ public class TaxPeriodService : ITaxPeriodService
     
     var vatNonTaxableRevenue = 0m;
     var zeroRatedVatRevenue = 0m;
-
-    var previousAnnualRevenue =
+    
+    // Tổng doanh thu năm của TOÀN HỘ,
+    // bao gồm tất cả BusinessProfile thuộc cùng Owner.
+    var annualRevenue =
         await _taxPeriodRepository
-            .GetAnnualRevenueBeforePeriodByOwnerAsync(
+            .GetAnnualRevenueByOwnerAsync(
                 business.OwnerId,
                 taxPeriod.Year,
-                taxPeriod.PeriodStartDate,
                 cancellationToken);
 
-    var alreadyConsumedDeduction =
-        Math.Min(
-            previousAnnualRevenue,
-            TaxRules.AnnualPitRevenueDeduction2026);
+    var isTaxableBusiness =
+        annualRevenue >
+        TaxRules.AnnualRevenueThreshold2026;
 
-    var remainingDeduction =
-        Math.Max(
-            0m,
-            TaxRules.AnnualPitRevenueDeduction2026
-            - alreadyConsumedDeduction);
-    
-    var pitTaxableRevenue = taxableRevenue;
+    var recommendedFormCode =
+        isTaxableBusiness
+            ? "01/CNKD"
+            : "01/TKN-CNKD";
 
-    var pitDeductibleRevenue = Math.Min(
-        pitTaxableRevenue,
-        remainingDeduction);
-    
-    var remainingPitDeductionAfterPeriod =
-        Math.Max(
-            0m,
-            remainingDeduction -
-            pitDeductibleRevenue);
+    decimal previousAnnualRevenue = 0m;
+    decimal alreadyConsumedDeduction = 0m;
+    decimal remainingDeduction = 0m;
 
-    var pitRevenue = Math.Max(
-        0m,
-        pitTaxableRevenue - pitDeductibleRevenue);
-    
-    var vatTaxAmount = decimal.Round(
-        taxableRevenue * category.VatRate / 100m,
-        2,
-        MidpointRounding.AwayFromZero);
+    decimal pitTaxableRevenue = 0m;
+    decimal pitDeductibleRevenue = 0m;
+    decimal remainingPitDeductionAfterPeriod = 0m;
+    decimal pitRevenue = 0m;
 
-    var pitTaxAmount = decimal.Round(
-        pitRevenue *
-        category.PitRate /
-        100m,
-        2,
-        MidpointRounding.AwayFromZero);
+    decimal vatTaxAmount = 0m;
+    decimal pitTaxAmount = 0m;
 
-    var totalTaxBeforeExemption =
-        vatTaxAmount + pitTaxAmount;
+    decimal totalTaxBeforeExemption = 0m;
+    decimal totalExemptionAmount = 0m;
+    decimal totalTaxPayableAmount = 0m;
 
-    var totalExemptionAmount = 0m;
+    if (isTaxableBusiness)
+    {
+        previousAnnualRevenue =
+            await _taxPeriodRepository
+                .GetAnnualRevenueBeforePeriodByOwnerAsync(
+                    business.OwnerId,
+                    taxPeriod.Year,
+                    taxPeriod.PeriodStartDate,
+                    cancellationToken);
 
-    var totalTaxPayableAmount =
-        totalTaxBeforeExemption - totalExemptionAmount;
+        alreadyConsumedDeduction =
+            Math.Min(
+                previousAnnualRevenue,
+                TaxRules.AnnualPitRevenueDeduction2026);
+
+        remainingDeduction =
+            Math.Max(
+                0m,
+                TaxRules.AnnualPitRevenueDeduction2026
+                - alreadyConsumedDeduction);
+
+        pitTaxableRevenue = taxableRevenue;
+
+        pitDeductibleRevenue =
+            Math.Min(
+                pitTaxableRevenue,
+                remainingDeduction);
+
+        remainingPitDeductionAfterPeriod =
+            Math.Max(
+                0m,
+                remainingDeduction -
+                pitDeductibleRevenue);
+
+        pitRevenue =
+            Math.Max(
+                0m,
+                pitTaxableRevenue -
+                pitDeductibleRevenue);
+
+        vatTaxAmount =
+            decimal.Round(
+                taxableRevenue *
+                category.VatRate /
+                100m,
+                2,
+                MidpointRounding.AwayFromZero);
+
+        pitTaxAmount =
+            decimal.Round(
+                pitRevenue *
+                category.PitRate /
+                100m,
+                2,
+                MidpointRounding.AwayFromZero);
+
+        totalTaxBeforeExemption =
+            vatTaxAmount +
+            pitTaxAmount;
+
+        totalTaxPayableAmount =
+            totalTaxBeforeExemption -
+            totalExemptionAmount;
+    }
+    else
+    {
+        /*
+         * Hộ có doanh thu năm <= 1 tỷ:
+         *
+         * - Recommended form: 01/TKN-CNKD
+         * - Không tính VAT phải nộp
+         * - Không tính PIT phải nộp
+         * - Không tạo tax payable/debt
+         *
+         * Doanh thu vẫn được giữ trong calculation
+         * để phục vụ thông báo doanh thu năm.
+         */
+
+        pitTaxableRevenue = 0m;
+        pitDeductibleRevenue = 0m;
+        pitRevenue = 0m;
+
+        vatTaxAmount = 0m;
+        pitTaxAmount = 0m;
+
+        totalTaxBeforeExemption = 0m;
+        totalExemptionAmount = 0m;
+        totalTaxPayableAmount = 0m;
+
+        remainingPitDeductionAfterPeriod =
+            Math.Max(
+                0m,
+                TaxRules.AnnualPitRevenueDeduction2026 -
+                annualRevenue);
+    }
 
     await _taxPeriodRepository
         .SetPreviousCalculationsAsSupersededAsync(
@@ -315,19 +390,6 @@ public class TaxPeriodService : ITaxPeriodService
         await _taxPeriodRepository.GetNextCalculationVersionAsync(
             taxPeriod.Id,
             cancellationToken);
-    
-    var annualRevenue =
-        await _taxPeriodRepository
-            .GetAnnualRevenueByOwnerAsync(
-                business.OwnerId,
-                taxPeriod.Year,
-                cancellationToken);
-
-    var recommendedFormCode =
-        annualRevenue >
-        TaxRules.AnnualRevenueThreshold2026
-            ? "01/CNKD"
-            : "01/TKN-CNKD";
 
     var calculation = new TaxCalculation
     {
@@ -493,6 +555,18 @@ public class TaxPeriodService : ITaxPeriodService
 
         TotalTaxPayableAmount =
             calculation.TotalTaxPayableAmount,
+        
+        AnnualRevenueAtCalculation =
+            calculation.AnnualRevenueAtCalculation,
+
+        ApplicableRevenueThreshold =
+            calculation.ApplicableRevenueThreshold,
+
+        RecommendedFormCode =
+            calculation.RecommendedFormCode,
+
+        RemainingPitDeduction =
+            calculation.RemainingPitDeduction,
 
         Status =
             taxPeriod.Status,

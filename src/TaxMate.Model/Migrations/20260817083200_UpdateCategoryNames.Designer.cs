@@ -12,8 +12,8 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260816161157_AddProductIsDeleted")]
-    partial class AddProductIsDeleted
+    [Migration("20260817083200_UpdateCategoryNames")]
+    partial class UpdateCategoryNames
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -117,7 +117,7 @@ namespace TaxMate.Model.Migrations
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "GTGT 5%, TNCN 2%",
                             IsActive = true,
-                            Name = "Dịch vụ, XD không bao thầu NVL",
+                            Name = "Dịch vụ",
                             PitRate = 2m,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             VatRate = 5m
@@ -156,7 +156,7 @@ namespace TaxMate.Model.Migrations
                             FormIndicatorCode = "d",
                             FormSectionCode = "I",
                             IsActive = true,
-                            Name = "Ăn uống, nhà hàng, F&B",
+                            Name = "F&B",
                             PitRate = 1.50m,
                             UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
                             VatRate = 3.00m

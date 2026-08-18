@@ -47,6 +47,7 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<RevenueThresholdAlert> RevenueThresholdAlerts => Set<RevenueThresholdAlert>();
 
     public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -561,6 +562,16 @@ public class AppDbContext : DbContext
                 x.CreatedAt
             });
 
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasOne(x => x.Owner)
+            .WithMany(x => x.RevenueThresholdAlerts)
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasIndex(x => new { x.OwnerId, x.Year })
+            .IsUnique();
+
         // Chat Conversation
         modelBuilder.Entity<ChatConversation>()
             .HasOne(x => x.User)
@@ -675,7 +686,7 @@ public class AppDbContext : DbContext
             {
                 BusinessCategoryId = BusinessCategoryIds.ServiceConstruct,
                 Code = "SERVICE_CONSTRUCT",
-                Name = "Dịch vụ, XD không bao thầu NVL",
+                Name = "Dịch vụ",
                 Description = "GTGT 5%, TNCN 2%",
                 VatRate = 5m,
                 PitRate = 2m,
@@ -798,7 +809,7 @@ public class AppDbContext : DbContext
                     Guid.Parse("d1111111-1111-1111-1111-111111111111"),
 
                 Code = "FNB",
-                Name = "Ăn uống, nhà hàng, F&B",
+                Name = "FNB",
 
                 Description =
                     "Hoạt động dịch vụ ăn uống có gắn với hàng hóa.",
