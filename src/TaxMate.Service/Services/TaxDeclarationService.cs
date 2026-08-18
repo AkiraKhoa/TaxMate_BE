@@ -97,18 +97,42 @@ public class TaxDeclarationService : ITaxDeclarationService
             "Taxpayer tax code has not been configured.");
     }
     
-    ValidateTaxPaymentInformation(business);
-
     var version =
         await _taxDeclarationRepository.GetNextVersionAsync(
             taxPeriodId,
             cancellationToken);
 
-    if (calculation.RecommendedFormCode != "01/CNKD")
+    var formCode = calculation.RecommendedFormCode;
+
+    if (formCode != "01/CNKD" &&
+        formCode != "01/TKN-CNKD")
     {
         throw new BadRequestException(
-            $"Form {calculation.RecommendedFormCode} is required for this tax period and is not supported yet.");
+            $"Unsupported tax declaration form: {formCode}.");
     }
+
+    if (formCode == "01/CNKD")
+    {
+        ValidateTaxPaymentInformation(business);
+    }
+
+    var isTaxDeclaration =
+        formCode == "01/CNKD";
+
+    var vatTaxAmount =
+        isTaxDeclaration
+            ? calculation.TotalVatTaxAmount
+            : 0m;
+
+    var pitTaxAmount =
+        isTaxDeclaration
+            ? calculation.TotalPersonalIncomeTaxAmount
+            : 0m;
+
+    var totalTaxPayableAmount =
+        isTaxDeclaration
+            ? calculation.TotalTaxPayableAmount
+            : 0m;
     
     var declaration = new TaxDeclaration
     {
@@ -117,7 +141,7 @@ public class TaxDeclarationService : ITaxDeclarationService
         TaxPeriodId = taxPeriod.Id,
         TaxCalculationId = calculation.Id,
 
-        FormCode = calculation.RecommendedFormCode,
+        FormCode = formCode,
 
         DeclarationCode = BuildDeclarationCode(
             taxPeriod,
@@ -140,23 +164,23 @@ public class TaxDeclarationService : ITaxDeclarationService
         TotalRevenue = calculation.TotalRevenue,
 
         TotalVatTaxAmount =
-            calculation.TotalVatTaxAmount,
+            vatTaxAmount,
 
         TotalPersonalIncomeTaxAmount =
-            calculation.TotalPersonalIncomeTaxAmount,
+            pitTaxAmount,
 
         VatExemptionAmount = 0m,
 
         PersonalIncomeTaxExemptionAmount = 0m,
 
         VatPayableAmount =
-            calculation.TotalVatTaxAmount,
+            vatTaxAmount,
 
         PersonalIncomeTaxPayableAmount =
-            calculation.TotalPersonalIncomeTaxAmount,
+            pitTaxAmount,
 
         TotalTaxPayableAmount =
-            calculation.TotalTaxPayableAmount,
+            totalTaxPayableAmount,
 
         GeneratedAt = DateTime.UtcNow,
 
@@ -237,10 +261,13 @@ public class TaxDeclarationService : ITaxDeclarationService
         });
     }
 
-    CreateDefaultObligations(
-        declaration,
-        taxPeriod,
-        business);
+    if (formCode == "01/CNKD")
+    {
+        CreateDefaultObligations(
+            declaration,
+            taxPeriod,
+            business);
+    }
 
     await _taxDeclarationRepository.AddAsync(
         declaration,
@@ -674,6 +701,12 @@ public class TaxDeclarationService : ITaxDeclarationService
         {
             throw new BadRequestException(
                 "Tax declaration does not contain calculation lines.");
+        }
+
+        if (declaration.FormCode != "01/CNKD")
+        {
+            throw new BadRequestException(
+                $"Export for form {declaration.FormCode} is not supported yet.");
         }
 
         var formModel =

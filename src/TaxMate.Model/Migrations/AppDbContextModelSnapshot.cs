@@ -204,6 +204,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsStockTrackingEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LastSePayLinkTokenXid")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -1390,6 +1393,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
