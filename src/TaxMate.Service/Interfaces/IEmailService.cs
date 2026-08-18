@@ -25,8 +25,7 @@ public interface IEmailService
     Task SendRevenueThresholdEmailAsync(
         string toEmail,
         string fullName,
-        int currentYear,
-        int currentQuarter,
+        int year,
         DateTime windowStart,
         DateTime windowEnd,
         decimal threshold,

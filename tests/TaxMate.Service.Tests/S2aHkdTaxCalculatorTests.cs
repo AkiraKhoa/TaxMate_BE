@@ -63,30 +63,26 @@ public class TaxPeriodWindowTests
     }
 
     [Fact]
-    public void GetCurrentAndPreviousThreeQuarterWindow_UsesCurrentQuarterPlusThreePrevious()
+    public void GetCalendarYearWindow_UsesJanuaryThroughDecemberOfThatYear()
     {
         var asOf = new DateTime(2026, 8, 17, 0, 0, 0, DateTimeKind.Utc);
 
-        var (start, end, year, quarter) =
-            TaxPeriodWindow.GetCurrentAndPreviousThreeQuarterWindow(asOf);
+        var (start, end, year) = TaxPeriodWindow.GetCalendarYearWindow(asOf);
 
         Assert.Equal(2026, year);
-        Assert.Equal(3, quarter);
-        Assert.Equal(new DateTime(2025, 10, 1, 0, 0, 0, DateTimeKind.Utc), start);
-        Assert.Equal(new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), end);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), start);
+        Assert.Equal(new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc), end);
     }
 
     [Fact]
-    public void GetCurrentAndPreviousThreeQuarterWindow_Q1IncludesPreviousYear()
+    public void GetCalendarYearWindow_Q1StaysInTheSameCalendarYear()
     {
         var asOf = new DateTime(2027, 2, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var (start, end, year, quarter) =
-            TaxPeriodWindow.GetCurrentAndPreviousThreeQuarterWindow(asOf);
+        var (start, end, year) = TaxPeriodWindow.GetCalendarYearWindow(asOf);
 
         Assert.Equal(2027, year);
-        Assert.Equal(1, quarter);
-        Assert.Equal(new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc), start);
-        Assert.Equal(new DateTime(2027, 4, 1, 0, 0, 0, DateTimeKind.Utc), end);
+        Assert.Equal(new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc), start);
+        Assert.Equal(new DateTime(2028, 1, 1, 0, 0, 0, DateTimeKind.Utc), end);
     }
 }

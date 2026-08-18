@@ -42,14 +42,13 @@ public static class TaxPeriodWindow
     }
 
     /// <summary>
-    /// Current tax quarter plus the previous three quarters (four consecutive periods).
-    /// End is exclusive.
+    /// Calendar year (1 Jan – 1 Jan next year, end exclusive), matching hộ kinh doanh
+    /// doanh thu năm dương lịch.
     /// </summary>
-    public static (DateTime Start, DateTime EndExclusive, int CurrentYear, int CurrentQuarter)
-        GetCurrentAndPreviousThreeQuarterWindow(DateTime utcDate)
+    public static (DateTime Start, DateTime EndExclusive, int Year) GetCalendarYearWindow(DateTime utcDate)
     {
-        var (year, quarter) = GetYearAndQuarter(utcDate);
-        var (currentStart, currentEnd) = GetQuarterWindow(year, quarter);
-        return (currentStart.AddMonths(-9), currentEnd, year, quarter);
+        var year = DateTime.SpecifyKind(utcDate, DateTimeKind.Utc).Year;
+        var start = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        return (start, start.AddYears(1), year);
     }
 }

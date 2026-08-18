@@ -6,7 +6,6 @@ using MailKit.Security;
 using Microsoft.Extensions.Options;
 using MimeKit;
 using TaxMate.Infrastructure.Options;
-using TaxMate.Model.Common;
 using TaxMate.Model.DTO.Reports;
 using TaxMate.Service.Interfaces;
 
@@ -97,8 +96,7 @@ public class SmtpEmailService : IEmailService
     public Task SendRevenueThresholdEmailAsync(
         string toEmail,
         string fullName,
-        int currentYear,
-        int currentQuarter,
+        int year,
         DateTime windowStart,
         DateTime windowEnd,
         decimal threshold,
@@ -107,9 +105,7 @@ public class SmtpEmailService : IEmailService
         CancellationToken cancellationToken = default)
     {
         var vi = CultureInfo.GetCultureInfo("vi-VN");
-        var currentPeriod = TaxPeriodWindow.FormatQuarterPeriod(currentYear, currentQuarter);
-        var windowLabel =
-            $"{windowStart:dd/MM/yyyy} – {windowEnd.AddTicks(-1):dd/MM/yyyy}";
+        var windowLabel = $"{windowStart:dd/MM/yyyy} – {windowEnd.AddTicks(-1):dd/MM/yyyy}";
         var frontendUrl = string.IsNullOrWhiteSpace(_appOptions.FrontendBaseUrl)
             ? "https://localhost:5173"
             : _appOptions.FrontendBaseUrl.TrimEnd('/');
@@ -142,7 +138,7 @@ public class SmtpEmailService : IEmailService
                           <p style="margin:0 0 12px;color:#222;font-size:16px;">Xin chào {WebUtility.HtmlEncode(fullName)},</p>
                           <p style="margin:0 0 16px;color:#333;font-size:14px;line-height:1.6;">
                             Tổng doanh thu của <strong>tất cả hồ sơ kinh doanh</strong> trong
-                            <strong>{currentPeriod}</strong> và 3 kỳ trước
+                            <strong>năm {year}</strong>
                             ({WebUtility.HtmlEncode(windowLabel)}) đã đạt hoặc vượt
                             <strong>{FormatVnd(threshold, vi)}</strong>.
                           </p>
@@ -150,7 +146,7 @@ public class SmtpEmailService : IEmailService
                             <thead>
                               <tr>
                                 <th align="left" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Hồ sơ kinh doanh</th>
-                                <th align="right" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Doanh thu 4 kỳ</th>
+                                <th align="right" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Doanh thu năm {year}</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -187,7 +183,7 @@ public class SmtpEmailService : IEmailService
 
         return SendHtmlAsync(
             toEmail,
-            "Doanh thu 4 kỳ đã đạt 1 tỷ đồng - TaxMate",
+            $"Doanh thu năm {year} đã đạt 1 tỷ đồng - TaxMate",
             html,
             cancellationToken);
     }

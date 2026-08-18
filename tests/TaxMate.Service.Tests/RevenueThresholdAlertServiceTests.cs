@@ -49,7 +49,6 @@ public class RevenueThresholdAlertServiceTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<int>(),
-                It.IsAny<int>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<decimal>(),
@@ -61,27 +60,30 @@ public class RevenueThresholdAlertServiceTests
     }
 
     [Fact]
-    public async Task CheckAfterSaleAsync_SendsOnce_WhenFourPeriodTotalCrossesThreshold()
+    public async Task CheckAfterSaleAsync_SendsOnce_WhenCalendarYearTotalCrossesThreshold()
     {
         SetupBusiness();
         SetupNotYetSent();
         SetupOwner();
         var profiles = SetupProfiles(600_000_000m, 500_000_000m);
+        var year = DateTime.UtcNow.Year;
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var yearEnd = yearStart.AddYears(1);
 
         await CreateService().CheckAfterSaleAsync(_businessId);
 
         _alerts.Verify(x => x.AddAsync(It.Is<RevenueThresholdAlert>(alert =>
             alert.OwnerId == _ownerId &&
+            alert.Year == year &&
             alert.TotalRevenue == 1_100_000_000m)), Times.Once);
         _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _email.Verify(
             x => x.SendRevenueThresholdEmailAsync(
                 "owner@example.com",
                 "Chủ hộ",
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
+                year,
+                yearStart,
+                yearEnd,
                 1_000_000_000m,
                 profiles,
                 1_100_000_000m,
@@ -111,7 +113,6 @@ public class RevenueThresholdAlertServiceTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<int>(),
-                It.IsAny<int>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<decimal>(),
@@ -132,7 +133,6 @@ public class RevenueThresholdAlertServiceTests
             .Setup(x => x.SendRevenueThresholdEmailAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<DateTime>(),
@@ -165,7 +165,6 @@ public class RevenueThresholdAlertServiceTests
             x => x.SendRevenueThresholdEmailAsync(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
-                It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<DateTime>(),

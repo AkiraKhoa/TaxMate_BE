@@ -68,11 +68,12 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         }
 
         var asOfUtc = DateTime.UtcNow;
-        var (windowStart, windowEnd, currentYear, currentQuarter) =
-            TaxPeriodWindow.GetCurrentAndPreviousThreeQuarterWindow(asOfUtc);
+        var (windowStart, windowEnd, year) =
+            TaxPeriodWindow.GetCalendarYearWindow(asOfUtc);
+        var (_, quarter) = TaxPeriodWindow.GetYearAndQuarter(asOfUtc);
 
         var alreadySent = await _alerts.AnyAsync(alert =>
-            alert.OwnerId == business.OwnerId && alert.Year == currentYear);
+            alert.OwnerId == business.OwnerId && alert.Year == year);
         if (alreadySent)
         {
             return;
@@ -99,8 +100,8 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         {
             Id = Guid.NewGuid(),
             OwnerId = business.OwnerId,
-            Year = currentYear,
-            Quarter = currentQuarter,
+            Year = year,
+            Quarter = quarter,
             WindowStart = windowStart,
             WindowEnd = windowEnd,
             TotalRevenue = total,
@@ -124,8 +125,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
             await _emailService.SendRevenueThresholdEmailAsync(
                 owner.Email,
                 owner.FullName,
-                currentYear,
-                currentQuarter,
+                year,
                 windowStart,
                 windowEnd,
                 _taxSettings.BusinessRevenueThreshold,
@@ -139,7 +139,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
                 ex,
                 "Failed to send 1-tỷ revenue threshold email to owner {OwnerId} for year {Year}.",
                 business.OwnerId,
-                currentYear);
+                year);
 
             _alerts.Remove(alert);
             await _unitOfWork.SaveChangesAsync(cancellationToken);

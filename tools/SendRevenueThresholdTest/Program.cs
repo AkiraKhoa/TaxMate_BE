@@ -35,8 +35,7 @@ await using var provider = services.BuildServiceProvider();
 var email = provider.GetRequiredService<IEmailService>();
 
 var now = DateTime.UtcNow;
-var (windowStart, windowEnd, currentYear, currentQuarter) =
-    TaxPeriodWindow.GetCurrentAndPreviousThreeQuarterWindow(now);
+var (windowStart, windowEnd, year) = TaxPeriodWindow.GetCalendarYearWindow(now);
 
 var profiles = new List<OwnerProfileRevenueRow>
 {
@@ -49,15 +48,14 @@ var profiles = new List<OwnerProfileRevenueRow>
 };
 
 Console.WriteLine($"Owner {fullName} / {targetEmail}");
-Console.WriteLine($"Shop Bang Cao already has {bangCaoRevenue:N0} VND in the current 4-period window.");
-Console.WriteLine($"Window: {TaxPeriodWindow.FormatQuarterPeriod(currentYear, currentQuarter)} {windowStart:yyyy-MM-dd} .. {windowEnd:yyyy-MM-dd}");
+Console.WriteLine($"Shop Bang Cao already has {bangCaoRevenue:N0} VND in calendar year {year}.");
+Console.WriteLine($"Window: {windowStart:yyyy-MM-dd} .. {windowEnd:yyyy-MM-dd}");
 Console.WriteLine("Sending threshold email via SMTP...");
 
 await email.SendRevenueThresholdEmailAsync(
     targetEmail,
     fullName,
-    currentYear,
-    currentQuarter,
+    year,
     windowStart,
     windowEnd,
     threshold,
@@ -65,5 +63,5 @@ await email.SendRevenueThresholdEmailAsync(
     bangCaoRevenue);
 
 Console.WriteLine("SMTP send completed without error.");
-Console.WriteLine($"Check inbox/spam for: Doanh thu 4 kỳ đã đạt 1 tỷ đồng - TaxMate");
+Console.WriteLine($"Check inbox/spam for: Doanh thu năm {year} đã đạt 1 tỷ đồng - TaxMate");
 return 0;

@@ -10,12 +10,13 @@ public class RevenueThresholdAlert : BaseEntity
     public Guid OwnerId { get; set; }
 
     /// <summary>
-    /// Calendar year of the current tax period when the alert was sent.
+    /// Calendar year (năm dương lịch) whose doanh thu triggered the alert.
+    /// Unique with OwnerId so one email is sent per owner per year.
     /// </summary>
     public int Year { get; set; }
 
     /// <summary>
-    /// Quarter (1-4) of the current tax period when the alert was sent.
+    /// Quarter (1-4) in which the owner first crossed the threshold that year.
     /// </summary>
     public int Quarter { get; set; }
 
