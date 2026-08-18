@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.DTO.Reports;
+using TaxMate.Model.DTO.Reports;
 
 namespace TaxMate.Repository.Interfaces;
 
@@ -61,4 +61,10 @@ public interface IReportRepository
     Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesAsync(
         Guid businessId,
         int year);
+
+    Task<List<OwnerProfileRevenueRow>> GetOwnerRevenueByProfileAsync(
+        Guid ownerId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
 }

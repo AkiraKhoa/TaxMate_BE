@@ -25,6 +25,7 @@ public class OrderServiceInventoryTests
     private readonly Mock<IEInvoiceService> _eInvoiceService = new();
     private readonly Mock<IProductIngredientRepository> _productIngredients = new();
     private readonly Mock<IIngredientRepository> _ingredients = new();
+    private readonly Mock<IRevenueThresholdAlertService> _revenueThresholdAlerts = new();
 
     public OrderServiceInventoryTests()
     {
@@ -55,6 +56,28 @@ public class OrderServiceInventoryTests
             order.TransactionId, TransactionStatus.Draft, TransactionStatus.Completed), Times.Once);
         _products.Verify(x => x.DecrementStockAsync(productId, 5), Times.Once);
         _ingredients.Verify(x => x.DecrementStockAsync(It.IsAny<Guid>(), It.IsAny<decimal>()), Times.Never);
+        _revenueThresholdAlerts.Verify(
+            x => x.CheckAfterSaleAsync(order.BusinessId, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Checkout_StillSucceeds_WhenRevenueThresholdCheckThrows()
+    {
+        var productId = Guid.NewGuid();
+        var order = CreateOrder(TransactionStatus.Draft, CreateItem(productId, 1));
+        ArrangeOrder(order);
+        _productIngredients.Setup(x => x.GetByProductIdAsync(productId)).ReturnsAsync([]);
+        _revenueThresholdAlerts
+            .Setup(x => x.CheckAfterSaleAsync(order.BusinessId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("smtp down"));
+
+        var detail = await CreateService().CheckoutAsync(
+            order.TransactionId,
+            CashCheckout(order.TotalAmount));
+
+        Assert.Equal("INV-001", detail.InvoiceNumber);
+        Assert.Equal(TransactionStatus.Completed, order.Status);
     }
 
     [Fact]
@@ -205,6 +228,15 @@ public class OrderServiceInventoryTests
     private void ArrangeOrder(Transaction order)
     {
         _transactions.Setup(x => x.GetByIdWithDetailsAsync(order.TransactionId)).ReturnsAsync(order);
+        _businessProfiles
+            .Setup(x => x.GetByIdAsync(order.BusinessId))
+            .ReturnsAsync(new BusinessProfile
+            {
+                Id = order.BusinessId,
+                OwnerId = Guid.NewGuid(),
+                BusinessName = "Shop",
+                IsStockTrackingEnabled = true
+            });
     }
 
     private static Transaction CreateOrder(string status, params TransactionItem[] items)
@@ -255,5 +287,6 @@ public class OrderServiceInventoryTests
         _invoices.Object,
         _eInvoiceService.Object,
         _productIngredients.Object,
-        _ingredients.Object);
+        _ingredients.Object,
+        _revenueThresholdAlerts.Object);
 }

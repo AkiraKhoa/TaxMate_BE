@@ -47,6 +47,7 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<RevenueThresholdAlert> RevenueThresholdAlerts => Set<RevenueThresholdAlert>();
 
     public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -560,6 +561,16 @@ public class AppDbContext : DbContext
                 x.UserId,
                 x.CreatedAt
             });
+
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasOne(x => x.Owner)
+            .WithMany(x => x.RevenueThresholdAlerts)
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasIndex(x => new { x.OwnerId, x.Year })
+            .IsUnique();
 
         // Chat Conversation
         modelBuilder.Entity<ChatConversation>()
