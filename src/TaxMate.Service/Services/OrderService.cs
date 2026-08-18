@@ -24,6 +24,8 @@ public class OrderService : IOrderService
     private readonly IProductIngredientRepository _productIngredients;
     private readonly IIngredientRepository _ingredients;
     private readonly IRevenueThresholdAlertService _revenueThresholdAlerts;
+    private readonly IIncomeRepository _incomes;
+    private readonly IIncomeCategoryRepository _incomeCategories;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -40,7 +42,9 @@ public class OrderService : IOrderService
         IEInvoiceService eInvoiceService,
         IProductIngredientRepository productIngredients,
         IIngredientRepository ingredients,
-        IRevenueThresholdAlertService revenueThresholdAlerts)
+        IRevenueThresholdAlertService revenueThresholdAlerts,
+        IIncomeRepository incomes,
+        IIncomeCategoryRepository incomeCategories)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -57,6 +61,8 @@ public class OrderService : IOrderService
         _productIngredients = productIngredients;
         _ingredients = ingredients;
         _revenueThresholdAlerts = revenueThresholdAlerts;
+        _incomes = incomes;
+        _incomeCategories = incomeCategories;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -473,6 +479,12 @@ public class OrderService : IOrderService
                 order.Payments.Add(payment);
             }
 
+            if (order.Status == TransactionStatus.Completed)
+            {
+                var primaryPaymentMethod = request.Payments.FirstOrDefault()?.PaymentMethod ?? "Cash";
+                await RecordIncomeForCompletedOrderAsync(order, paidAt, primaryPaymentMethod);
+            }
+
             await _unitOfWork.SaveChangesAsync();
 
             var invoiceNumber = await _invoiceService.GenerateFromOrderAsync(order.TransactionId);
@@ -559,31 +571,151 @@ public class OrderService : IOrderService
         }
     }
 
-    public async Task CancelOrderAsync(Guid transactionId)
+    public async Task ReopenForEditingAsync(Guid transactionId)
     {
-        var order = await _transactions.GetByIdAsync(transactionId);
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
         {
             throw new NotFoundException("Order not found.");
         }
 
-        if (order.Status != "Draft" && order.Status != "AwaitingPayment")
+        if (order.Status != TransactionStatus.AwaitingPayment)
+        {
+            throw new ConflictException($"Cannot reopen order with status '{order.Status}'. Only 'AwaitingPayment' orders can be reopened for editing.");
+        }
+
+        if (order.Payments.Any(p => p.PaidAt != null))
+        {
+            throw new ConflictException("Order has already been paid and cannot be reopened for editing.");
+        }
+
+        Invoice? linkedInvoice = null;
+        if (!string.IsNullOrEmpty(order.InvoiceId))
+        {
+            linkedInvoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
+            if (linkedInvoice != null && linkedInvoice.Status != InvoiceStatus.Unpaid)
+            {
+                throw new ConflictException($"Cannot reopen order because linked invoice has status '{linkedInvoice.Status}'. Only 'Unpaid' invoices can be cancelled for reopen.");
+            }
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var transitioned = await _transactions.TryTransitionStatusAsync(
+                transactionId,
+                TransactionStatus.AwaitingPayment,
+                TransactionStatus.Draft);
+
+            if (!transitioned)
+            {
+                throw new ConflictException("Order status changed while reopening was being processed.");
+            }
+
+            order.Status = TransactionStatus.Draft;
+
+            // Xóa các bản ghi thanh toán chưa hoàn tất
+            var unpaidPayments = order.Payments.Where(p => p.PaidAt == null).ToList();
+            if (unpaidPayments.Count > 0)
+            {
+                _payments.RemoveRange(unpaidPayments);
+            }
+
+            // Hủy hóa đơn chưa thanh toán nếu có và gỡ liên kết
+            if (linkedInvoice != null && linkedInvoice.Status == InvoiceStatus.Unpaid)
+            {
+                linkedInvoice.Status = InvoiceStatus.Cancelled;
+            }
+            order.InvoiceId = null;
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    public async Task CancelOrderAsync(Guid transactionId)
+    {
+        var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
+        if (order == null)
+        {
+            throw new NotFoundException("Order not found.");
+        }
+
+        if (order.Status != TransactionStatus.Draft && order.Status != TransactionStatus.AwaitingPayment)
         {
             throw new ConflictException($"Cannot cancel order with status '{order.Status}'. Only 'Draft' or 'AwaitingPayment' orders can be cancelled.");
         }
 
-        order.Status = "Cancelled";
-        await _unitOfWork.SaveChangesAsync();
+        if (order.Payments.Any(p => p.PaidAt != null))
+        {
+            throw new ConflictException("Order has already been partially or fully paid and cannot be cancelled directly.");
+        }
+
+        Invoice? linkedInvoice = null;
+        if (!string.IsNullOrEmpty(order.InvoiceId))
+        {
+            linkedInvoice = await _invoices.FirstOrDefaultAsync(i => i.InvoiceNumber == order.InvoiceId);
+            if (linkedInvoice != null && linkedInvoice.Status != InvoiceStatus.Unpaid)
+            {
+                throw new ConflictException($"Cannot cancel order because linked invoice has status '{linkedInvoice.Status}'. Only 'Unpaid' invoices can be cancelled.");
+            }
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var currentStatus = order.Status;
+            var transitioned = await _transactions.TryTransitionStatusAsync(
+                transactionId,
+                currentStatus,
+                TransactionStatus.Cancelled);
+
+            if (!transitioned)
+            {
+                throw new ConflictException("Order status changed while cancellation was being processed.");
+            }
+
+            order.Status = TransactionStatus.Cancelled;
+
+            if (currentStatus == TransactionStatus.AwaitingPayment)
+            {
+                var unpaidPayments = order.Payments.Where(p => p.PaidAt == null).ToList();
+                if (unpaidPayments.Count > 0)
+                {
+                    _payments.RemoveRange(unpaidPayments);
+                }
+
+                if (linkedInvoice != null && linkedInvoice.Status == InvoiceStatus.Unpaid)
+                {
+                    linkedInvoice.Status = InvoiceStatus.Cancelled;
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
     }
 
     public async Task CancelAllDraftsAsync(Guid businessId)
     {
-        var draftOrders = await _transactions.FindAsync(x => x.BusinessId == businessId && (x.Status == "Draft" || x.Status == "AwaitingPayment"));
+        var draftOrders = await _transactions.FindAsync(x => x.BusinessId == businessId && x.Status == TransactionStatus.Draft);
         foreach (var order in draftOrders)
         {
-            order.Status = "Cancelled";
+            await _transactions.TryTransitionStatusAsync(
+                order.TransactionId,
+                TransactionStatus.Draft,
+                TransactionStatus.Cancelled);
         }
-        await _unitOfWork.SaveChangesAsync();
     }
 
     public async Task<InvoiceDetailResponse> ConfirmPaymentAsync(Guid transactionId)
@@ -613,6 +745,9 @@ public class OrderService : IOrderService
                     payment.PaidAt = paidAt;
                 }
             }
+
+            var primaryPaymentMethod = order.Payments.FirstOrDefault()?.PaymentMethod ?? "Transfer";
+            await RecordIncomeForCompletedOrderAsync(order, paidAt, primaryPaymentMethod);
 
             await _unitOfWork.SaveChangesAsync();
 
@@ -798,5 +933,44 @@ public class OrderService : IOrderService
         order.SurchargeAmount = 0;
 
         order.TotalAmount = order.SubTotal;
+    }
+
+    private async Task RecordIncomeForCompletedOrderAsync(Transaction order, DateTime paidAt, string paymentMethod)
+    {
+        var category = await _incomeCategories.FirstOrDefaultAsync(c =>
+            (c.BusinessId == order.BusinessId || c.BusinessId == null) &&
+            (c.CategoryName == "Thu bán hàng" || c.CategoryName == "Doanh thu bán hàng" || c.CategoryName == "Doanh thu"));
+
+        if (category == null)
+        {
+            category = new IncomeCategory
+            {
+                IncomeCategoryId = Guid.NewGuid(),
+                BusinessId = order.BusinessId,
+                CategoryName = "Thu bán hàng",
+                Description = "Doanh thu bán hàng từ POS",
+                IsDefault = true,
+                CreatedAt = paidAt,
+                UpdatedAt = paidAt
+            };
+            await _incomeCategories.AddAsync(category);
+        }
+
+        var income = new Income
+        {
+            IncomeId = Guid.NewGuid(),
+            BusinessId = order.BusinessId,
+            IncomeCategoryId = category.IncomeCategoryId,
+            IncomeTitle = $"Thu tiền đơn {order.TransactionCode}",
+            Amount = order.TotalAmount,
+            IncomeDate = paidAt,
+            ReceivedDate = paidAt,
+            PaymentMethod = paymentMethod,
+            Note = $"Tự động tạo từ đơn hàng POS {order.TransactionCode}",
+            CreatedAt = paidAt,
+            UpdatedAt = paidAt
+        };
+
+        await _incomes.AddAsync(income);
     }
 }
