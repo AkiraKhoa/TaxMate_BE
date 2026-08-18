@@ -643,4 +643,29 @@ public class ReportRepository : IReportRepository
 
         return result;
     }
+
+    public async Task<List<OwnerProfileRevenueRow>> GetOwnerRevenueByProfileAsync(
+        Guid ownerId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.BusinessProfiles
+            .AsNoTracking()
+            .Where(profile => profile.OwnerId == ownerId && profile.IsActive)
+            .Select(profile => new OwnerProfileRevenueRow
+            {
+                BusinessId = profile.Id,
+                BusinessName = profile.BusinessName,
+                Revenue = profile.Transactions
+                    .Where(transaction =>
+                        transaction.TransactionType == TransactionTypes.Sale &&
+                        transaction.Status == "Completed" &&
+                        transaction.TransactionDate >= startDate &&
+                        transaction.TransactionDate < endDate)
+                    .Sum(transaction => (decimal?)transaction.TotalAmount) ?? 0m
+            })
+            .OrderBy(row => row.BusinessName)
+            .ToListAsync(cancellationToken);
+    }
 }   

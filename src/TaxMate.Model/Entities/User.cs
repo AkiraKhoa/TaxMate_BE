@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -48,6 +48,9 @@ public class User : BaseEntity
 
     public ICollection<Notification> Notifications { get; set; }
         = new List<Notification>();
+
+    public ICollection<RevenueThresholdAlert> RevenueThresholdAlerts { get; set; }
+        = new List<RevenueThresholdAlert>();
 
     public ICollection<UserSubscription> UserSubscriptions { get; set; }
         = new List<UserSubscription>();

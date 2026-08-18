@@ -33,4 +33,23 @@ public static class TaxPeriodWindow
 
         return $"Quý {roman}/{year}";
     }
+
+    public static (int Year, int Quarter) GetYearAndQuarter(DateTime utcDate)
+    {
+        var date = DateTime.SpecifyKind(utcDate, DateTimeKind.Utc);
+        var quarter = ((date.Month - 1) / 3) + 1;
+        return (date.Year, quarter);
+    }
+
+    /// <summary>
+    /// Current tax quarter plus the previous three quarters (four consecutive periods).
+    /// End is exclusive.
+    /// </summary>
+    public static (DateTime Start, DateTime EndExclusive, int CurrentYear, int CurrentQuarter)
+        GetCurrentAndPreviousThreeQuarterWindow(DateTime utcDate)
+    {
+        var (year, quarter) = GetYearAndQuarter(utcDate);
+        var (currentStart, currentEnd) = GetQuarterWindow(year, quarter);
+        return (currentStart.AddMonths(-9), currentEnd, year, quarter);
+    }
 }

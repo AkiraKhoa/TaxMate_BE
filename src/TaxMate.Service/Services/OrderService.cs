@@ -23,6 +23,7 @@ public class OrderService : IOrderService
     private readonly IEInvoiceService _eInvoiceService;
     private readonly IProductIngredientRepository _productIngredients;
     private readonly IIngredientRepository _ingredients;
+    private readonly IRevenueThresholdAlertService _revenueThresholdAlerts;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -38,7 +39,8 @@ public class OrderService : IOrderService
         IInvoiceRepository invoices,
         IEInvoiceService eInvoiceService,
         IProductIngredientRepository productIngredients,
-        IIngredientRepository ingredients)
+        IIngredientRepository ingredients,
+        IRevenueThresholdAlertService revenueThresholdAlerts)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -54,6 +56,7 @@ public class OrderService : IOrderService
         _eInvoiceService = eInvoiceService;
         _productIngredients = productIngredients;
         _ingredients = ingredients;
+        _revenueThresholdAlerts = revenueThresholdAlerts;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -542,6 +545,11 @@ public class OrderService : IOrderService
 
             await _unitOfWork.CommitTransactionAsync();
 
+            if (order.Status == TransactionStatus.Completed)
+            {
+                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+            }
+
             return await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
         }
         catch
@@ -678,6 +686,11 @@ public class OrderService : IOrderService
 
             await _unitOfWork.CommitTransactionAsync();
 
+            if (order.Status == TransactionStatus.Completed)
+            {
+                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+            }
+
             return await _invoiceService.GetInvoiceDetailAsync(order.InvoiceId!);
         }
         catch
@@ -743,6 +756,18 @@ public class OrderService : IOrderService
         foreach (var (ingredientId, quantity) in ingredientDeltas.OrderBy(x => x.Key))
         {
             await _ingredients.DecrementStockAsync(ingredientId, quantity);
+        }
+    }
+
+    private async Task TryNotifyRevenueThresholdAsync(Guid businessId)
+    {
+        try
+        {
+            await _revenueThresholdAlerts.CheckAfterSaleAsync(businessId);
+        }
+        catch
+        {
+            // Threshold email must never fail checkout / payment confirm.
         }
     }
 
