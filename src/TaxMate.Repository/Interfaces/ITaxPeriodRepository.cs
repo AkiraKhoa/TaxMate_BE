@@ -19,6 +19,10 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);
 
+    Task<TaxPeriod?> GetCanonicalByIdAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
     Task<TaxPeriodDetailResponse?> GetDetailAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);

@@ -36,6 +36,8 @@ public class TaxPeriodService : ITaxPeriodService
 
         ValidateRequest(request);
 
+        // Repository resolves businessId -> OwnerId and returns only
+        // one canonical TaxPeriod for each owner-level tax period.
         return await _taxPeriodRepository.GetByBusinessAsync(
             businessId,
             request,

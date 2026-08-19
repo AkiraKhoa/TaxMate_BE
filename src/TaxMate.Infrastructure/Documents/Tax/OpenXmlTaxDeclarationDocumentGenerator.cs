@@ -230,7 +230,9 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
                         "I",
                         StringComparison.OrdinalIgnoreCase))
                 .GroupBy(
-                    x => x.BusinessLocationCode ?? string.Empty,
+                    x => !string.IsNullOrWhiteSpace(x.BusinessLocationCode)
+                        ? x.BusinessLocationCode!
+                        : $"__NO_CODE__::{x.BusinessLocationName ?? string.Empty}",
                     StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -506,18 +508,75 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             cells[0],
             $"{sectionOrdinal}.{activityOrdinal}");
 
-        SetCellText(
-            cells[1],
-            line.ActivityName);
-
-        SetCellText(
-            cells[2],
-            $"({NormalizeActivityCode(line.ActivityCode)})");
+        // Keep the official activity wording/code from the 01/CNKD template.
+        // Internal names such as "FNB" or "Dịch vụ" must not replace [09].
+        CopyOfficialActivityIdentity(
+            row,
+            sectionOrdinal,
+            line.ActivityCode);
 
         FillSectionADataRow(
             row,
             line,
             overwriteIdentityCells: false);
+    }
+
+    private static void CopyOfficialActivityIdentity(
+        TableRow targetRow,
+        int sectionOrdinal,
+        string activityCode)
+    {
+        var table = targetRow.Ancestors<Table>().FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "Could not locate Section A table for cloned location row.");
+
+        var sourceRow = FindFixedLocationActivityRow(
+            table.Elements<TableRow>().ToList(),
+            locationOrdinal: 1,
+            activityCode)
+            ?? throw new InvalidOperationException(
+                $"Could not locate official template activity row for '{activityCode}'.");
+
+        var sourceCells = sourceRow.Elements<TableCell>().ToList();
+        var targetCells = targetRow.Elements<TableCell>().ToList();
+
+        if (sourceCells.Count < 3 || targetCells.Count < 3)
+        {
+            throw new InvalidOperationException(
+                "Section A activity row structure is invalid.");
+        }
+
+        SetCellText(
+            targetCells[0],
+            $"{sectionOrdinal}.{ResolveActivityOrdinal(activityCode)}");
+
+        CopyCellParagraphContent(sourceCells[1], targetCells[1]);
+        CopyCellParagraphContent(sourceCells[2], targetCells[2]);
+    }
+
+    private static void CopyCellParagraphContent(
+        TableCell source,
+        TableCell target)
+    {
+        var targetProperties =
+            target.TableCellProperties?.CloneNode(true) as TableCellProperties;
+
+        target.RemoveAllChildren();
+
+        if (targetProperties is not null)
+        {
+            target.Append(targetProperties);
+        }
+
+        foreach (var paragraph in source.Elements<Paragraph>())
+        {
+            target.Append(paragraph.CloneNode(true));
+        }
+
+        if (!target.Elements<Paragraph>().Any())
+        {
+            target.Append(new Paragraph());
+        }
     }
 
     private static void FillSectionADataRow(
@@ -905,7 +964,56 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             cell,
             value == 0m
                 ? string.Empty
-                : value.ToString("#,##0.##", CultureInfo.GetCultureInfo("vi-VN")));
+                : value.ToString(
+                    "#,##0.##",
+                    CultureInfo.GetCultureInfo("vi-VN")));
+
+        EnsureNoWrap(cell);
+        EnsureCompactMoneyFont(cell);
+    }
+
+    private static void EnsureNoWrap(TableCell cell)
+    {
+        var properties = cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<NoWrap>() is null)
+        {
+            properties.Append(new NoWrap());
+        }
+    }
+
+    private static void EnsureCompactMoneyFont(TableCell cell)
+    {
+        const string fontSize = "16"; // 8 pt, only for numeric cells.
+
+        foreach (var run in cell.Descendants<Run>())
+        {
+            var properties = run.RunProperties;
+
+            if (properties is null)
+            {
+                properties = new RunProperties();
+                run.PrependChild(properties);
+            }
+
+            var size = properties.GetFirstChild<FontSize>();
+            if (size is null)
+                properties.Append(new FontSize { Val = fontSize });
+            else
+                size.Val = fontSize;
+
+            var complexSize = properties.GetFirstChild<FontSizeComplexScript>();
+            if (complexSize is null)
+                properties.Append(new FontSizeComplexScript { Val = fontSize });
+            else
+                complexSize.Val = fontSize;
+        }
     }
 
     private static void SetCellText(
