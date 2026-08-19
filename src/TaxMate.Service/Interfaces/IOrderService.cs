@@ -6,7 +6,7 @@ namespace TaxMate.Service.Interfaces;
 public interface IOrderService
 {
     Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request);
-    Task<OrderDetailResponse> GetOrderDetailAsync(Guid transactionId);
+    Task<OrderDetailResponse> GetOrderDetailAsync(Guid transactionId, bool includeEInvoiceQuota = false);
     Task<PagedResult<OrderSummaryResponse>> GetOrdersByBusinessAsync(
         Guid businessId,
         int page,
