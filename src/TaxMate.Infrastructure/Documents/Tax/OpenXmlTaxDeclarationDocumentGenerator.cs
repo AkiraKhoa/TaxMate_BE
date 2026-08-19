@@ -67,6 +67,19 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             FillSectionD(body, model);
             FillDeclarationDate(body, model);
 
+            /*
+             * Final presentation pass:
+             * - one font family across the entire exported form;
+             * - compact paragraph spacing inside tables;
+             * - optimized Section A/D numeric and administrative columns.
+             *
+             * This pass intentionally preserves bold/italic and existing
+             * template hierarchy while normalizing the visual system.
+             */
+            ApplyUnifiedDocumentFormatting(body);
+            OptimizeSectionATableLayout(body);
+            OptimizeSectionDTableLayout(body);
+
             mainPart.Document.Save();
         }
 
@@ -399,6 +412,7 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
                     (TableRow)dataTemplate.CloneNode(true);
 
                 FillAdditionalLocationDataRow(
+                    table,
                     dataRow,
                     sectionOrdinal,
                     line);
@@ -487,6 +501,7 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
     }
 
     private static void FillAdditionalLocationDataRow(
+        Table sectionATable,
         TableRow row,
         int sectionOrdinal,
         Form01Cnkd2026LineModel line)
@@ -511,6 +526,7 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
         // Keep the official activity wording/code from the 01/CNKD template.
         // Internal names such as "FNB" or "Dịch vụ" must not replace [09].
         CopyOfficialActivityIdentity(
+            sectionATable,
             row,
             sectionOrdinal,
             line.ActivityCode);
@@ -522,16 +538,13 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
     }
 
     private static void CopyOfficialActivityIdentity(
+        Table sectionATable,
         TableRow targetRow,
         int sectionOrdinal,
         string activityCode)
     {
-        var table = targetRow.Ancestors<Table>().FirstOrDefault()
-            ?? throw new InvalidOperationException(
-                "Could not locate Section A table for cloned location row.");
-
         var sourceRow = FindFixedLocationActivityRow(
-            table.Elements<TableRow>().ToList(),
+            sectionATable.Elements<TableRow>().ToList(),
             locationOrdinal: 1,
             activityCode)
             ?? throw new InvalidOperationException(
@@ -986,11 +999,55 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
         {
             properties.Append(new NoWrap());
         }
+
+        /*
+         * tcFitText keeps long monetary values on one visual line by
+         * horizontally fitting the run inside the existing template cell.
+         * This preserves the official table widths instead of rebuilding
+         * the template grid.
+         */
+        if (properties.GetFirstChild<TableCellFitText>() is null)
+        {
+            properties.Append(
+                new TableCellFitText
+                {
+                    Val = OnOffOnlyValues.On
+                });
+        }
+
+        foreach (var paragraph in cell.Elements<Paragraph>())
+        {
+            var paragraphProperties =
+                paragraph.ParagraphProperties;
+
+            if (paragraphProperties is null)
+            {
+                paragraphProperties = new ParagraphProperties();
+                paragraph.PrependChild(paragraphProperties);
+            }
+
+            var justification =
+                paragraphProperties.GetFirstChild<Justification>();
+
+            if (justification is null)
+            {
+                paragraphProperties.Append(
+                    new Justification
+                    {
+                        Val = JustificationValues.Right
+                    });
+            }
+            else
+            {
+                justification.Val =
+                    JustificationValues.Right;
+            }
+        }
     }
 
     private static void EnsureCompactMoneyFont(TableCell cell)
     {
-        const string fontSize = "16"; // 8 pt, only for numeric cells.
+        const string fontSize = "17"; // 8.5 pt, numeric cells only.
 
         foreach (var run in cell.Descendants<Run>())
         {
@@ -1101,6 +1158,560 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             value.Split(
                 (char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static void ApplyUnifiedDocumentFormatting(
+        Body body)
+    {
+        const string fontFamily = "Times New Roman";
+
+        foreach (var run in body.Descendants<Run>())
+        {
+            var properties = run.RunProperties;
+
+            if (properties is null)
+            {
+                properties = new RunProperties();
+                run.PrependChild(properties);
+            }
+
+            var fonts =
+                properties.GetFirstChild<RunFonts>();
+
+            if (fonts is null)
+            {
+                fonts = new RunFonts();
+                properties.PrependChild(fonts);
+            }
+
+            fonts.Ascii = fontFamily;
+            fonts.HighAnsi = fontFamily;
+            fonts.EastAsia = fontFamily;
+            fonts.ComplexScript = fontFamily;
+        }
+
+        /*
+         * Table content is intentionally compact. Outside tables we preserve
+         * the template's point sizes so the official title/header hierarchy
+         * remains intact while still using the same font family.
+         */
+        foreach (var table in body.Elements<Table>())
+        {
+            foreach (var paragraph in table.Descendants<Paragraph>())
+            {
+                EnsureCompactParagraphSpacing(paragraph);
+            }
+
+            foreach (var run in table.Descendants<Run>())
+            {
+                EnsureRunFontSize(
+                    run,
+                    halfPoints: "18"); // 9 pt
+            }
+        }
+
+        foreach (var paragraph in body.Elements<Paragraph>())
+        {
+            EnsureBodyParagraphSpacing(paragraph);
+        }
+    }
+
+    private static void EnsureCompactParagraphSpacing(
+        Paragraph paragraph)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var spacing =
+            properties.GetFirstChild<SpacingBetweenLines>();
+
+        if (spacing is null)
+        {
+            spacing = new SpacingBetweenLines();
+            properties.Append(spacing);
+        }
+
+        spacing.Before = "0";
+        spacing.After = "0";
+        spacing.Line = "220";
+        spacing.LineRule = LineSpacingRuleValues.Auto;
+    }
+
+    private static void EnsureBodyParagraphSpacing(
+        Paragraph paragraph)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var spacing =
+            properties.GetFirstChild<SpacingBetweenLines>();
+
+        if (spacing is null)
+        {
+            spacing = new SpacingBetweenLines();
+            properties.Append(spacing);
+        }
+
+        /*
+         * Outside tables keep a little breathing room, but remove the
+         * oversized spacing that makes the form unnecessarily long.
+         */
+        spacing.Before ??= "0";
+        spacing.After ??= "40";
+        spacing.Line ??= "240";
+        spacing.LineRule ??= LineSpacingRuleValues.Auto;
+    }
+
+    private static void EnsureRunFontSize(
+        Run run,
+        string halfPoints)
+    {
+        var properties =
+            run.RunProperties;
+
+        if (properties is null)
+        {
+            properties = new RunProperties();
+            run.PrependChild(properties);
+        }
+
+        var size =
+            properties.GetFirstChild<FontSize>();
+
+        if (size is null)
+        {
+            properties.Append(
+                new FontSize
+                {
+                    Val = halfPoints
+                });
+        }
+        else
+        {
+            size.Val = halfPoints;
+        }
+
+        var complexSize =
+            properties.GetFirstChild<FontSizeComplexScript>();
+
+        if (complexSize is null)
+        {
+            properties.Append(
+                new FontSizeComplexScript
+                {
+                    Val = halfPoints
+                });
+        }
+        else
+        {
+            complexSize.Val = halfPoints;
+        }
+    }
+
+    private static void OptimizeSectionATableLayout(
+        Body body)
+    {
+        var tables =
+            body.Elements<Table>().ToList();
+
+        if (tables.Count <= SectionATableIndex)
+            return;
+
+        var table =
+            tables[SectionATableIndex];
+
+        SetTableFixedLayout(table);
+
+        /*
+         * Keep the official Section A proportions but give monetary columns
+         * enough effective room by making all numeric content compact and
+         * vertically centered. FitText/NoWrap added by SetMoneyCell remains.
+         */
+        foreach (var row in table.Elements<TableRow>())
+        {
+            var cells =
+                row.Elements<TableCell>().ToList();
+
+            if (cells.Count < 10)
+                continue;
+
+            for (var i = 3; i <= 9; i++)
+            {
+                SetCellVerticalCenter(cells[i]);
+
+                foreach (var paragraph in cells[i].Elements<Paragraph>())
+                {
+                    SetParagraphRightAligned(paragraph);
+                }
+            }
+        }
+    }
+
+    private static void OptimizeSectionDTableLayout(
+        Body body)
+    {
+        var tables =
+            body.Elements<Table>().ToList();
+
+        if (tables.Count <= SectionDTableIndex)
+            return;
+
+        var table =
+            tables[SectionDTableIndex];
+
+        SetTableFixedLayout(table);
+
+        /*
+         * A4-friendly fixed grid, total = 9,300 twips.
+         * Priority is readability of:
+         * - business location code,
+         * - NSNN description,
+         * - collecting authority / tax authority,
+         * while keeping code columns compact.
+         */
+        var widths = new[]
+        {
+            430,  // STT
+            900,  // Business location code
+            1480, // NSNN content
+            850,  // Amount
+            700,  // Chapter
+            700,  // Subsection
+            760,  // Administrative area
+            1120, // Collecting authority
+            1120, // Tax authority
+            1240  // Due date
+        };
+
+        SetTableGridWidths(
+            table,
+            widths);
+
+        foreach (var row in table.Elements<TableRow>())
+        {
+            var cells =
+                row.Elements<TableCell>().ToList();
+
+            if (cells.Count < 10)
+                continue;
+
+            for (var i = 0; i < 10; i++)
+            {
+                SetCellWidth(
+                    cells[i],
+                    widths[i]);
+
+                SetCellVerticalCenter(
+                    cells[i]);
+
+                SetCellMargins(
+                    cells[i],
+                    top: 45,
+                    right: 55,
+                    bottom: 45,
+                    left: 55);
+            }
+
+            /*
+             * STT, location code, amount, budget codes and due date should
+             * stay compact and visually stable.
+             */
+            foreach (var index in new[] { 0, 1, 3, 4, 5, 6, 9 })
+            {
+                EnsureCellNoWrapOnly(
+                    cells[index]);
+            }
+
+            foreach (var paragraph in cells[0].Elements<Paragraph>())
+                SetParagraphCenterAligned(paragraph);
+
+            foreach (var paragraph in cells[1].Elements<Paragraph>())
+                SetParagraphCenterAligned(paragraph);
+
+            foreach (var paragraph in cells[3].Elements<Paragraph>())
+                SetParagraphRightAligned(paragraph);
+
+            foreach (var index in new[] { 4, 5, 6, 9 })
+            {
+                foreach (var paragraph in cells[index].Elements<Paragraph>())
+                    SetParagraphCenterAligned(paragraph);
+            }
+
+            /*
+             * Slightly smaller text only in the dense payment table.
+             */
+            foreach (var run in row.Descendants<Run>())
+            {
+                EnsureRunFontSize(
+                    run,
+                    halfPoints: "17"); // 8.5 pt
+            }
+        }
+    }
+
+    private static void SetTableFixedLayout(
+        Table table)
+    {
+        var properties =
+            table.GetFirstChild<TableProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableProperties();
+            table.PrependChild(properties);
+        }
+
+        var layout =
+            properties.GetFirstChild<TableLayout>();
+
+        if (layout is null)
+        {
+            properties.Append(
+                new TableLayout
+                {
+                    Type = TableLayoutValues.Fixed
+                });
+        }
+        else
+        {
+            layout.Type =
+                TableLayoutValues.Fixed;
+        }
+    }
+
+    private static void SetTableGridWidths(
+        Table table,
+        IReadOnlyList<int> widths)
+    {
+        var grid =
+            table.GetFirstChild<TableGrid>();
+
+        if (grid is null)
+        {
+            grid = new TableGrid();
+            var properties =
+                table.GetFirstChild<TableProperties>();
+
+            if (properties is not null)
+            {
+                properties.InsertAfterSelf(grid);
+            }
+            else
+            {
+                table.PrependChild(grid);
+            }
+        }
+
+        grid.RemoveAllChildren<GridColumn>();
+
+        foreach (var width in widths)
+        {
+            grid.Append(
+                new GridColumn
+                {
+                    Width = width.ToString(
+                        CultureInfo.InvariantCulture)
+                });
+        }
+    }
+
+    private static void SetCellWidth(
+        TableCell cell,
+        int width)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var cellWidth =
+            properties.GetFirstChild<TableCellWidth>();
+
+        if (cellWidth is null)
+        {
+            properties.Append(
+                new TableCellWidth
+                {
+                    Type = TableWidthUnitValues.Dxa,
+                    Width = width.ToString(
+                        CultureInfo.InvariantCulture)
+                });
+        }
+        else
+        {
+            cellWidth.Type =
+                TableWidthUnitValues.Dxa;
+
+            cellWidth.Width =
+                width.ToString(
+                    CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static void SetCellVerticalCenter(
+        TableCell cell)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var vertical =
+            properties.GetFirstChild<TableCellVerticalAlignment>();
+
+        if (vertical is null)
+        {
+            properties.Append(
+                new TableCellVerticalAlignment
+                {
+                    Val = TableVerticalAlignmentValues.Center
+                });
+        }
+        else
+        {
+            vertical.Val =
+                TableVerticalAlignmentValues.Center;
+        }
+    }
+
+    private static void SetCellMargins(
+        TableCell cell,
+        int top,
+        int right,
+        int bottom,
+        int left)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var margins =
+            properties.GetFirstChild<TableCellMargin>();
+
+        if (margins is null)
+        {
+            margins = new TableCellMargin();
+            properties.Append(margins);
+        }
+
+        margins.TopMargin = new TopMargin
+        {
+            Width = top.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.RightMargin = new RightMargin
+        {
+            Width = right.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.BottomMargin = new BottomMargin
+        {
+            Width = bottom.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.LeftMargin = new LeftMargin
+        {
+            Width = left.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+    }
+
+    private static void EnsureCellNoWrapOnly(
+        TableCell cell)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<NoWrap>() is null)
+        {
+            properties.Append(
+                new NoWrap());
+        }
+    }
+
+    private static void SetParagraphCenterAligned(
+        Paragraph paragraph)
+    {
+        SetParagraphJustification(
+            paragraph,
+            JustificationValues.Center);
+    }
+
+    private static void SetParagraphRightAligned(
+        Paragraph paragraph)
+    {
+        SetParagraphJustification(
+            paragraph,
+            JustificationValues.Right);
+    }
+
+    private static void SetParagraphJustification(
+        Paragraph paragraph,
+        JustificationValues value)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var justification =
+            properties.GetFirstChild<Justification>();
+
+        if (justification is null)
+        {
+            properties.Append(
+                new Justification
+                {
+                    Val = value
+                });
+        }
+        else
+        {
+            justification.Val =
+                value;
+        }
     }
 
     private static string BuildFileName(
