@@ -187,7 +187,8 @@ public class SePayService : ISePayService
     }
 
     public async Task<(string Url, string LinkTokenXid)> GenerateHostedLinkUrlAsync(
-        string companyXid, string redirectUri, string purpose = "LINK_BANK_ACCOUNT", string? bankAccountXid = null)
+        string companyXid, string redirectUri, string purpose = "LINK_BANK_ACCOUNT", string? bankAccountXid = null,
+        bool isMobileApp = true)
     {
         _logger.LogInformation("[SePay] GenerateHostedLinkUrl called with CompanyXid={Xid}, purpose={Purpose}, bankAccountXid={BankXid}",
             companyXid, purpose, bankAccountXid);
@@ -206,7 +207,7 @@ public class SePayService : ISePayService
             { "company_xid", companyXid },
             { "purpose", purpose },
             { "completion_redirect_uri", redirectUri },
-            { "is_mobile_app", 1 },
+            { "is_mobile_app", isMobileApp ? 1 : 0 },
             { "language", "vi" }
         };
 
@@ -323,7 +324,7 @@ public class SePayService : ISePayService
         return null;
     }
 
-    public async Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host)
+    public async Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host, bool isMobileApp = true)
     {
         var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
@@ -347,7 +348,8 @@ public class SePayService : ISePayService
         }
 
         // Tạo link token và lấy cả URL lẫn linkTokenXid
-        var (url, linkTokenXid) = await GenerateHostedLinkUrlAsync(companyXid, redirectUri);
+        var (url, linkTokenXid) = await GenerateHostedLinkUrlAsync(
+            companyXid, redirectUri, isMobileApp: isMobileApp);
 
         // Lưu linkTokenXid vào BusinessProfile để sau này trace BANK_ACCOUNT_LINKED webhook
         if (!string.IsNullOrEmpty(linkTokenXid))

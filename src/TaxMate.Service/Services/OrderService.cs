@@ -90,7 +90,9 @@ public class OrderService : IOrderService
         return order.TransactionId;
     }
 
-    public async Task<OrderDetailResponse> GetOrderDetailAsync(Guid transactionId)
+    public async Task<OrderDetailResponse> GetOrderDetailAsync(
+        Guid transactionId,
+        bool includeEInvoiceQuota = false)
     {
         var order = await _transactions.GetByIdWithDetailsAsync(transactionId);
         if (order == null)
@@ -107,11 +109,17 @@ public class OrderService : IOrderService
         int? quotaRemaining = null;
         int? quotaWarningThreshold = null;
 
-        var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(c => c.BusinessId == order.BusinessId && c.IsEnabled);
-        if (eInvoiceConfig != null)
+        // Reading an order is a hot path for POS cart synchronization. Do not make it
+        // depend on SePay unless the caller explicitly needs the E-Invoice quota.
+        if (includeEInvoiceQuota)
         {
-            quotaWarningThreshold = eInvoiceConfig.QuotaWarningThreshold;
-            quotaRemaining = await _eInvoiceService.GetQuotaRemainingAsync(eInvoiceConfig);
+            var eInvoiceConfig = await _eInvoiceConfigs.FirstOrDefaultAsync(
+                c => c.BusinessId == order.BusinessId && c.IsEnabled);
+            if (eInvoiceConfig != null)
+            {
+                quotaWarningThreshold = eInvoiceConfig.QuotaWarningThreshold;
+                quotaRemaining = await _eInvoiceService.GetQuotaRemainingAsync(eInvoiceConfig);
+            }
         }
 
         return new OrderDetailResponse
