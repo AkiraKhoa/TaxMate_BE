@@ -55,7 +55,7 @@ public class S2aHkdWordServiceTests
             }
         };
 
-        var bytes = await service.GenerateDocxAsync(model);
+        var bytes = await service.GenerateDocxAsync([model]);
 
         Assert.NotEmpty(bytes);
         Assert.Equal(0x50, bytes[0]);
@@ -69,8 +69,70 @@ public class S2aHkdWordServiceTests
         Assert.Contains("Dầu ăn", texts);
         Assert.Contains("2.000.000", texts);
         Assert.Contains("1.000.000", texts);
-        Assert.Contains("Tổng số thuế GTGT phải nộp", texts);
+        Assert.Contains("Tổng số thuế GTGT phải trả", texts);
+        Assert.Contains("Tổng số thuế TNCN phải trả", texts);
         Assert.Contains("NGƯỜI ĐẠI DIỆN", texts);
+    }
+
+    [Fact]
+    public async Task GenerateDocxAsync_CombinesMultipleBusinessesInOneFile()
+    {
+        var service = new S2aHkdWordService();
+        var first = CreateSampleModel("Cua Hang A", 2_000_000m, 1_000_000m);
+        var second = CreateSampleModel("Cua Hang B", 3_000_000m, 1_500_000m);
+
+        var bytes = await service.GenerateDocxAsync([first, second]);
+        var texts = ExtractAllText(bytes);
+
+        Assert.Contains("Cua Hang A", texts);
+        Assert.Contains("Cua Hang B", texts);
+        Assert.Contains("Tổng số thuế GTGT phải trả", texts);
+        Assert.Contains("2.000.000", texts);
+        Assert.Contains("3.000.000", texts);
+    }
+
+    private static S2aHkdDocumentModel CreateSampleModel(string businessName, decimal vat, decimal pit)
+    {
+        return new S2aHkdDocumentModel
+        {
+            Header = new S2aHkdHeaderModel
+            {
+                BusinessName = businessName,
+                Address = "44a Vườn Lài",
+                TaxCode = "12345566",
+                DeclarationPeriod = "Quý I/2026",
+                Unit = "Đồng"
+            },
+            Groups =
+            [
+                new S2aHkdCategoryGroupModel
+                {
+                    GroupNumber = 1,
+                    CategoryName = "Bán tạp hóa",
+                    VatRate = 1m,
+                    PitRate = 0.5m,
+                    Lines =
+                    [
+                        new S2aHkdLineModel
+                        {
+                            DocumentNumber = "TM001",
+                            TransactionDate = new DateTime(2026, 1, 10),
+                            Description = "Dầu ăn",
+                            Amount = vat * 100
+                        }
+                    ],
+                    Subtotal = vat * 100,
+                    VatTax = vat,
+                    PitTax = pit
+                }
+            ],
+            Footer = new S2aHkdFooterModel
+            {
+                TotalVatTax = vat,
+                TotalPitTax = pit,
+                ExportDate = new DateTime(2026, 3, 31)
+            }
+        };
     }
 
     private static string ExtractAllText(byte[] docxBytes)

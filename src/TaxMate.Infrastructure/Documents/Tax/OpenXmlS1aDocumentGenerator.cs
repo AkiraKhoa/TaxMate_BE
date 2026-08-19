@@ -9,6 +9,8 @@ namespace TaxMate.Infrastructure.Documents.Tax;
 
 public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
 {
+    private static readonly CultureInfo ViCulture = CultureInfo.GetCultureInfo("vi-VN");
+
     public Task<TaxDeclarationGeneratedFile> GenerateAsync(
         S1aDocumentModel model,
         CancellationToken cancellationToken = default)
@@ -21,20 +23,21 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
             mainPart.Document = new Document();
             var body = mainPart.Document.AppendChild(new Body());
 
-            // Define standard font for the whole document
             SetDocumentDefaultFont(mainPart, "Times New Roman");
 
-            // Header Section
-            AddHeaderSection(body, model);
-            
-            // Title Section
-            AddTitleSection(body, model);
+            for (var i = 0; i < model.Businesses.Count; i++)
+            {
+                if (i > 0)
+                {
+                    body.AppendChild(new Paragraph(new Run(new Break { Type = BreakValues.Page })));
+                }
 
-            // Unit Section
-            AddUnitSection(body, model);
-
-            // Data Table
-            AddDataTable(body, model);
+                var business = model.Businesses[i];
+                AddHeaderSection(body, model, business);
+                AddTitleSection(body, model, business);
+                AddUnitSection(body, model);
+                AddDataTable(body, business);
+            }
 
             mainPart.Document.Save();
         }
@@ -63,7 +66,7 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         stylesPart.Styles = styles;
     }
 
-    private void AddHeaderSection(Body body, S1aDocumentModel model)
+    private void AddHeaderSection(Body body, S1aDocumentModel model, S1aBusinessSectionModel business)
     {
         var table = new Table();
 
@@ -82,17 +85,15 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
 
         var tr = new TableRow();
         
-        // Left Cell (Business Info)
         var leftCell = new TableCell();
         var leftCellProp = new TableCellProperties(new TableCellWidth { Type = TableWidthUnitValues.Pct, Width = "2500" });
         leftCell.AppendChild(leftCellProp);
         
-        AddParagraphToCell(leftCell, $"HỘ, CÁ NHÂN KINH DOANH: {model.BusinessName}", isBold: true);
-        AddParagraphToCell(leftCell, $"Địa chỉ: {model.Address}", isBold: true);
+        AddParagraphToCell(leftCell, $"HỘ, CÁ NHÂN KINH DOANH: {business.BusinessName}", isBold: true);
+        AddParagraphToCell(leftCell, $"Địa chỉ: {business.Address}", isBold: true);
         AddParagraphToCell(leftCell, $"Mã số thuế: {model.TaxCode}", isBold: true);
         tr.AppendChild(leftCell);
 
-        // Right Cell (Template Info)
         var rightCell = new TableCell();
         var rightCellProp = new TableCellProperties(new TableCellWidth { Type = TableWidthUnitValues.Pct, Width = "2500" });
         rightCell.AppendChild(rightCellProp);
@@ -106,16 +107,15 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         table.AppendChild(tr);
         body.AppendChild(table);
         
-        // Add an empty paragraph as spacing
         body.AppendChild(new Paragraph(new Run(new Text(""))));
     }
 
-    private void AddTitleSection(Body body, S1aDocumentModel model)
+    private void AddTitleSection(Body body, S1aDocumentModel model, S1aBusinessSectionModel business)
     {
         var titlePara = CreateParagraph("SỔ DOANH THU BÁN HÀNG HÓA, DỊCH VỤ", isBold: true, size: 28, alignment: JustificationValues.Center);
         body.AppendChild(titlePara);
 
-        var locationPara = CreateParagraph($"Địa điểm kinh doanh: {model.BusinessLocation}", size: 24, alignment: JustificationValues.Center);
+        var locationPara = CreateParagraph($"Địa điểm kinh doanh: {business.BusinessLocation}", size: 24, alignment: JustificationValues.Center);
         body.AppendChild(locationPara);
 
         var periodPara = CreateParagraph($"Kỳ kê khai: {model.DeclarationPeriod}", size: 24, alignment: JustificationValues.Center);
@@ -130,7 +130,7 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         body.AppendChild(unitPara);
     }
 
-    private void AddDataTable(Body body, S1aDocumentModel model)
+    private void AddDataTable(Body body, S1aBusinessSectionModel business)
     {
         var table = new Table();
         
@@ -147,7 +147,6 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         );
         table.AppendChild(tblProp);
 
-        // Header Rows
         var headerRow1 = new TableRow();
         AddCell(headerRow1, "Ngày tháng", isBold: true, alignment: JustificationValues.Center, widthPct: "1000");
         AddCell(headerRow1, "Diễn giải", isBold: true, alignment: JustificationValues.Center, widthPct: "2500");
@@ -160,22 +159,20 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         AddCell(headerRow2, "1", isBold: true, alignment: JustificationValues.Center, widthPct: "1500");
         table.AppendChild(headerRow2);
 
-        // Data Rows
         decimal totalAmount = 0;
-        foreach (var line in model.Lines)
+        foreach (var line in business.Lines)
         {
             var tr = new TableRow();
             AddCell(tr, line.Date, alignment: JustificationValues.Center);
             AddCell(tr, line.Description, alignment: JustificationValues.Left);
             
-            var amountStr = line.RevenueAmount == 0 ? string.Empty : line.RevenueAmount.ToString("#,##0.##", CultureInfo.GetCultureInfo("vi-VN"));
+            var amountStr = line.RevenueAmount == 0 ? string.Empty : FormatAmount(line.RevenueAmount);
             AddCell(tr, amountStr, alignment: JustificationValues.Right);
             
             table.AppendChild(tr);
             totalAmount += line.RevenueAmount;
         }
         
-        // Add some empty rows to make the table look complete like the sample
         for (int i = 0; i < 5; i++)
         {
             var tr = new TableRow();
@@ -185,24 +182,38 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
             table.AppendChild(tr);
         }
 
-        // Footer Row
-        var footerRow = new TableRow();
-        
-        var mergedLeftCell = new TableCell();
-        var mergedLeftCellProp = new TableCellProperties(
-            new TableCellWidth { Type = TableWidthUnitValues.Pct, Width = "3500" },
-            new GridSpan { Val = 2 }
-        );
-        mergedLeftCell.AppendChild(mergedLeftCellProp);
-        AddParagraphToCell(mergedLeftCell, "Tổng cộng", isBold: true, alignment: JustificationValues.Center);
-        footerRow.AppendChild(mergedLeftCell);
-
-        var totalAmountStr = totalAmount == 0 ? "0" : totalAmount.ToString("#,##0.##", CultureInfo.GetCultureInfo("vi-VN"));
-        AddCell(footerRow, totalAmountStr, isBold: true, alignment: JustificationValues.Right, widthPct: "1500");
-        
-        table.AppendChild(footerRow);
+        AddSummaryRow(table, "Tổng cộng", FormatAmount(totalAmount), isBold: true, labelAlign: JustificationValues.Center);
+        AddSummaryRow(table, $"Thuế GTGT ({FormatRate(business.VatRate)}%)", FormatAmount(business.VatTax), isBold: false);
+        AddSummaryRow(table, $"Thuế TNCN ({FormatRate(business.PitRate)}%)", FormatAmount(business.PitTax), isBold: false);
+        AddSummaryRow(table, "Tổng số thuế GTGT phải trả", FormatAmount(business.VatTax), isBold: true);
+        AddSummaryRow(table, "Tổng số thuế TNCN phải trả", FormatAmount(business.PitTax), isBold: true);
         
         body.AppendChild(table);
+    }
+
+    private void AddSummaryRow(
+        Table table,
+        string label,
+        string amount,
+        bool isBold,
+        JustificationValues? labelAlign = null)
+    {
+        var row = new TableRow();
+
+        var mergedLeftCell = new TableCell();
+        mergedLeftCell.AppendChild(new TableCellProperties(
+            new TableCellWidth { Type = TableWidthUnitValues.Pct, Width = "3500" },
+            new GridSpan { Val = 2 }
+        ));
+        AddParagraphToCell(
+            mergedLeftCell,
+            label,
+            isBold: isBold,
+            alignment: labelAlign ?? JustificationValues.Left);
+        row.AppendChild(mergedLeftCell);
+
+        AddCell(row, amount, isBold: isBold, alignment: JustificationValues.Right, widthPct: "1500");
+        table.AppendChild(row);
     }
 
     private void AddCell(TableRow row, string text, bool isBold = false, JustificationValues? alignment = null, string? widthPct = null)
@@ -235,7 +246,6 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         {
             pp.AppendChild(new Justification { Val = align });
         }
-        // Minimal spacing
         pp.AppendChild(new SpacingBetweenLines { After = "0", Line = "240", LineRule = LineSpacingRuleValues.Auto });
         
         para.AppendChild(pp);
@@ -254,4 +264,10 @@ public class OpenXmlS1aDocumentGenerator : IS1aDocumentGenerator
         
         return para;
     }
+
+    private static string FormatAmount(decimal amount) =>
+        amount.ToString("#,##0.##", ViCulture);
+
+    private static string FormatRate(decimal rate) =>
+        rate % 1 == 0 ? rate.ToString("0", ViCulture) : rate.ToString("0.##", ViCulture);
 }

@@ -148,7 +148,7 @@ public class ReportController : ControllerBase
             quarter);
 
         return Ok(
-            ApiResponse<S2aHkdDocumentModel>.Ok(
+            ApiResponse<IReadOnlyList<S2aHkdDocumentModel>>.Ok(
                 result,
                 "Get S2a-HKD preview successfully",
                 HttpContext.TraceIdentifier));
@@ -166,7 +166,7 @@ public class ReportController : ControllerBase
             year,
             quarter);
 
-        var fileName = $"S2a-HKD_{businessId:N}_Q{quarter}_{year}.docx";
+        var fileName = $"S2a-HKD_Q{quarter}_{year}.docx";
         return File(
             bytes,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

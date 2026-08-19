@@ -10,19 +10,16 @@ namespace TaxMate.Service.Services;
 
 public class TaxBookService : ITaxBookService
 {
-    private readonly IGenericRepository<BusinessProfile> _businessProfiles;
-    private readonly IGenericRepository<User> _users;
+    private readonly IBusinessProfileRepository _businessProfiles;
     private readonly IGenericRepository<Income> _incomeRepository;
     private readonly IS1aDocumentGenerator _documentGenerator;
 
     public TaxBookService(
-        IGenericRepository<BusinessProfile> businessProfiles,
-        IGenericRepository<User> users,
+        IBusinessProfileRepository businessProfiles,
         IGenericRepository<Income> incomeRepository,
         IS1aDocumentGenerator documentGenerator)
     {
         _businessProfiles = businessProfiles;
-        _users = users;
         _incomeRepository = incomeRepository;
         _documentGenerator = documentGenerator;
     }
@@ -34,17 +31,16 @@ public class TaxBookService : ITaxBookService
         int? quarter,
         CancellationToken cancellationToken = default)
     {
-        var business = await _businessProfiles.GetByIdAsync(businessId);
-        
-        if (business == null || business.OwnerId != userId)
+        var selected = await _businessProfiles.GetByIdAsync(businessId);
+        if (selected == null || selected.OwnerId != userId)
         {
             throw new NotFoundException("Business profile not found.");
         }
 
-        var user = await _users.GetByIdAsync(userId);
-        if (user == null)
+        var businesses = await _businessProfiles.GetActiveByOwnerWithOwnerAndCategoryAsync(userId);
+        if (businesses.Count == 0)
         {
-            throw new NotFoundException("User not found.");
+            throw new NotFoundException("Business profile not found.");
         }
 
         DateTime startDate;
@@ -65,41 +61,64 @@ public class TaxBookService : ITaxBookService
             periodLabel = $"Năm {year}";
         }
 
-        var incomes = await _incomeRepository.FindAsync(x =>
-            x.BusinessId == businessId &&
+        var businessIds = businesses.Select(x => x.Id).ToList();
+        var incomes = (await _incomeRepository.FindAsync(x =>
+            businessIds.Contains(x.BusinessId) &&
             x.IncomeDate >= startDate &&
-            x.IncomeDate < endDate);
+            x.IncomeDate < endDate)).ToList();
 
-        var groupedIncomes = incomes
-            .GroupBy(x => new { x.IncomeDate.Date, x.IncomeTitle })
-            .OrderBy(g => g.Key.Date)
-            .ToList();
+        var incomesByBusiness = incomes
+            .GroupBy(x => x.BusinessId)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var model = new S1aDocumentModel
         {
-            BusinessName = business.BusinessName ?? string.Empty,
-            Address = business.Address ?? string.Empty,
-            TaxCode = user.TaxCode ?? string.Empty,
-            BusinessLocation = business.BusinessLocationCode ?? string.Empty,
+            TaxCode = businesses[0].Owner.TaxCode ?? string.Empty,
             DeclarationPeriod = periodLabel,
-            Unit = "VNĐ",
-            Lines = new List<S1aDocumentLineModel>()
+            Unit = "VNĐ"
         };
 
-        foreach (var group in groupedIncomes)
+        foreach (var business in businesses)
         {
-            var line = new S1aDocumentLineModel
+            incomesByBusiness.TryGetValue(business.Id, out var businessIncomes);
+            businessIncomes ??= [];
+
+            var groupedIncomes = businessIncomes
+                .GroupBy(x => new { x.IncomeDate.Date, x.IncomeTitle })
+                .OrderBy(g => g.Key.Date)
+                .ToList();
+
+            var lines = groupedIncomes
+                .Select(group => new S1aDocumentLineModel
+                {
+                    Date = group.Key.Date.ToString("dd/MM/yyyy"),
+                    Description = string.IsNullOrWhiteSpace(group.Key.IncomeTitle)
+                        ? "Doanh thu bán hàng hóa, dịch vụ"
+                        : group.Key.IncomeTitle,
+                    RevenueAmount = group.Sum(x => x.Amount)
+                })
+                .ToList();
+
+            var vatRate = business.MainCategory?.VatRate ?? 0m;
+            var pitRate = business.MainCategory?.PitRate ?? 0m;
+            var (vatTax, pitTax) = S2aHkdTaxCalculator.CalculateGroupTaxes(
+                lines.Sum(x => x.RevenueAmount),
+                vatRate,
+                pitRate);
+
+            model.Businesses.Add(new S1aBusinessSectionModel
             {
-                Date = group.Key.Date.ToString("dd/MM/yyyy"),
-                Description = string.IsNullOrWhiteSpace(group.Key.IncomeTitle) 
-                    ? "Doanh thu bán hàng hóa, dịch vụ" 
-                    : group.Key.IncomeTitle,
-                RevenueAmount = group.Sum(x => x.Amount)
-            };
-            model.Lines.Add(line);
+                BusinessName = business.BusinessName ?? string.Empty,
+                Address = business.Address ?? string.Empty,
+                BusinessLocation = business.BusinessLocationCode ?? business.Address ?? string.Empty,
+                Lines = lines,
+                VatRate = vatRate,
+                PitRate = pitRate,
+                VatTax = vatTax,
+                PitTax = pitTax
+            });
         }
 
         return await _documentGenerator.GenerateAsync(model, cancellationToken);
     }
 }
-

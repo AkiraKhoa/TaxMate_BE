@@ -53,4 +53,14 @@ public class BusinessProfileRepository : GenericRepository<BusinessProfile>, IBu
             .Include(x => x.MainCategory)
             .FirstOrDefaultAsync(x => x.Id == id);
     }
+
+    public async Task<List<BusinessProfile>> GetActiveByOwnerWithOwnerAndCategoryAsync(Guid ownerId)
+    {
+        return await _appContext.BusinessProfiles
+            .Include(x => x.Owner)
+            .Include(x => x.MainCategory)
+            .Where(x => x.OwnerId == ownerId && x.IsActive)
+            .OrderBy(x => x.BusinessName)
+            .ToListAsync();
+    }
 }

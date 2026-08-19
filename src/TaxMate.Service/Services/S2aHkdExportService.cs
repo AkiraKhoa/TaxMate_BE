@@ -12,6 +12,7 @@ namespace TaxMate.Service.Services;
 /// <summary>
 /// Builds S2a-HKD sổ doanh thu as period revenue × industry % (operational book, not filed declaration).
 /// Annual TNCN 500tr base adjustment is not applied inside sổ lines for v1.
+/// One export includes every active business profile owned by the user for the selected period.
 /// </summary>
 public class S2aHkdExportService : IS2aHkdExportService
 {
@@ -38,13 +39,13 @@ public class S2aHkdExportService : IS2aHkdExportService
         _taxSettings = taxSettings.Value;
     }
 
-    public Task<S2aHkdDocumentModel> BuildDocumentModelAsync(
+    public Task<IReadOnlyList<S2aHkdDocumentModel>> BuildDocumentModelAsync(
         Guid ownerId,
         Guid businessId,
         int year,
         int quarter)
     {
-        return BuildDocumentModelInternalAsync(ownerId, businessId, year, quarter);
+        return BuildDocumentModelsInternalAsync(ownerId, businessId, year, quarter);
     }
 
     public async Task<byte[]> ExportDocxAsync(
@@ -53,11 +54,11 @@ public class S2aHkdExportService : IS2aHkdExportService
         int year,
         int quarter)
     {
-        var model = await BuildDocumentModelInternalAsync(ownerId, businessId, year, quarter);
-        return await _wordService.GenerateDocxAsync(model);
+        var models = await BuildDocumentModelsInternalAsync(ownerId, businessId, year, quarter);
+        return await _wordService.GenerateDocxAsync(models);
     }
 
-    private async Task<S2aHkdDocumentModel> BuildDocumentModelInternalAsync(
+    private async Task<IReadOnlyList<S2aHkdDocumentModel>> BuildDocumentModelsInternalAsync(
         Guid ownerId,
         Guid businessId,
         int year,
@@ -65,19 +66,28 @@ public class S2aHkdExportService : IS2aHkdExportService
     {
         ValidatePeriod(year, quarter);
 
-        var business = await _businessProfiles.GetByIdWithOwnerAndCategoryAsync(businessId);
-        if (business is null)
+        var selected = await _businessProfiles.GetByIdWithOwnerAndCategoryAsync(businessId);
+        if (selected is null)
             throw new NotFoundException("Business profile not found.");
 
-        if (business.OwnerId != ownerId)
+        if (selected.OwnerId != ownerId)
             throw new UnauthorizedAccessException("You do not own this business.");
 
-        if (string.IsNullOrWhiteSpace(business.Owner.TaxCode))
+        if (string.IsNullOrWhiteSpace(selected.Owner.TaxCode))
             throw new UnprocessableEntityException(
                 S2aHkdErrorCodes.MissingTaxCode,
                 "Mã số thuế chưa được cập nhật. Vui lòng cập nhật MST trước khi xuất sổ S2a.");
 
-        var ytdRevenue = await _reportRepository.GetAccumulatedRevenueAsync(businessId, year);
+        var businesses = await _businessProfiles.GetActiveByOwnerWithOwnerAndCategoryAsync(ownerId);
+        if (businesses.Count == 0)
+            throw new NotFoundException("Business profile not found.");
+
+        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var ytdRows = await _reportRepository.GetOwnerRevenueByProfileAsync(
+            ownerId,
+            yearStart,
+            yearStart.AddYears(1));
+        var ytdRevenue = ytdRows.Sum(x => x.Revenue);
         if (ytdRevenue < _taxSettings.BusinessRevenueThreshold
             || ytdRevenue > _taxSettings.S2aMaxRevenueThreshold)
         {
@@ -87,20 +97,63 @@ public class S2aHkdExportService : IS2aHkdExportService
         }
 
         var (startDate, endDate) = TaxPeriodWindow.GetQuarterWindow(year, quarter);
-        var aggregates = await _s2aHkdRepository.GetProductAggregatesAsync(
-            businessId,
-            startDate,
-            endDate);
+        var categories = (await _categories.GetAllAsync())
+            .ToDictionary(x => x.BusinessCategoryId);
+        var exportDate = GetVietnamToday();
+        var periodLabel = TaxPeriodWindow.FormatQuarterPeriod(year, quarter);
+        var taxCode = selected.Owner.TaxCode!;
 
-        if (aggregates.Count == 0)
+        var models = new List<S2aHkdDocumentModel>();
+        var hasAnyRevenue = false;
+
+        foreach (var business in businesses)
+        {
+            var aggregates = await _s2aHkdRepository.GetProductAggregatesAsync(
+                business.Id,
+                startDate,
+                endDate);
+
+            if (aggregates.Count > 0)
+                hasAnyRevenue = true;
+
+            var groups = BuildCategoryGroups(business, aggregates, categories);
+            models.Add(new S2aHkdDocumentModel
+            {
+                Header = new S2aHkdHeaderModel
+                {
+                    BusinessName = business.BusinessName,
+                    Address = business.Address ?? string.Empty,
+                    TaxCode = taxCode,
+                    DeclarationPeriod = periodLabel,
+                    Unit = "Đồng"
+                },
+                Groups = groups,
+                Footer = new S2aHkdFooterModel
+                {
+                    TotalVatTax = groups.Sum(x => x.VatTax),
+                    TotalPitTax = groups.Sum(x => x.PitTax),
+                    ExportDate = exportDate
+                }
+            });
+        }
+
+        if (!hasAnyRevenue)
         {
             throw new UnprocessableEntityException(
                 S2aHkdErrorCodes.NoRevenue,
-                $"Không có doanh thu trong {TaxPeriodWindow.FormatQuarterPeriod(year, quarter)}.");
+                $"Không có doanh thu trong {periodLabel}.");
         }
 
-        var categories = (await _categories.GetAllAsync())
-            .ToDictionary(x => x.BusinessCategoryId);
+        return models;
+    }
+
+    private static List<S2aHkdCategoryGroupModel> BuildCategoryGroups(
+        BusinessProfile business,
+        List<S2aHkdProductAggregate> aggregates,
+        Dictionary<Guid, BusinessCategory> categories)
+    {
+        if (aggregates.Count == 0)
+            return [];
 
         var unmappedCodes = new List<string>();
         var grouped = new Dictionary<Guid, List<S2aHkdProductAggregate>>();
@@ -137,7 +190,6 @@ public class S2aHkdExportService : IS2aHkdExportService
                 "Hộ kinh doanh chưa cấu hình ngành nghề chính hoặc ngành nghề cho sản phẩm.");
         }
 
-        var exportDate = GetVietnamToday();
         var groups = new List<S2aHkdCategoryGroupModel>();
         var groupNumber = 1;
 
@@ -178,24 +230,7 @@ public class S2aHkdExportService : IS2aHkdExportService
             });
         }
 
-        return new S2aHkdDocumentModel
-        {
-            Header = new S2aHkdHeaderModel
-            {
-                BusinessName = business.BusinessName,
-                Address = business.Address ?? string.Empty,
-                TaxCode = business.Owner.TaxCode!,
-                DeclarationPeriod = TaxPeriodWindow.FormatQuarterPeriod(year, quarter),
-                Unit = "Đồng"
-            },
-            Groups = groups,
-            Footer = new S2aHkdFooterModel
-            {
-                TotalVatTax = groups.Sum(x => x.VatTax),
-                TotalPitTax = groups.Sum(x => x.PitTax),
-                ExportDate = exportDate
-            }
-        };
+        return groups;
     }
 
     private static void ValidatePeriod(int year, int quarter)

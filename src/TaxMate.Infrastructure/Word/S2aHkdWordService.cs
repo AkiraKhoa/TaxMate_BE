@@ -16,8 +16,11 @@ public class S2aHkdWordService : IS2aHkdWordService
     private const string TemplateFileName = "mau-s2a-HKD.docx";
     private static readonly CultureInfo ViCulture = CultureInfo.GetCultureInfo("vi-VN");
 
-    public Task<byte[]> GenerateDocxAsync(S2aHkdDocumentModel model)
+    public Task<byte[]> GenerateDocxAsync(IReadOnlyList<S2aHkdDocumentModel> models)
     {
+        if (models is null || models.Count == 0)
+            throw new ArgumentException("At least one S2a-HKD document is required.", nameof(models));
+
         var templateBytes = LoadTemplateBytes();
         using var stream = new MemoryStream();
         stream.Write(templateBytes, 0, templateBytes.Length);
@@ -28,19 +31,55 @@ public class S2aHkdWordService : IS2aHkdWordService
             var body = document.MainDocumentPart?.Document.Body
                 ?? throw new InvalidOperationException("S2a-HKD template has no document body.");
 
-            var tables = body.Elements<Table>().ToList();
-            if (tables.Count < 2)
-                throw new InvalidOperationException("S2a-HKD template is missing expected tables.");
+            var sectPr = body.Elements<SectionProperties>().LastOrDefault();
+            var templateNodes = body.ChildElements
+                .Where(e => e is not SectionProperties)
+                .Select(e => e.CloneNode(true))
+                .ToList();
 
-            FillHeaderTable(tables[0], model.Header);
-            FillHeaderParagraphs(body, model.Header);
-            FillMainTable(tables[1], model);
-            FillExportDate(body, model.Footer.ExportDate);
+            body.RemoveAllChildren();
+
+            for (var i = 0; i < models.Count; i++)
+            {
+                if (i > 0)
+                {
+                    body.AppendChild(new Paragraph(
+                        new Run(new Break { Type = BreakValues.Page })));
+                }
+
+                var added = new List<OpenXmlElement>();
+                foreach (var node in templateNodes)
+                {
+                    var clone = node.CloneNode(true);
+                    body.AppendChild(clone);
+                    added.Add(clone);
+                }
+
+                FillBusinessDocument(added, models[i]);
+            }
+
+            if (sectPr is not null)
+                body.AppendChild((OpenXmlElement)sectPr.CloneNode(true));
 
             document.MainDocumentPart!.Document.Save();
         }
 
         return Task.FromResult(stream.ToArray());
+    }
+
+    private static void FillBusinessDocument(
+        List<OpenXmlElement> elements,
+        S2aHkdDocumentModel model)
+    {
+        var tables = elements.OfType<Table>().ToList();
+        if (tables.Count < 2)
+            throw new InvalidOperationException("S2a-HKD template is missing expected tables.");
+
+        var paragraphs = elements.OfType<Paragraph>().ToList();
+        FillHeaderTable(tables[0], model.Header);
+        FillHeaderParagraphs(paragraphs, model.Header);
+        FillMainTable(tables[1], model);
+        FillExportDate(paragraphs, model.Footer.ExportDate);
     }
 
     private static byte[] LoadTemplateBytes()
@@ -84,9 +123,9 @@ public class S2aHkdWordService : IS2aHkdWordService
             SetParagraphText(paragraphs[2], $"Mã số thuế: {header.TaxCode}");
     }
 
-    private static void FillHeaderParagraphs(Body body, S2aHkdHeaderModel header)
+    private static void FillHeaderParagraphs(IEnumerable<Paragraph> paragraphs, S2aHkdHeaderModel header)
     {
-        foreach (var paragraph in body.Elements<Paragraph>())
+        foreach (var paragraph in paragraphs)
         {
             var text = GetParagraphText(paragraph);
             if (text.StartsWith("Địa điểm kinh doanh:", StringComparison.Ordinal))
@@ -104,9 +143,9 @@ public class S2aHkdWordService : IS2aHkdWordService
         }
     }
 
-    private static void FillExportDate(Body body, DateTime exportDate)
+    private static void FillExportDate(IEnumerable<Paragraph> paragraphs, DateTime exportDate)
     {
-        foreach (var paragraph in body.Elements<Paragraph>())
+        foreach (var paragraph in paragraphs)
         {
             var text = GetParagraphText(paragraph);
             if (text.Contains("tháng", StringComparison.Ordinal) &&
@@ -173,12 +212,12 @@ public class S2aHkdWordService : IS2aHkdWordService
         }
 
         var totalVatRow = (TableRow)totalVatProto.CloneNode(true);
-        SetCellText(GetCell(totalVatRow, 2), "Tổng số thuế GTGT phải nộp");
+        SetCellText(GetCell(totalVatRow, 2), "Tổng số thuế GTGT phải trả");
         SetCellText(GetCell(totalVatRow, 3), FormatAmount(model.Footer.TotalVatTax), JustificationValues.Right);
         mainTable.AppendChild(totalVatRow);
 
         var totalPitRow = (TableRow)totalPitProto.CloneNode(true);
-        SetCellText(GetCell(totalPitRow, 2), "Tổng số thuế TNCN phải nộp");
+        SetCellText(GetCell(totalPitRow, 2), "Tổng số thuế TNCN phải trả");
         SetCellText(GetCell(totalPitRow, 3), FormatAmount(model.Footer.TotalPitTax), JustificationValues.Right);
         mainTable.AppendChild(totalPitRow);
     }

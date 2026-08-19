@@ -8,4 +8,5 @@ public interface IBusinessProfileRepository : IGenericRepository<BusinessProfile
         Guid ownerId, int pageNumber, int pageSize, string? search);
     Task<BusinessProfile?> GetByIdWithCategoryAsync(Guid id);
     Task<BusinessProfile?> GetByIdWithOwnerAndCategoryAsync(Guid id);
+    Task<List<BusinessProfile>> GetActiveByOwnerWithOwnerAndCategoryAsync(Guid ownerId);
 }
