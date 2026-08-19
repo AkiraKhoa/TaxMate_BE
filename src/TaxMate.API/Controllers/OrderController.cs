@@ -35,10 +35,13 @@ public class OrderController : ControllerBase
 
     /// <summary>Lấy chi tiết đơn hàng.</summary>
     /// <param name="id">ID đơn hàng (transactionId).</param>
+    /// <param name="includeEInvoiceQuota">Có gọi SePay để lấy hạn ngạch HĐĐT hay không.</param>
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetOrderDetail(Guid id)
+    public async Task<IActionResult> GetOrderDetail(
+        Guid id,
+        [FromQuery] bool includeEInvoiceQuota = false)
     {
-        var result = await _orderService.GetOrderDetailAsync(id);
+        var result = await _orderService.GetOrderDetailAsync(id, includeEInvoiceQuota);
         return Ok(
             ApiResponse<OrderDetailResponse>.Ok(
                 result,
