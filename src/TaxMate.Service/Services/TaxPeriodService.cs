@@ -203,432 +203,510 @@ public class TaxPeriodService : ITaxPeriodService
 }
     
     public async Task<TaxCalculationResponse> CalculateAsync(
-    Guid userId,
-    Guid taxPeriodId,
-    CancellationToken cancellationToken = default)
-{
-    var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
-        taxPeriodId,
-        cancellationToken);
-
-    if (taxPeriod is null)
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
     {
-        throw new NotFoundException("Tax period not found.");
-    }
-
-    await EnsureBusinessOwnershipAsync(
-        taxPeriod.BusinessId,
-        userId,
-        cancellationToken);
-
-    if (taxPeriod.Status != TaxPeriodStatuses.Closed)
-    {
-        throw new BadRequestException(
-            $"Tax period must be in Closed status. Current status: {taxPeriod.Status}.");
-    }
-
-    var business =
-        await _taxPeriodRepository.GetBusinessWithCategoryAsync(
-            taxPeriod.BusinessId,
+        var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
+            taxPeriodId,
             cancellationToken);
 
-    if (business is null)
-    {
-        throw new NotFoundException("Business not found.");
-    }
+        if (taxPeriod is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
 
-    if (business.MainCategory is null)
-    {
-        throw new BadRequestException(
-            "Business category is required before tax calculation.");
-    }
+        await EnsureBusinessOwnershipAsync(
+            taxPeriod.BusinessId,
+            userId,
+            cancellationToken);
 
-    var category = business.MainCategory;
+        if (taxPeriod.Status != TaxPeriodStatuses.Closed)
+        {
+            throw new BadRequestException(
+                $"Tax period must be in Closed status. Current status: {taxPeriod.Status}.");
+        }
 
-    var taxableRevenue = taxPeriod.TaxableRevenue;
-
-    
-    var vatNonTaxableRevenue = 0m;
-    var zeroRatedVatRevenue = 0m;
-    
-    // Tổng doanh thu năm của TOÀN HỘ,
-    // bao gồm tất cả BusinessProfile thuộc cùng Owner.
-    var annualRevenue =
-        await _taxPeriodRepository
-            .GetAnnualRevenueByOwnerAsync(
-                business.OwnerId,
-                taxPeriod.Year,
+        // TaxPeriod.BusinessId chỉ đóng vai trò anchor để xác định Owner.
+        var anchorBusiness =
+            await _taxPeriodRepository.GetBusinessWithCategoryAsync(
+                taxPeriod.BusinessId,
                 cancellationToken);
 
-    var isTaxableBusiness =
-        annualRevenue >
-        TaxRules.AnnualRevenueThreshold2026;
+        if (anchorBusiness is null)
+        {
+            throw new NotFoundException("Business not found.");
+        }
 
-    var recommendedFormCode =
-        isTaxableBusiness
-            ? "01/CNKD"
-            : "01/TKN-CNKD";
-
-    decimal previousAnnualRevenue = 0m;
-    decimal alreadyConsumedDeduction = 0m;
-    decimal remainingDeduction = 0m;
-
-    decimal pitTaxableRevenue = 0m;
-    decimal pitDeductibleRevenue = 0m;
-    decimal remainingPitDeductionAfterPeriod = 0m;
-    decimal pitRevenue = 0m;
-
-    decimal vatTaxAmount = 0m;
-    decimal pitTaxAmount = 0m;
-
-    decimal totalTaxBeforeExemption = 0m;
-    decimal totalExemptionAmount = 0m;
-    decimal totalTaxPayableAmount = 0m;
-
-    if (isTaxableBusiness)
-    {
-        previousAnnualRevenue =
+        var ownerBusinesses =
             await _taxPeriodRepository
-                .GetAnnualRevenueBeforePeriodByOwnerAsync(
-                    business.OwnerId,
-                    taxPeriod.Year,
-                    taxPeriod.PeriodStartDate,
+                .GetBusinessesWithCategoriesByOwnerAsync(
+                    anchorBusiness.OwnerId,
                     cancellationToken);
 
-        alreadyConsumedDeduction =
-            Math.Min(
-                previousAnnualRevenue,
-                TaxRules.AnnualPitRevenueDeduction2026);
-
-        remainingDeduction =
-            Math.Max(
-                0m,
-                TaxRules.AnnualPitRevenueDeduction2026
-                - alreadyConsumedDeduction);
-
-        pitTaxableRevenue = taxableRevenue;
-
-        pitDeductibleRevenue =
-            Math.Min(
-                pitTaxableRevenue,
-                remainingDeduction);
-
-        remainingPitDeductionAfterPeriod =
-            Math.Max(
-                0m,
-                remainingDeduction -
-                pitDeductibleRevenue);
-
-        pitRevenue =
-            Math.Max(
-                0m,
-                pitTaxableRevenue -
-                pitDeductibleRevenue);
-
-        vatTaxAmount =
-            decimal.Round(
-                taxableRevenue *
-                category.VatRate /
-                100m,
-                2,
-                MidpointRounding.AwayFromZero);
-
-        pitTaxAmount =
-            decimal.Round(
-                pitRevenue *
-                category.PitRate /
-                100m,
-                2,
-                MidpointRounding.AwayFromZero);
-
-        totalTaxBeforeExemption =
-            vatTaxAmount +
-            pitTaxAmount;
-
-        totalTaxPayableAmount =
-            totalTaxBeforeExemption -
-            totalExemptionAmount;
-    }
-    else
-    {
-        /*
-         * Hộ có doanh thu năm <= 1 tỷ:
-         *
-         * - Recommended form: 01/TKN-CNKD
-         * - Không tính VAT phải nộp
-         * - Không tính PIT phải nộp
-         * - Không tạo tax payable/debt
-         *
-         * Doanh thu vẫn được giữ trong calculation
-         * để phục vụ thông báo doanh thu năm.
-         */
-
-        pitTaxableRevenue = 0m;
-        pitDeductibleRevenue = 0m;
-        pitRevenue = 0m;
-
-        vatTaxAmount = 0m;
-        pitTaxAmount = 0m;
-
-        totalTaxBeforeExemption = 0m;
-        totalExemptionAmount = 0m;
-        totalTaxPayableAmount = 0m;
-
-        remainingPitDeductionAfterPeriod =
-            Math.Max(
-                0m,
-                TaxRules.AnnualPitRevenueDeduction2026 -
-                annualRevenue);
-    }
-
-    await _taxPeriodRepository
-        .SetPreviousCalculationsAsSupersededAsync(
-            taxPeriod.Id,
-            cancellationToken);
-
-    var version =
-        await _taxPeriodRepository.GetNextCalculationVersionAsync(
-            taxPeriod.Id,
-            cancellationToken);
-
-    var calculation = new TaxCalculation
-    {
-        Id = Guid.NewGuid(),
-
-        TaxPeriodId = taxPeriod.Id,
-
-        Version = version,
-
-        Status = TaxCalculationStatuses.Completed,
-
-        TotalRevenue = taxPeriod.TotalRevenue,
-
-        TotalTaxableRevenue = taxableRevenue,
-
-        TotalVatTaxAmount = vatTaxAmount,
-
-        TotalPersonalIncomeTaxAmount = pitTaxAmount,
-
-        TotalTaxBeforeExemption =
-            totalTaxBeforeExemption,
-
-        TotalExemptionAmount =
-            totalExemptionAmount,
-
-        TotalTaxPayableAmount =
-            totalTaxPayableAmount,
-
-        CalculatedAt = DateTime.UtcNow,
-
-        CalculatedByUserId = userId,
-
-        AnnualRevenueAtCalculation = annualRevenue,
-        
-        ApplicableRevenueThreshold = TaxRules.AnnualRevenueThreshold2026,
-        
-        RecommendedFormCode = recommendedFormCode,
-        
-        RemainingPitDeduction =
-            remainingPitDeductionAfterPeriod,
-        
-        IsCurrent = true,
-
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-    };
-    
-    var line = new TaxCalculationLine
-    {
-        Id = Guid.NewGuid(),
-
-        TaxCalculationId = calculation.Id,
-
-        BusinessCategoryId =
-            category.BusinessCategoryId,
-
-        SectionCode =
-            category.FormSectionCode ?? "I",
-
-        IndicatorCode =
-            category.FormIndicatorCode ?? "d",
-
-        BusinessActivityCode =
-            category.Code,
-
-        BusinessActivityName =
-            category.Name,
-
-        TotalRevenue =
-            taxPeriod.TotalRevenue,
-
-        VatTaxableRevenue =
-            taxableRevenue,
-
-        VatNonTaxableRevenue =
-            vatNonTaxableRevenue,
-
-        ZeroRatedVatRevenue =
-            zeroRatedVatRevenue,
-
-        VatTaxRate =
-            category.VatRate,
-
-        VatTaxAmount =
-            vatTaxAmount,
-
-        PersonalIncomeTaxableRevenue =
-            pitTaxableRevenue,
-
-        PersonalIncomeTaxDeductibleRevenue =
-            pitDeductibleRevenue,
-
-        PersonalIncomeTaxRevenue =
-            pitRevenue,
-
-        PersonalIncomeTaxRate =
-            category.PitRate,
-
-        PersonalIncomeTaxAmount =
-            pitTaxAmount,
-
-        DisplayOrder = 1,
-
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
-    };
-
-    calculation.Lines.Add(line);
-
-    taxPeriod.VatTaxAmount =
-        vatTaxAmount;
-
-    taxPeriod.PersonalIncomeTaxAmount =
-        pitTaxAmount;
-
-    taxPeriod.EstimatedTax =
-        totalTaxPayableAmount;
-
-    taxPeriod.TaxAmountDebt =
-        totalTaxPayableAmount;
-
-    taxPeriod.Status =
-        TaxPeriodStatuses.Calculated;
-
-    taxPeriod.CalculatedAt =
-        DateTime.UtcNow;
-
-    taxPeriod.UpdatedAt =
-        DateTime.UtcNow;
-
-    await _taxCalculationRepository.AddAsync(calculation);
-
-    await _taxPeriodRepository.SaveChangesAsync(
-        cancellationToken);
-
-    return new TaxCalculationResponse
-    {
-        TaxPeriodId = taxPeriod.Id,
-
-        TaxCalculationId =
-            calculation.Id,
-
-        Version =
-            calculation.Version,
-
-        TotalRevenue =
-            calculation.TotalRevenue,
-
-        TotalTaxableRevenue =
-            calculation.TotalTaxableRevenue,
-
-        TotalVatTaxAmount =
-            calculation.TotalVatTaxAmount,
-
-        TotalPersonalIncomeTaxAmount =
-            calculation.TotalPersonalIncomeTaxAmount,
-
-        TotalTaxBeforeExemption =
-            calculation.TotalTaxBeforeExemption,
-
-        TotalExemptionAmount =
-            calculation.TotalExemptionAmount,
-
-        TotalTaxPayableAmount =
-            calculation.TotalTaxPayableAmount,
-        
-        AnnualRevenueAtCalculation =
-            calculation.AnnualRevenueAtCalculation,
-
-        ApplicableRevenueThreshold =
-            calculation.ApplicableRevenueThreshold,
-
-        RecommendedFormCode =
-            calculation.RecommendedFormCode,
-
-        RemainingPitDeduction =
-            calculation.RemainingPitDeduction,
-
-        Status =
-            taxPeriod.Status,
-
-        CalculatedAt =
-            calculation.CalculatedAt,
-
-        Lines =
-        [
-            new TaxCalculationLineResponse
+        if (ownerBusinesses.Count == 0)
+        {
+            throw new BadRequestException(
+                "No active business profile exists for this owner.");
+        }
+
+        // Revenue được tách riêng theo từng BusinessProfile/location.
+        var periodBusinessRevenues =
+            new List<(BusinessProfile Business, decimal Revenue)>();
+
+        foreach (var ownerBusiness in ownerBusinesses)
+        {
+            var revenue =
+                await _taxPeriodRepository
+                    .GetRevenueForBusinessInPeriodAsync(
+                        ownerBusiness.Id,
+                        taxPeriod.PeriodStartDate,
+                        taxPeriod.PeriodEndDate,
+                        cancellationToken);
+
+            if (revenue <= 0m)
             {
-                Id = line.Id,
-
-                BusinessCategoryId =
-                    line.BusinessCategoryId,
-
-                SectionCode =
-                    line.SectionCode,
-
-                IndicatorCode =
-                    line.IndicatorCode,
-
-                BusinessActivityCode =
-                    line.BusinessActivityCode,
-
-                BusinessActivityName =
-                    line.BusinessActivityName,
-
-                TotalRevenue =
-                    line.TotalRevenue,
-
-                VatTaxableRevenue =
-                    line.VatTaxableRevenue,
-
-                VatNonTaxableRevenue =
-                    line.VatNonTaxableRevenue,
-
-                ZeroRatedVatRevenue =
-                    line.ZeroRatedVatRevenue,
-
-                VatTaxRate =
-                    line.VatTaxRate,
-
-                VatTaxAmount =
-                    line.VatTaxAmount,
-
-                PersonalIncomeTaxableRevenue =
-                    line.PersonalIncomeTaxableRevenue,
-
-                PersonalIncomeTaxDeductibleRevenue =
-                    line.PersonalIncomeTaxDeductibleRevenue,
-
-                PersonalIncomeTaxRevenue =
-                    line.PersonalIncomeTaxRevenue,
-
-                PersonalIncomeTaxRate =
-                    line.PersonalIncomeTaxRate,
-
-                PersonalIncomeTaxAmount =
-                    line.PersonalIncomeTaxAmount
+                continue;
             }
-        ]
-    };
-}
+
+            if (ownerBusiness.MainCategory is null)
+            {
+                throw new BadRequestException(
+                    $"Business category is required for business '{ownerBusiness.BusinessName}'.");
+            }
+
+            periodBusinessRevenues.Add(
+                (ownerBusiness, revenue));
+        }
+
+        if (periodBusinessRevenues.Count == 0)
+        {
+            throw new BadRequestException(
+                "No completed sales revenue exists for this owner in the tax period.");
+        }
+
+        var totalPeriodRevenue =
+            periodBusinessRevenues.Sum(x => x.Revenue);
+
+        // Threshold/form là Owner-level.
+        var annualRevenue =
+            await _taxPeriodRepository
+                .GetAnnualRevenueByOwnerAsync(
+                    anchorBusiness.OwnerId,
+                    taxPeriod.Year,
+                    cancellationToken);
+
+        var isTaxableBusiness =
+            annualRevenue >
+            TaxRules.AnnualRevenueThreshold2026;
+
+        var recommendedFormCode =
+            isTaxableBusiness
+                ? "01/CNKD"
+                : "01/TKN-CNKD";
+
+        // Mức trừ TNCN 1 tỷ là một pool chung của Owner.
+        decimal remainingDeduction;
+
+        if (isTaxableBusiness)
+        {
+            var previousAnnualRevenue =
+                await _taxPeriodRepository
+                    .GetAnnualRevenueBeforePeriodByOwnerAsync(
+                        anchorBusiness.OwnerId,
+                        taxPeriod.Year,
+                        taxPeriod.PeriodStartDate,
+                        cancellationToken);
+
+            var alreadyConsumedDeduction =
+                Math.Min(
+                    previousAnnualRevenue,
+                    TaxRules.AnnualPitRevenueDeduction2026);
+
+            remainingDeduction =
+                Math.Max(
+                    0m,
+                    TaxRules.AnnualPitRevenueDeduction2026 -
+                    alreadyConsumedDeduction);
+        }
+        else
+        {
+            remainingDeduction =
+                Math.Max(
+                    0m,
+                    TaxRules.AnnualPitRevenueDeduction2026 -
+                    annualRevenue);
+        }
+
+        // Phân bổ deduction cho PIT rate cao trước (phương án có lợi hơn).
+        var pitDeductionByBusiness =
+            new Dictionary<Guid, decimal>();
+
+        if (isTaxableBusiness)
+        {
+            var deductionToAllocate =
+                remainingDeduction;
+
+            foreach (var item in periodBusinessRevenues
+                         .OrderByDescending(
+                             x => x.Business.MainCategory!.PitRate)
+                         .ThenBy(
+                             x => x.Business.Id == taxPeriod.BusinessId
+                                 ? 0
+                                 : 1)
+                         .ThenBy(x => x.Business.CreatedAt))
+            {
+                var allocated =
+                    Math.Min(
+                        item.Revenue,
+                        deductionToAllocate);
+
+                pitDeductionByBusiness[item.Business.Id] =
+                    allocated;
+
+                deductionToAllocate =
+                    Math.Max(
+                        0m,
+                        deductionToAllocate - allocated);
+            }
+
+            remainingDeduction =
+                deductionToAllocate;
+        }
+
+        await _taxPeriodRepository
+            .SetPreviousCalculationsAsSupersededAsync(
+                taxPeriod.Id,
+                cancellationToken);
+
+        var version =
+            await _taxPeriodRepository.GetNextCalculationVersionAsync(
+                taxPeriod.Id,
+                cancellationToken);
+
+        var now = DateTime.UtcNow;
+
+        var calculation = new TaxCalculation
+        {
+            Id = Guid.NewGuid(),
+            TaxPeriodId = taxPeriod.Id,
+            Version = version,
+            Status = TaxCalculationStatuses.Completed,
+
+            TotalRevenue = totalPeriodRevenue,
+            TotalTaxableRevenue = totalPeriodRevenue,
+
+            TotalVatTaxAmount = 0m,
+            TotalPersonalIncomeTaxAmount = 0m,
+            TotalTaxBeforeExemption = 0m,
+            TotalExemptionAmount = 0m,
+            TotalTaxPayableAmount = 0m,
+
+            CalculatedAt = now,
+            CalculatedByUserId = userId,
+
+            AnnualRevenueAtCalculation =
+                annualRevenue,
+
+            ApplicableRevenueThreshold =
+                TaxRules.AnnualRevenueThreshold2026,
+
+            RecommendedFormCode =
+                recommendedFormCode,
+
+            RemainingPitDeduction =
+                remainingDeduction,
+
+            IsCurrent = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+
+        // Anchor business đứng trước để giữ thứ tự hiển thị ổn định.
+        var displayItems =
+            periodBusinessRevenues
+                .OrderBy(
+                    x => x.Business.Id == taxPeriod.BusinessId
+                        ? 0
+                        : 1)
+                .ThenBy(x => x.Business.CreatedAt)
+                .ThenBy(x => x.Business.BusinessName)
+                .ToList();
+
+        var displayOrder = 1;
+
+        foreach (var item in displayItems)
+        {
+            var profile =
+                item.Business;
+
+            var category =
+                profile.MainCategory!;
+
+            var revenue =
+                item.Revenue;
+
+            var vatTaxAmount =
+                isTaxableBusiness
+                    ? decimal.Round(
+                        revenue *
+                        category.VatRate /
+                        100m,
+                        2,
+                        MidpointRounding.AwayFromZero)
+                    : 0m;
+
+            var pitDeductibleRevenue =
+                isTaxableBusiness &&
+                pitDeductionByBusiness.TryGetValue(
+                    profile.Id,
+                    out var allocatedDeduction)
+                    ? allocatedDeduction
+                    : 0m;
+
+            var pitTaxableRevenue =
+                isTaxableBusiness
+                    ? revenue
+                    : 0m;
+
+            var pitRevenue =
+                isTaxableBusiness
+                    ? Math.Max(
+                        0m,
+                        revenue - pitDeductibleRevenue)
+                    : 0m;
+
+            var pitTaxAmount =
+                isTaxableBusiness
+                    ? decimal.Round(
+                        pitRevenue *
+                        category.PitRate /
+                        100m,
+                        2,
+                        MidpointRounding.AwayFromZero)
+                    : 0m;
+
+            calculation.Lines.Add(
+                new TaxCalculationLine
+                {
+                    Id = Guid.NewGuid(),
+                    TaxCalculationId =
+                        calculation.Id,
+
+                    BusinessLocationId =
+                        profile.Id,
+
+                    BusinessLocationCode =
+                        profile.BusinessLocationCode,
+
+                    BusinessCategoryId =
+                        category.BusinessCategoryId,
+
+                    SectionCode =
+                        category.FormSectionCode ?? "I",
+
+                    IndicatorCode =
+                        category.FormIndicatorCode ?? "d",
+
+                    BusinessActivityCode =
+                        category.Code,
+
+                    BusinessActivityName =
+                        category.Name,
+
+                    TotalRevenue =
+                        revenue,
+
+                    VatTaxableRevenue =
+                        revenue,
+
+                    VatNonTaxableRevenue =
+                        0m,
+
+                    ZeroRatedVatRevenue =
+                        0m,
+
+                    VatTaxRate =
+                        category.VatRate,
+
+                    VatTaxAmount =
+                        vatTaxAmount,
+
+                    PersonalIncomeTaxableRevenue =
+                        pitTaxableRevenue,
+
+                    PersonalIncomeTaxDeductibleRevenue =
+                        pitDeductibleRevenue,
+
+                    PersonalIncomeTaxRevenue =
+                        pitRevenue,
+
+                    PersonalIncomeTaxRate =
+                        category.PitRate,
+
+                    PersonalIncomeTaxAmount =
+                        pitTaxAmount,
+
+                    DisplayOrder =
+                        displayOrder++,
+
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+        }
+
+        // Tổng calculation luôn SUM từ các location lines.
+        calculation.TotalVatTaxAmount =
+            calculation.Lines.Sum(x => x.VatTaxAmount);
+
+        calculation.TotalPersonalIncomeTaxAmount =
+            calculation.Lines.Sum(
+                x => x.PersonalIncomeTaxAmount);
+
+        calculation.TotalTaxBeforeExemption =
+            calculation.TotalVatTaxAmount +
+            calculation.TotalPersonalIncomeTaxAmount;
+
+        calculation.TotalTaxPayableAmount =
+            calculation.TotalTaxBeforeExemption -
+            calculation.TotalExemptionAmount;
+
+        // TaxPeriod vẫn giữ BusinessId anchor, nhưng amount thuế là Owner-level.
+        taxPeriod.VatTaxAmount =
+            calculation.TotalVatTaxAmount;
+
+        taxPeriod.PersonalIncomeTaxAmount =
+            calculation.TotalPersonalIncomeTaxAmount;
+
+        taxPeriod.EstimatedTax =
+            calculation.TotalTaxPayableAmount;
+
+        taxPeriod.TaxAmountDebt =
+            calculation.TotalTaxPayableAmount;
+
+        taxPeriod.Status =
+            TaxPeriodStatuses.Calculated;
+
+        taxPeriod.CalculatedAt =
+            now;
+
+        taxPeriod.UpdatedAt =
+            now;
+
+        await _taxCalculationRepository.AddAsync(
+            calculation);
+
+        await _taxPeriodRepository.SaveChangesAsync(
+            cancellationToken);
+
+        return new TaxCalculationResponse
+        {
+            TaxPeriodId =
+                taxPeriod.Id,
+
+            TaxCalculationId =
+                calculation.Id,
+
+            Version =
+                calculation.Version,
+
+            TotalRevenue =
+                calculation.TotalRevenue,
+
+            TotalTaxableRevenue =
+                calculation.TotalTaxableRevenue,
+
+            TotalVatTaxAmount =
+                calculation.TotalVatTaxAmount,
+
+            TotalPersonalIncomeTaxAmount =
+                calculation.TotalPersonalIncomeTaxAmount,
+
+            TotalTaxBeforeExemption =
+                calculation.TotalTaxBeforeExemption,
+
+            TotalExemptionAmount =
+                calculation.TotalExemptionAmount,
+
+            TotalTaxPayableAmount =
+                calculation.TotalTaxPayableAmount,
+
+            AnnualRevenueAtCalculation =
+                calculation.AnnualRevenueAtCalculation,
+
+            ApplicableRevenueThreshold =
+                calculation.ApplicableRevenueThreshold,
+
+            RecommendedFormCode =
+                calculation.RecommendedFormCode,
+
+            RemainingPitDeduction =
+                calculation.RemainingPitDeduction,
+
+            Status =
+                taxPeriod.Status,
+
+            CalculatedAt =
+                calculation.CalculatedAt,
+
+            Lines =
+                calculation.Lines
+                    .OrderBy(x => x.DisplayOrder)
+                    .Select(line =>
+                        new TaxCalculationLineResponse
+                        {
+                            Id =
+                                line.Id,
+
+                            BusinessCategoryId =
+                                line.BusinessCategoryId,
+
+                            SectionCode =
+                                line.SectionCode,
+
+                            IndicatorCode =
+                                line.IndicatorCode,
+
+                            BusinessActivityCode =
+                                line.BusinessActivityCode,
+
+                            BusinessActivityName =
+                                line.BusinessActivityName,
+
+                            TotalRevenue =
+                                line.TotalRevenue,
+
+                            VatTaxableRevenue =
+                                line.VatTaxableRevenue,
+
+                            VatNonTaxableRevenue =
+                                line.VatNonTaxableRevenue,
+
+                            ZeroRatedVatRevenue =
+                                line.ZeroRatedVatRevenue,
+
+                            VatTaxRate =
+                                line.VatTaxRate,
+
+                            VatTaxAmount =
+                                line.VatTaxAmount,
+
+                            PersonalIncomeTaxableRevenue =
+                                line.PersonalIncomeTaxableRevenue,
+
+                            PersonalIncomeTaxDeductibleRevenue =
+                                line.PersonalIncomeTaxDeductibleRevenue,
+
+                            PersonalIncomeTaxRevenue =
+                                line.PersonalIncomeTaxRevenue,
+
+                            PersonalIncomeTaxRate =
+                                line.PersonalIncomeTaxRate,
+
+                            PersonalIncomeTaxAmount =
+                                line.PersonalIncomeTaxAmount
+                        })
+                    .ToList()
+        };
+    }
 }

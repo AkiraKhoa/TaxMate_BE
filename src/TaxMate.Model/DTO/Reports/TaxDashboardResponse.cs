@@ -9,4 +9,6 @@ public class TaxDashboardResponse
     public TaxRevenueForecastResponse Forecast { get; set; } = null!;
 
     public List<TaxQuarterRevenueResponse> Quarters { get; set; } = [];
+
+    public List<OwnerProfileRevenueRow> Businesses { get; set; } = [];
 }

@@ -506,6 +506,42 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                ?? 0m;
     }
     
+    public async Task<IReadOnlyList<BusinessProfile>> GetBusinessesWithCategoriesByOwnerAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.BusinessProfiles
+            .AsNoTracking()
+            .Include(x => x.MainCategory)
+            .Where(x =>
+                x.OwnerId == ownerId &&
+                x.IsActive)
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.BusinessName)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<decimal> GetRevenueForBusinessInPeriodAsync(
+        Guid businessId,
+        DateTime periodStart,
+        DateTime periodEnd,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Transactions
+                   .AsNoTracking()
+                   .Where(x =>
+                       x.BusinessId == businessId &&
+                       x.TransactionType == TransactionTypes.Sale &&
+                       x.Status == "Completed" &&
+                       x.TransactionDate >= periodStart &&
+                       x.TransactionDate <= periodEnd)
+                   .SumAsync(
+                       x => (decimal?)x.TotalAmount,
+                       cancellationToken)
+               ?? 0m;
+    }
+
+
     public async Task<decimal> GetAnnualRevenueByOwnerAsync(
         Guid ownerId,
         int year,

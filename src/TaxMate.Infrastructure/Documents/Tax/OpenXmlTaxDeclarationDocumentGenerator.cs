@@ -209,9 +209,67 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
         var table = tables[SectionATableIndex];
         var rows = table.Elements<TableRow>().ToList();
 
-        foreach (var line in model.Lines.OrderBy(x => x.DisplayOrder))
+        /*
+         * Template 2026:
+         *
+         * row 4  = "1 Trụ sở kinh doanh"
+         * row 5-10 = 1.1 ... 1.6
+         * row 11 = header "2 Mã địa điểm kinh doanh 1 / Tên..."
+         * row 12 = generic 2.1 data-row template
+         * row 13 = continuation placeholder
+         * row 14 = Section II
+         *
+         * Location đầu tiên trong model.Lines là anchor/trụ sở.
+         * Các location còn lại được clone thành các block 2.x, 3.x...
+         */
+        var locationGroups =
+            model.Lines
+                .Where(x =>
+                    string.Equals(
+                        x.SectionCode,
+                        "I",
+                        StringComparison.OrdinalIgnoreCase))
+                .GroupBy(
+                    x => x.BusinessLocationCode ?? string.Empty,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        if (locationGroups.Count > 0)
         {
-            var row = FindSectionARow(rows, line);
+            FillHeadOfficeLines(
+                rows,
+                locationGroups[0]);
+
+            if (locationGroups.Count > 1)
+            {
+                RebuildAdditionalLocationRows(
+                    table,
+                    locationGroups.Skip(1).ToList());
+            }
+            else
+            {
+                ClearAdditionalLocationTemplateRows(table);
+            }
+        }
+
+        /*
+         * Các section khác (nếu có) vẫn dùng mapping theo activity code.
+         */
+        var refreshedRows =
+            table.Elements<TableRow>().ToList();
+
+        foreach (var line in model.Lines
+                     .Where(x =>
+                         !string.Equals(
+                             x.SectionCode,
+                             "I",
+                             StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(x => x.DisplayOrder))
+        {
+            var row =
+                FindSectionARow(
+                    refreshedRows,
+                    line);
 
             if (row is null)
             {
@@ -220,35 +278,345 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
                     $"and activity code '{line.ActivityCode}'.");
             }
 
-            var cells = row.Elements<TableCell>().ToList();
-
-            if (cells.Count < 10)
-            {
-                throw new InvalidOperationException(
-                    "A section A data row must contain 10 cells.");
-            }
-
-            // Actual 2026 Word structure:
-            // 0 STT [08]
-            // 1 activity [09]
-            // 2 activity code [10]
-            // 3 total revenue [11]
-            // 4 VAT non-taxable revenue [12]
-            // 5 VAT 0% revenue [13]
-            // 6 VAT payable [14]
-            // 7 PIT taxable revenue [15]
-            // 8 PIT deductible revenue [16]
-            // 9 PIT payable [17]
-            SetMoneyCell(cells[3], line.TotalRevenue);
-            SetMoneyCell(cells[4], line.VatNonTaxableRevenue);
-            SetMoneyCell(cells[5], line.ZeroRatedVatRevenue);
-            SetMoneyCell(cells[6], line.VatTaxAmount);
-            SetMoneyCell(cells[7], line.PersonalIncomeTaxableRevenue);
-            SetMoneyCell(cells[8], line.PersonalIncomeTaxDeductibleRevenue);
-            SetMoneyCell(cells[9], line.PersonalIncomeTaxAmount);
+            FillSectionADataRow(
+                row,
+                line,
+                overwriteIdentityCells: false);
         }
 
-        FillSectionASummary(rows, model.Summary);
+        refreshedRows =
+            table.Elements<TableRow>().ToList();
+
+        FillSectionASummary(
+            refreshedRows,
+            model.Summary);
+    }
+
+    private static void FillHeadOfficeLines(
+        IReadOnlyList<TableRow> rows,
+        IEnumerable<Form01Cnkd2026LineModel> lines)
+    {
+        foreach (var line in lines
+                     .OrderBy(x => x.DisplayOrder))
+        {
+            var row =
+                FindFixedLocationActivityRow(
+                    rows,
+                    locationOrdinal: 1,
+                    line.ActivityCode);
+
+            if (row is null)
+            {
+                throw new InvalidOperationException(
+                    $"Could not find head-office activity row for activity '{line.ActivityCode}'.");
+            }
+
+            FillSectionADataRow(
+                row,
+                line,
+                overwriteIdentityCells: false);
+        }
+    }
+
+    private static void RebuildAdditionalLocationRows(
+        Table table,
+        IReadOnlyList<IGrouping<string, Form01Cnkd2026LineModel>> locationGroups)
+    {
+        var rows =
+            table.Elements<TableRow>().ToList();
+
+        if (rows.Count <= 14)
+        {
+            throw new InvalidOperationException(
+                "Section A location template structure is invalid.");
+        }
+
+        var headerTemplate =
+            (TableRow)rows[11].CloneNode(true);
+
+        var dataTemplate =
+            (TableRow)rows[12].CloneNode(true);
+
+        var sectionIIRow =
+            rows.FirstOrDefault(
+                x => x.Elements<TableCell>()
+                    .FirstOrDefault()?
+                    .InnerText.Trim()
+                    .Equals(
+                        "II",
+                        StringComparison.OrdinalIgnoreCase) == true)
+            ?? throw new InvalidOperationException(
+                "Could not locate Section II row after fixed-location section.");
+
+        /*
+         * Xóa header/data placeholder location cũ:
+         * row 11, 12, 13 trong template.
+         */
+        foreach (var oldRow in rows
+                     .Skip(11)
+                     .TakeWhile(x => !ReferenceEquals(x, sectionIIRow))
+                     .ToList())
+        {
+            oldRow.Remove();
+        }
+
+        for (var groupIndex = 0;
+             groupIndex < locationGroups.Count;
+             groupIndex++)
+        {
+            var group =
+                locationGroups[groupIndex];
+
+            var sectionOrdinal =
+                groupIndex + 2;
+
+            var locationSequence =
+                groupIndex + 1;
+
+            var firstLine =
+                group.OrderBy(x => x.DisplayOrder)
+                    .First();
+
+            var headerRow =
+                (TableRow)headerTemplate.CloneNode(true);
+
+            FillLocationHeaderRow(
+                headerRow,
+                sectionOrdinal,
+                locationSequence,
+                firstLine.BusinessLocationCode,
+                firstLine.BusinessLocationName);
+
+            sectionIIRow.InsertBeforeSelf(
+                headerRow);
+
+            foreach (var line in group
+                         .OrderBy(x => x.DisplayOrder))
+            {
+                var dataRow =
+                    (TableRow)dataTemplate.CloneNode(true);
+
+                FillAdditionalLocationDataRow(
+                    dataRow,
+                    sectionOrdinal,
+                    line);
+
+                sectionIIRow.InsertBeforeSelf(
+                    dataRow);
+            }
+        }
+    }
+
+    private static void ClearAdditionalLocationTemplateRows(
+        Table table)
+    {
+        var rows =
+            table.Elements<TableRow>().ToList();
+
+        if (rows.Count <= 14)
+            return;
+
+        var sectionIIRow =
+            rows.FirstOrDefault(
+                x => x.Elements<TableCell>()
+                    .FirstOrDefault()?
+                    .InnerText.Trim()
+                    .Equals(
+                        "II",
+                        StringComparison.OrdinalIgnoreCase) == true);
+
+        if (sectionIIRow is null)
+            return;
+
+        foreach (var oldRow in rows
+                     .Skip(11)
+                     .TakeWhile(x => !ReferenceEquals(x, sectionIIRow))
+                     .ToList())
+        {
+            oldRow.Remove();
+        }
+    }
+
+    private static void FillLocationHeaderRow(
+        TableRow row,
+        int sectionOrdinal,
+        int locationSequence,
+        string? locationCode,
+        string? locationName)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 2)
+        {
+            throw new InvalidOperationException(
+                "Location header row must contain at least 2 cells.");
+        }
+
+        SetCellText(
+            cells[0],
+            sectionOrdinal.ToString(
+                CultureInfo.InvariantCulture));
+
+        var paragraphs =
+            cells[1].Elements<Paragraph>().ToList();
+
+        if (paragraphs.Count >= 2)
+        {
+            SetParagraphText(
+                paragraphs[0],
+                $"Mã địa điểm kinh doanh {locationSequence}: " +
+                $"{locationCode ?? string.Empty}");
+
+            SetParagraphText(
+                paragraphs[1],
+                $"Tên địa điểm kinh doanh {locationSequence}: " +
+                $"{locationName ?? string.Empty}");
+        }
+        else
+        {
+            SetCellText(
+                cells[1],
+                $"Mã địa điểm kinh doanh {locationSequence}: " +
+                $"{locationCode ?? string.Empty}; " +
+                $"Tên địa điểm kinh doanh {locationSequence}: " +
+                $"{locationName ?? string.Empty}");
+        }
+    }
+
+    private static void FillAdditionalLocationDataRow(
+        TableRow row,
+        int sectionOrdinal,
+        Form01Cnkd2026LineModel line)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 10)
+        {
+            throw new InvalidOperationException(
+                "Additional-location data row must contain 10 cells.");
+        }
+
+        var activityOrdinal =
+            ResolveActivityOrdinal(
+                line.ActivityCode);
+
+        SetCellText(
+            cells[0],
+            $"{sectionOrdinal}.{activityOrdinal}");
+
+        SetCellText(
+            cells[1],
+            line.ActivityName);
+
+        SetCellText(
+            cells[2],
+            $"({NormalizeActivityCode(line.ActivityCode)})");
+
+        FillSectionADataRow(
+            row,
+            line,
+            overwriteIdentityCells: false);
+    }
+
+    private static void FillSectionADataRow(
+        TableRow row,
+        Form01Cnkd2026LineModel line,
+        bool overwriteIdentityCells)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 10)
+        {
+            throw new InvalidOperationException(
+                "A section A data row must contain 10 cells.");
+        }
+
+        if (overwriteIdentityCells)
+        {
+            SetCellText(
+                cells[1],
+                line.ActivityName);
+
+            SetCellText(
+                cells[2],
+                $"({NormalizeActivityCode(line.ActivityCode)})");
+        }
+
+        // Actual 2026 Word structure:
+        // 0 STT [08]
+        // 1 activity [09]
+        // 2 activity code [10]
+        // 3 total revenue [11]
+        // 4 VAT non-taxable revenue [12]
+        // 5 VAT 0% revenue [13]
+        // 6 VAT payable [14]
+        // 7 PIT taxable revenue [15]
+        // 8 PIT deductible revenue [16]
+        // 9 PIT payable [17]
+        SetMoneyCell(cells[3], line.TotalRevenue);
+        SetMoneyCell(cells[4], line.VatNonTaxableRevenue);
+        SetMoneyCell(cells[5], line.ZeroRatedVatRevenue);
+        SetMoneyCell(cells[6], line.VatTaxAmount);
+        SetMoneyCell(cells[7], line.PersonalIncomeTaxableRevenue);
+        SetMoneyCell(cells[8], line.PersonalIncomeTaxDeductibleRevenue);
+        SetMoneyCell(cells[9], line.PersonalIncomeTaxAmount);
+    }
+
+    private static TableRow? FindFixedLocationActivityRow(
+        IReadOnlyList<TableRow> rows,
+        int locationOrdinal,
+        string activityCode)
+    {
+        if (locationOrdinal != 1)
+        {
+            return null;
+        }
+
+        var marker =
+            $"({NormalizeActivityCode(activityCode)})";
+
+        /*
+         * Trụ sở trong template nằm tại row 5-10.
+         */
+        for (var i = 5;
+             i <= 10 && i < rows.Count;
+             i++)
+        {
+            var cells =
+                rows[i].Elements<TableCell>().ToList();
+
+            if (cells.Count < 3)
+                continue;
+
+            if (NormalizeText(cells[2].InnerText) ==
+                NormalizeText(marker))
+            {
+                return rows[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static int ResolveActivityOrdinal(
+        string activityCode)
+    {
+        return NormalizeActivityCode(
+            activityCode) switch
+        {
+            "a" => 1,
+            "b" => 2,
+            "c" => 3,
+            "d" => 4,
+            "đ" => 5,
+            "e" => 6,
+
+            _ => throw new InvalidOperationException(
+                $"Unsupported Section A activity code: {activityCode}.")
+        };
     }
 
     private static void FillSectionASummary(

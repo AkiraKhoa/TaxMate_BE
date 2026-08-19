@@ -181,4 +181,26 @@ public class ReportController : ControllerBase
 
         return userId;
     }
+    
+    [HttpGet("{businessId:guid}/home-dashboard")]
+    public async Task<IActionResult> GetHomeDashboard(
+        Guid businessId,
+        [FromQuery] DateOnly? date = null,
+        [FromQuery] int rangeDays = 30,
+        [FromQuery] string groupBy = "Day")
+    {
+        var result =
+            await _reportService.GetHomeDashboardAsync(
+                GetUserId(),
+                businessId,
+                date,
+                rangeDays,
+                groupBy);
+
+        return Ok(
+            ApiResponse<HomeDashboardResponse>.Ok(
+                result,
+                "Get home dashboard successfully",
+                HttpContext.TraceIdentifier));
+    }
 }

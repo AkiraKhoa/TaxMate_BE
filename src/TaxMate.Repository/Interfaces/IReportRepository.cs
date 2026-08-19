@@ -75,4 +75,33 @@ public interface IReportRepository
     Task<List<TaxQuarterRevenueResponse>> GetQuarterRevenuesByOwnerAsync(
         Guid ownerId,
         int year);
+    
+    Task<HomeSalesAggregateRow> GetHomeSalesAggregateAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate);
+
+    Task<List<HomeDailyRevenueRow>> GetHomeDailyRevenueAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate);
+
+    Task<List<HomeRevenueStructureRow>> GetHomeRevenueStructureAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate);
+
+    Task<List<HomeTopProductItemResponse>> GetHomeTopProductsAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate,
+        int top = 5);
+
+    Task<HomeBusinessTaxContextRow?> GetHomeBusinessTaxContextAsync(
+        Guid businessId);
+
+    Task<decimal> GetOwnerSalesRevenueAsync(
+        Guid ownerId,
+        DateTime startDate,
+        DateTime endDate);
 }

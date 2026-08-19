@@ -668,4 +668,181 @@ public class ReportRepository : IReportRepository
             .OrderBy(row => row.BusinessName)
             .ToListAsync(cancellationToken);
     }
+    
+    public async Task<HomeSalesAggregateRow> GetHomeSalesAggregateAsync(
+    Guid businessId,
+    DateTime startDate,
+    DateTime endDate)
+{
+    var transactions = _context.Transactions
+        .AsNoTracking()
+        .Where(x =>
+            x.BusinessId == businessId &&
+            x.TransactionType == TransactionTypes.Sale &&
+            x.Status == TransactionStatus.Completed &&
+            x.TransactionDate >= startDate &&
+            x.TransactionDate < endDate);
+
+    var summary = await transactions
+        .GroupBy(_ => 1)
+        .Select(g => new
+        {
+            Revenue = g.Sum(x => x.TotalAmount),
+            OrderCount = g.Count()
+        })
+        .FirstOrDefaultAsync();
+
+    var costOfGoodsSold = await _context.TransactionItems
+        .AsNoTracking()
+        .Where(x =>
+            x.Transaction.BusinessId == businessId &&
+            x.Transaction.TransactionType == TransactionTypes.Sale &&
+            x.Transaction.Status == TransactionStatus.Completed &&
+            x.Transaction.TransactionDate >= startDate &&
+            x.Transaction.TransactionDate < endDate)
+        .SumAsync(x => (decimal?)x.CostAmount) ?? 0m;
+
+    return new HomeSalesAggregateRow
+    {
+        Revenue = summary?.Revenue ?? 0m,
+        OrderCount = summary?.OrderCount ?? 0,
+        CostOfGoodsSold = costOfGoodsSold
+    };
+}
+
+
+public async Task<List<HomeDailyRevenueRow>> GetHomeDailyRevenueAsync(
+    Guid businessId,
+    DateTime startDate,
+    DateTime endDate)
+{
+    return await _context.Transactions
+        .AsNoTracking()
+        .Where(x =>
+            x.BusinessId == businessId &&
+            x.TransactionType == TransactionTypes.Sale &&
+            x.Status == TransactionStatus.Completed &&
+            x.TransactionDate >= startDate &&
+            x.TransactionDate < endDate)
+        .GroupBy(x => x.TransactionDate.Date)
+        .Select(g => new HomeDailyRevenueRow
+        {
+            Date = g.Key,
+            Revenue = g.Sum(x => x.TotalAmount)
+        })
+        .OrderBy(x => x.Date)
+        .ToListAsync();
+}
+
+
+public async Task<List<HomeRevenueStructureRow>>
+    GetHomeRevenueStructureAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate)
+{
+    return await _context.TransactionItems
+        .AsNoTracking()
+        .Where(x =>
+            x.Transaction.BusinessId == businessId &&
+            x.Transaction.TransactionType == TransactionTypes.Sale &&
+            x.Transaction.Status == TransactionStatus.Completed &&
+            x.Transaction.TransactionDate >= startDate &&
+            x.Transaction.TransactionDate < endDate)
+        .GroupBy(x => new
+        {
+            CategoryId = x.Product != null
+                ? x.Product.ProductCategoryId
+                : null,
+
+            CategoryName =
+                x.Product != null &&
+                x.Product.ProductCategory != null
+                    ? x.Product.ProductCategory.Name
+                    : "Khác"
+        })
+        .Select(g => new HomeRevenueStructureRow
+        {
+            CategoryId = g.Key.CategoryId,
+            CategoryName = g.Key.CategoryName,
+            Revenue = g.Sum(x => x.LineTotal)
+        })
+        .OrderByDescending(x => x.Revenue)
+        .ToListAsync();
+}
+
+
+public async Task<List<HomeTopProductItemResponse>>
+    GetHomeTopProductsAsync(
+        Guid businessId,
+        DateTime startDate,
+        DateTime endDate,
+        int top = 5)
+{
+    return await _context.TransactionItems
+        .AsNoTracking()
+        .Where(x =>
+            x.Transaction.BusinessId == businessId &&
+            x.Transaction.TransactionType == TransactionTypes.Sale &&
+            x.Transaction.Status == TransactionStatus.Completed &&
+            x.Transaction.TransactionDate >= startDate &&
+            x.Transaction.TransactionDate < endDate)
+        .GroupBy(x => new
+        {
+            x.ProductId,
+            x.ProductName
+        })
+        .Select(g => new HomeTopProductItemResponse
+        {
+            ProductId = g.Key.ProductId,
+            Name = g.Key.ProductName,
+            Revenue = g.Sum(x => x.LineTotal),
+            QuantitySold = g.Sum(x => x.Quantity)
+        })
+        .OrderByDescending(x => x.Revenue)
+        .Take(top)
+        .ToListAsync();
+}
+
+
+public async Task<HomeBusinessTaxContextRow?>
+    GetHomeBusinessTaxContextAsync(Guid businessId)
+{
+    return await _context.BusinessProfiles
+        .AsNoTracking()
+        .Where(x => x.Id == businessId)
+        .Select(x => new HomeBusinessTaxContextRow
+        {
+            OwnerId = x.OwnerId,
+
+            BusinessCategoryId = x.MainCategoryId,
+
+            VatRate = x.MainCategory != null
+                ? x.MainCategory.VatRate
+                : 0m,
+
+            PitRate = x.MainCategory != null
+                ? x.MainCategory.PitRate
+                : 0m
+        })
+        .FirstOrDefaultAsync();
+}
+
+
+public async Task<decimal> GetOwnerSalesRevenueAsync(
+    Guid ownerId,
+    DateTime startDate,
+    DateTime endDate)
+{
+    return await _context.Transactions
+               .AsNoTracking()
+               .Where(x =>
+                   x.Business.OwnerId == ownerId &&
+                   x.TransactionType == TransactionTypes.Sale &&
+                   x.Status == TransactionStatus.Completed &&
+                   x.TransactionDate >= startDate &&
+                   x.TransactionDate < endDate)
+               .SumAsync(x => (decimal?)x.TotalAmount)
+           ?? 0m;
+}
 }   

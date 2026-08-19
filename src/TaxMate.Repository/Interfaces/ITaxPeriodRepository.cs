@@ -53,6 +53,17 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
         DateTime periodStart,
         CancellationToken cancellationToken = default);
     
+    Task<IReadOnlyList<BusinessProfile>> GetBusinessesWithCategoriesByOwnerAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default);
+
+    Task<decimal> GetRevenueForBusinessInPeriodAsync(
+        Guid businessId,
+        DateTime periodStart,
+        DateTime periodEnd,
+        CancellationToken cancellationToken = default);
+
+
     Task<decimal> GetAnnualRevenueByOwnerAsync(
         Guid ownerId,
         int year,

@@ -31,4 +31,11 @@ public interface IReportService
     Task<TaxDashboardResponse> GetTaxDashboardAsync(
         Guid businessId,
         int year);
+    
+    Task<HomeDashboardResponse> GetHomeDashboardAsync(
+        Guid userId,
+        Guid businessId,
+        DateOnly? date,
+        int rangeDays,
+        string groupBy);
 }

@@ -6,9 +6,35 @@ namespace TaxMate.Service.Mappings;
 public static class Form01Cnkd2026Mapper
 {
     public static Form01Cnkd2026Model Map(
-        TaxDeclaration declaration)
+        TaxDeclaration declaration,
+        IReadOnlyCollection<BusinessProfile>? businessProfiles = null)
     {
         var period = declaration.TaxPeriod;
+
+        var profiles =
+            businessProfiles ??
+            Array.Empty<BusinessProfile>();
+
+        var profileById =
+            profiles.ToDictionary(
+                x => x.Id,
+                x => x);
+
+        var profileByLocationCode =
+            profiles
+                .Where(x =>
+                    !string.IsNullOrWhiteSpace(
+                        x.BusinessLocationCode))
+                .GroupBy(
+                    x => x.BusinessLocationCode!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.First(),
+                    StringComparer.OrdinalIgnoreCase);
+
+        var anchorBusinessId =
+            period.BusinessId;
 
         var model = new Form01Cnkd2026Model
         {
@@ -43,13 +69,13 @@ public static class Form01Cnkd2026Mapper
 
             TaxAgentTaxCode =
                 declaration.TaxAgentTaxCode,
-            
+
             DeclarationDate =
                 declaration.GeneratedAt,
 
             SignerName =
                 declaration.TaxpayerName,
-            
+
             RemainingPitDeduction =
                 declaration.RemainingPitDeduction,
 
@@ -57,6 +83,14 @@ public static class Form01Cnkd2026Mapper
             {
                 TotalRevenue =
                     declaration.TotalRevenue,
+
+                TotalVatNonTaxableRevenue =
+                    declaration.Lines.Sum(
+                        x => x.VatNonTaxableRevenue),
+
+                TotalZeroRatedVatRevenue =
+                    declaration.Lines.Sum(
+                        x => x.ZeroRatedVatRevenue),
 
                 TotalVatTaxAmount =
                     declaration.TotalVatTaxAmount,
@@ -78,52 +112,121 @@ public static class Form01Cnkd2026Mapper
             }
         };
 
+        /*
+         * TaxPeriod.BusinessId là location anchor/trụ sở trong flow hiện tại.
+         * Đưa anchor lên đầu để generator render vào nhóm 1.x.
+         */
         model.Lines = declaration.Lines
-            .OrderBy(x => x.DisplayOrder)
-            .Select(x => new Form01Cnkd2026LineModel
+            .OrderBy(x =>
+                x.BusinessLocationId == anchorBusinessId
+                    ? 0
+                    : 1)
+            .ThenBy(x => x.DisplayOrder)
+            .Select(x =>
             {
-                SectionCode =
-                    x.SectionCode,
+                BusinessProfile? profile = null;
 
-                ActivityCode =
-                    x.IndicatorCode,
+                if (x.BusinessLocationId.HasValue)
+                {
+                    profileById.TryGetValue(
+                        x.BusinessLocationId.Value,
+                        out profile);
+                }
 
-                ActivityName =
-                    x.BusinessActivityName,
+                if (profile is null &&
+                    !string.IsNullOrWhiteSpace(
+                        x.BusinessLocationCode))
+                {
+                    profileByLocationCode.TryGetValue(
+                        x.BusinessLocationCode!,
+                        out profile);
+                }
 
-                BusinessLocationCode =
-                    x.BusinessLocationCode,
+                return new Form01Cnkd2026LineModel
+                {
+                    SectionCode =
+                        x.SectionCode,
 
-                TotalRevenue =
-                    x.TotalRevenue,
+                    /*
+                     * TaxMate hiện hỗ trợ FNB và SERVICE.
+                     * Chuẩn hóa code biểu mẫu để không phụ thuộc seed/category
+                     * cũ đang lưu nhầm SERVICE = d.
+                     *
+                     * FNB     -> (d) -> x.4
+                     * SERVICE -> (b) -> x.2
+                     */
+                    ActivityCode =
+                        ResolveActivityCode(
+                            x.BusinessActivityCode,
+                            x.IndicatorCode),
 
-                VatNonTaxableRevenue =
-                    x.VatNonTaxableRevenue,
+                    ActivityName =
+                        x.BusinessActivityName,
 
-                ZeroRatedVatRevenue =
-                    x.ZeroRatedVatRevenue,
+                    BusinessLocationCode =
+                        x.BusinessLocationCode,
 
-                VatTaxAmount =
-                    x.VatTaxAmount,
+                    BusinessLocationName =
+                        profile?.BusinessName,
 
-                PersonalIncomeTaxableRevenue =
-                    x.PersonalIncomeTaxableRevenue,
+                    TotalRevenue =
+                        x.TotalRevenue,
 
-                PersonalIncomeTaxDeductibleRevenue =
-                    x.PersonalIncomeTaxDeductibleRevenue,
+                    VatNonTaxableRevenue =
+                        x.VatNonTaxableRevenue,
 
-                PersonalIncomeTaxRevenue =
-                    x.PersonalIncomeTaxRevenue,
+                    ZeroRatedVatRevenue =
+                        x.ZeroRatedVatRevenue,
 
-                PersonalIncomeTaxAmount =
-                    x.PersonalIncomeTaxAmount,
+                    VatTaxAmount =
+                        x.VatTaxAmount,
 
-                DisplayOrder =
-                    x.DisplayOrder
+                    PersonalIncomeTaxableRevenue =
+                        x.PersonalIncomeTaxableRevenue,
+
+                    PersonalIncomeTaxDeductibleRevenue =
+                        x.PersonalIncomeTaxDeductibleRevenue,
+
+                    PersonalIncomeTaxRevenue =
+                        x.PersonalIncomeTaxRevenue,
+
+                    PersonalIncomeTaxAmount =
+                        x.PersonalIncomeTaxAmount,
+
+                    DisplayOrder =
+                        x.DisplayOrder
+                };
             })
             .ToList();
 
+        /*
+         * Mục D: obligations đã được tách theo location ở CreateAsync().
+         * Sắp xếp theo thứ tự location trong Section A để output ổn định.
+         */
+        var locationOrder =
+            model.Lines
+                .Select(x => x.BusinessLocationCode)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select((code, index) => new
+                {
+                    Code = code!,
+                    Index = index
+                })
+                .ToDictionary(
+                    x => x.Code,
+                    x => x.Index,
+                    StringComparer.OrdinalIgnoreCase);
+
         model.PaymentLines = declaration.Obligations
+            .OrderBy(x =>
+                x.BusinessLocationCode is not null &&
+                locationOrder.TryGetValue(
+                    x.BusinessLocationCode,
+                    out var order)
+                    ? order
+                    : int.MaxValue)
+            .ThenBy(x => x.TaxType)
             .Select(x => new Form01Cnkd2026PaymentLineModel
             {
                 BusinessLocationCode =
@@ -172,14 +275,18 @@ public static class Form01Cnkd2026Mapper
             declaration.Lines.Sum(
                 x => x.PersonalIncomeTaxAmount);
 
-        model.TotalPitTaxableRevenue = totalPitTaxableRevenue;
-        
-        model.TotalPitDeductibleRevenue = totalPitDeductibleRevenue;
-        
-        model.TotalPitRevenue = totalPitRevenue;
-        
-        model.TotalPitTaxAmount = totalPitTaxAmount;
-        
+        model.TotalPitTaxableRevenue =
+            totalPitTaxableRevenue;
+
+        model.TotalPitDeductibleRevenue =
+            totalPitDeductibleRevenue;
+
+        model.TotalPitRevenue =
+            totalPitRevenue;
+
+        model.TotalPitTaxAmount =
+            totalPitTaxAmount;
+
         model.Summary.TotalPersonalIncomeTaxableRevenue =
             totalPitTaxableRevenue;
 
@@ -188,7 +295,35 @@ public static class Form01Cnkd2026Mapper
 
         model.Summary.TotalPersonalIncomeTaxAmount =
             totalPitTaxAmount;
-        
+
         return model;
+    }
+
+    private static string ResolveActivityCode(
+        string? businessActivityCode,
+        string? indicatorCode)
+    {
+        var activity =
+            businessActivityCode?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(activity))
+        {
+            if (activity.Equals(
+                    "FNB",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "d";
+            }
+
+            if (activity.StartsWith(
+                    "SERVICE",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "b";
+            }
+        }
+
+        return indicatorCode?.Trim()
+               ?? string.Empty;
     }
 }
