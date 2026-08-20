@@ -134,7 +134,7 @@ public class SmtpEmailService : IEmailService
                       <tr>
                         <td style="background:{BrandRed};padding:22px 28px;">
                           <p style="margin:0;color:#ffffff;font-size:20px;font-weight:bold;letter-spacing:0.4px;">TaxMate</p>
-                          <p style="margin:6px 0 0;color:#ffe8e8;font-size:13px;">Thông báo ngưỡng doanh thu 1 tỷ đồng</p>
+                          <p style="margin:6px 0 0;color:#ffe8e8;font-size:13px;">Thông báo ngưỡng doanh thu {FormatVnd(threshold, vi)}</p>
                         </td>
                       </tr>
                       <tr>
@@ -163,7 +163,7 @@ public class SmtpEmailService : IEmailService
                           </table>
                           <div style="margin:20px 0 0;padding:14px 16px;background:#fff5f5;border-left:4px solid {BrandRed};border-radius:4px;">
                             <p style="margin:0;color:{BrandRedDark};font-size:14px;line-height:1.6;font-weight:bold;">
-                              Từ bây giờ, đối với doanh thu trên 1 tỷ bạn phải xuất file S2A để nộp thuế GTGT và TNCN.
+                              Doanh thu đã đạt ngưỡng {FormatVnd(threshold, vi)}. Vui lòng kiểm tra nghĩa vụ kê khai và sổ S2A trên TaxMate.
                             </p>
                           </div>
                           <p style="margin:22px 0 0;">
@@ -187,7 +187,7 @@ public class SmtpEmailService : IEmailService
 
         return SendHtmlAsync(
             toEmail,
-            "Doanh thu 4 kỳ đã đạt 1 tỷ đồng - TaxMate",
+            $"Doanh thu 4 kỳ đã đạt {FormatVnd(threshold, vi)} - TaxMate",
             html,
             cancellationToken);
     }

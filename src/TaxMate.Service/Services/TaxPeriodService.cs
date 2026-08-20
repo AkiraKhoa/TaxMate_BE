@@ -13,13 +13,16 @@ public class TaxPeriodService : ITaxPeriodService
 {
     private readonly ITaxPeriodRepository _taxPeriodRepository;
     private readonly ITaxCalculationRepository _taxCalculationRepository;
+    private readonly ITaxPolicyService _taxPolicyService;
 
     public TaxPeriodService(
         ITaxPeriodRepository taxPeriodRepository,
-        ITaxCalculationRepository taxCalculationRepository)
+        ITaxCalculationRepository taxCalculationRepository,
+        ITaxPolicyService taxPolicyService)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxCalculationRepository = taxCalculationRepository;
+        _taxPolicyService = taxPolicyService;
     }
 
     public async Task<IReadOnlyList<TaxPeriodSummaryResponse>>
@@ -298,16 +301,29 @@ public class TaxPeriodService : ITaxPeriodService
                     taxPeriod.Year,
                     cancellationToken);
 
+        var policyDate = DateOnly.FromDateTime(
+            taxPeriod.PeriodEndDate.AddDays(-1));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (policyDate > today)
+        {
+            policyDate = today;
+        }
+
+        var taxPolicy = await _taxPolicyService.GetEffectiveAsync(
+            policyDate,
+            cancellationToken);
+        var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
+
         var isTaxableBusiness =
             annualRevenue >
-            TaxRules.AnnualRevenueThreshold2026;
+            annualRevenueThreshold;
 
         var recommendedFormCode =
             isTaxableBusiness
                 ? "01/CNKD"
                 : "01/TKN-CNKD";
 
-        // Mức trừ TNCN 1 tỷ là một pool chung của Owner.
+        // Mức trừ TNCN theo chính sách là một pool chung của Owner.
         decimal remainingDeduction;
 
         if (isTaxableBusiness)
@@ -323,12 +339,12 @@ public class TaxPeriodService : ITaxPeriodService
             var alreadyConsumedDeduction =
                 Math.Min(
                     previousAnnualRevenue,
-                    TaxRules.AnnualPitRevenueDeduction2026);
+                    annualRevenueThreshold);
 
             remainingDeduction =
                 Math.Max(
                     0m,
-                    TaxRules.AnnualPitRevenueDeduction2026 -
+                    annualRevenueThreshold -
                     alreadyConsumedDeduction);
         }
         else
@@ -336,7 +352,7 @@ public class TaxPeriodService : ITaxPeriodService
             remainingDeduction =
                 Math.Max(
                     0m,
-                    TaxRules.AnnualPitRevenueDeduction2026 -
+                    annualRevenueThreshold -
                     annualRevenue);
         }
 
@@ -411,7 +427,7 @@ public class TaxPeriodService : ITaxPeriodService
                 annualRevenue,
 
             ApplicableRevenueThreshold =
-                TaxRules.AnnualRevenueThreshold2026,
+                annualRevenueThreshold,
 
             RecommendedFormCode =
                 recommendedFormCode,

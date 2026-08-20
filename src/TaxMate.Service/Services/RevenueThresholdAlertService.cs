@@ -1,11 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxMate.Model.Common;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Interfaces;
-using TaxMate.Service.Options;
 
 namespace TaxMate.Service.Services;
 
@@ -17,7 +15,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
     private readonly IUserRepository _users;
     private readonly IEmailService _emailService;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly TaxSettings _taxSettings;
+    private readonly ITaxPolicyService _taxPolicyService;
     private readonly ILogger<RevenueThresholdAlertService> _logger;
 
     public RevenueThresholdAlertService(
@@ -27,7 +25,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         IUserRepository users,
         IEmailService emailService,
         IUnitOfWork unitOfWork,
-        IOptions<TaxSettings> taxSettings,
+        ITaxPolicyService taxPolicyService,
         ILogger<RevenueThresholdAlertService> logger)
     {
         _businessProfiles = businessProfiles;
@@ -36,7 +34,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         _users = users;
         _emailService = emailService;
         _unitOfWork = unitOfWork;
-        _taxSettings = taxSettings.Value;
+        _taxPolicyService = taxPolicyService;
         _logger = logger;
     }
 
@@ -52,7 +50,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         {
             _logger.LogError(
                 ex,
-                "Failed to check 1-tỷ revenue threshold after sale for business {BusinessId}.",
+                "Failed to check revenue threshold after sale for business {BusinessId}.",
                 businessId);
         }
     }
@@ -70,6 +68,10 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         var asOfUtc = DateTime.UtcNow;
         var (windowStart, windowEnd, currentYear, currentQuarter) =
             TaxPeriodWindow.GetCurrentAndPreviousThreeQuarterWindow(asOfUtc);
+        var policy = await _taxPolicyService.GetEffectiveAsync(
+            DateOnly.FromDateTime(asOfUtc),
+            cancellationToken);
+        var threshold = policy.AnnualRevenueThreshold;
 
         var alreadySent = await _alerts.AnyAsync(alert =>
             alert.OwnerId == business.OwnerId && alert.Year == currentYear);
@@ -84,7 +86,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
             windowEnd,
             cancellationToken);
         var total = profiles.Sum(row => row.Revenue);
-        if (total < _taxSettings.BusinessRevenueThreshold)
+        if (total < threshold)
         {
             return;
         }
@@ -128,7 +130,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
                 currentQuarter,
                 windowStart,
                 windowEnd,
-                _taxSettings.BusinessRevenueThreshold,
+                threshold,
                 profiles,
                 total,
                 cancellationToken);
@@ -137,7 +139,7 @@ public class RevenueThresholdAlertService : IRevenueThresholdAlertService
         {
             _logger.LogError(
                 ex,
-                "Failed to send 1-tỷ revenue threshold email to owner {OwnerId} for year {Year}.",
+                "Failed to send revenue threshold email to owner {OwnerId} for year {Year}.",
                 business.OwnerId,
                 currentYear);
 
