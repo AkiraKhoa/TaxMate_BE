@@ -2,10 +2,10 @@ using System.Linq.Expressions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using TaxMate.Model.DTO.Reports;
+using TaxMate.Model.DTO.TaxPolicy;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Interfaces;
-using TaxMate.Service.Options;
 using TaxMate.Service.Services;
 
 namespace TaxMate.Service.Tests;
@@ -18,12 +18,23 @@ public class RevenueThresholdAlertServiceTests
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IEmailService> _email = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
+    private readonly Mock<ITaxPolicyService> _taxPolicy = new();
 
     private readonly Guid _ownerId = Guid.NewGuid();
     private readonly Guid _businessId = Guid.NewGuid();
 
     private RevenueThresholdAlertService CreateService(decimal threshold = 1_000_000_000m)
     {
+        _taxPolicy
+            .Setup(x => x.GetEffectiveAsync(
+                It.IsAny<DateOnly>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveTaxPolicyResponse
+            {
+                AnnualRevenueThreshold = threshold,
+                EInvoiceRevenueThreshold = threshold
+            });
+
         return new RevenueThresholdAlertService(
             _businessProfiles.Object,
             _alerts.Object,
@@ -31,7 +42,7 @@ public class RevenueThresholdAlertServiceTests
             _users.Object,
             _email.Object,
             _unitOfWork.Object,
-            Microsoft.Extensions.Options.Options.Create(new TaxSettings { BusinessRevenueThreshold = threshold }),
+            _taxPolicy.Object,
             NullLogger<RevenueThresholdAlertService>.Instance);
     }
 
