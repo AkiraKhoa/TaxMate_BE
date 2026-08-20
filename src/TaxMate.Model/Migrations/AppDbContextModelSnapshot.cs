@@ -1688,6 +1688,61 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("Suppliers");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.TaxThresholdSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Type", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("TaxThresholdSettings");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000011"),
+                            Amount = 1000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "AnnualRevenueTax",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000012"),
+                            Amount = 1000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "EInvoiceRequirement",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.TaxCalculation", b =>
                 {
                     b.Property<Guid>("Id")

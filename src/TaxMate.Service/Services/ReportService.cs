@@ -11,16 +11,16 @@ public class ReportService : IReportService
 {
     private readonly IReportRepository _reportRepository;
     private readonly IGenericRepository<TaxMate.Model.Entities.BusinessProfile> _businessProfiles;
-    private readonly IOptions<TaxSettings> _taxSettings;
+    private readonly ITaxPolicyService _taxPolicyService;
 
     public ReportService(
         IReportRepository reportRepository,
         IGenericRepository<TaxMate.Model.Entities.BusinessProfile> businessProfiles,
-        IOptions<TaxSettings> taxSettings)
+        ITaxPolicyService taxPolicyService)
     {
         _reportRepository = reportRepository;
         _businessProfiles = businessProfiles;
-        _taxSettings = taxSettings;
+        _taxPolicyService = taxPolicyService;
     }
 
     public async Task<SalesDashboardResponse> GetSalesDashboardAsync(
@@ -288,8 +288,10 @@ public class ReportService : IReportService
             yearStart,
             yearEnd);
 
-    var threshold =
-        _taxSettings.Value.BusinessRevenueThreshold;
+    var policyDate = GetPolicyDateForYear(year);
+    var policy = await _taxPolicyService.GetEffectiveAsync(policyDate);
+    var threshold = policy.AnnualRevenueThreshold;
+    var eInvoiceThreshold = policy.EInvoiceRevenueThreshold;
 
     var progress = threshold <= 0
         ? 0
@@ -357,7 +359,27 @@ public class ReportService : IReportService
             AccumulatedRevenue = accumulatedRevenue,
             RemainingAmount = remaining,
             ProgressPercentage = progress,
-            Status = accumulatedRevenue >= threshold
+            Status = accumulatedRevenue > threshold
+                ? "Taxable"
+                : "NotTaxable"
+        },
+
+        EInvoiceThreshold = new TaxRevenueThresholdResponse
+        {
+            Amount = eInvoiceThreshold,
+            AccumulatedRevenue = accumulatedRevenue,
+            RemainingAmount = Math.Max(
+                eInvoiceThreshold - accumulatedRevenue,
+                0),
+            ProgressPercentage = eInvoiceThreshold <= 0
+                ? 0
+                : Math.Clamp(
+                    Math.Round(
+                        accumulatedRevenue / eInvoiceThreshold * 100,
+                        2),
+                    0,
+                    100),
+            Status = accumulatedRevenue >= eInvoiceThreshold
                 ? "RequiredEInvoice"
                 : "NotRequired"
         },
@@ -557,9 +579,12 @@ public class ReportService : IReportService
             yearStart,
             monthStart);
 
+    var taxPolicy = await _taxPolicyService.GetEffectiveAsync(asOfDate);
+    var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
+
     var isTaxable =
         annualRevenue >
-        TaxRules.AnnualRevenueThreshold2026;
+        annualRevenueThreshold;
 
     decimal vatAmount = 0m;
     decimal pitAmount = 0m;
@@ -569,12 +594,12 @@ public class ReportService : IReportService
         var alreadyConsumedDeduction =
             Math.Min(
                 previousAnnualRevenue,
-                TaxRules.AnnualPitRevenueDeduction2026);
+                annualRevenueThreshold);
 
         var remainingDeduction =
             Math.Max(
                 0m,
-                TaxRules.AnnualPitRevenueDeduction2026 -
+                annualRevenueThreshold -
                 alreadyConsumedDeduction);
 
         var pitDeductibleRevenue =
@@ -1011,5 +1036,22 @@ private static void ApplyLinearTrend(
                     estimated,
                     2));
     }
+}
+
+private static DateOnly GetPolicyDateForYear(int year)
+{
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    if (year < today.Year)
+    {
+        return new DateOnly(year, 12, 31);
+    }
+
+    if (year > today.Year)
+    {
+        return new DateOnly(year, 1, 1);
+    }
+
+    return today;
 }
 }

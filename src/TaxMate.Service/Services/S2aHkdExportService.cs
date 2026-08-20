@@ -20,7 +20,8 @@ public class S2aHkdExportService : IS2aHkdExportService
     private readonly IReportRepository _reportRepository;
     private readonly IGenericRepository<BusinessCategory> _categories;
     private readonly IS2aHkdWordService _wordService;
-    private readonly TaxSettings _taxSettings;
+    private readonly decimal _s2aMaxRevenueThreshold;
+    private readonly ITaxPolicyService _taxPolicyService;
 
     public S2aHkdExportService(
         IBusinessProfileRepository businessProfiles,
@@ -28,14 +29,16 @@ public class S2aHkdExportService : IS2aHkdExportService
         IReportRepository reportRepository,
         IGenericRepository<BusinessCategory> categories,
         IS2aHkdWordService wordService,
-        IOptions<TaxSettings> taxSettings)
+        IOptions<TaxSettings> taxSettings,
+        ITaxPolicyService taxPolicyService)
     {
         _businessProfiles = businessProfiles;
         _s2aHkdRepository = s2aHkdRepository;
         _reportRepository = reportRepository;
         _categories = categories;
         _wordService = wordService;
-        _taxSettings = taxSettings.Value;
+        _s2aMaxRevenueThreshold = taxSettings.Value.S2aMaxRevenueThreshold;
+        _taxPolicyService = taxPolicyService;
     }
 
     public Task<S2aHkdDocumentModel> BuildDocumentModelAsync(
@@ -78,12 +81,27 @@ public class S2aHkdExportService : IS2aHkdExportService
                 "Mã số thuế chưa được cập nhật. Vui lòng cập nhật MST trước khi xuất sổ S2a.");
 
         var ytdRevenue = await _reportRepository.GetAccumulatedRevenueAsync(businessId, year);
-        if (ytdRevenue < _taxSettings.BusinessRevenueThreshold
-            || ytdRevenue > _taxSettings.S2aMaxRevenueThreshold)
+        var (_, quarterEndExclusive) = TaxPeriodWindow.GetQuarterWindow(
+            year,
+            quarter);
+        var quarterPolicyDate = DateOnly.FromDateTime(
+            quarterEndExclusive.AddDays(-1));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (quarterPolicyDate > today)
+        {
+            quarterPolicyDate = today;
+        }
+
+        var policy = await _taxPolicyService.GetEffectiveAsync(
+            quarterPolicyDate);
+        var minimumRevenueThreshold = policy.AnnualRevenueThreshold;
+        if (ytdRevenue < minimumRevenueThreshold
+            || ytdRevenue > _s2aMaxRevenueThreshold)
         {
             throw new UnprocessableEntityException(
                 S2aHkdErrorCodes.NotEligible,
-                $"Doanh thu năm {year} ({ytdRevenue:N0} đ) không thuộc nhóm 1–3 tỷ VND để sử dụng sổ S2a.");
+                $"Doanh thu năm {year} ({ytdRevenue:N0} đ) không nằm trong khoảng " +
+                $"{minimumRevenueThreshold:N0}–{_s2aMaxRevenueThreshold:N0} VND để sử dụng sổ S2a.");
         }
 
         var (startDate, endDate) = TaxPeriodWindow.GetQuarterWindow(year, quarter);
