@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
+using TaxMate.Model.DTO.TaxPolicy;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Exceptions;
@@ -18,6 +19,7 @@ public class S2aHkdExportServiceTests
     private readonly Mock<IReportRepository> _reportRepository = new();
     private readonly Mock<IGenericRepository<BusinessCategory>> _categories = new();
     private readonly Mock<IS2aHkdWordService> _wordService = new();
+    private readonly Mock<ITaxPolicyService> _taxPolicy = new();
 
     private readonly Guid _ownerId = Guid.NewGuid();
     private readonly Guid _businessId = Guid.NewGuid();
@@ -25,6 +27,16 @@ public class S2aHkdExportServiceTests
 
     private S2aHkdExportService CreateService(decimal lower = 1_000_000_000m, decimal upper = 3_000_000_000m)
     {
+        _taxPolicy
+            .Setup(x => x.GetEffectiveAsync(
+                It.IsAny<DateOnly>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveTaxPolicyResponse
+            {
+                AnnualRevenueThreshold = lower,
+                EInvoiceRevenueThreshold = lower
+            });
+
         return new S2aHkdExportService(
             _businessProfiles.Object,
             _s2aHkdRepository.Object,
@@ -33,9 +45,9 @@ public class S2aHkdExportServiceTests
             _wordService.Object,
             Microsoft.Extensions.Options.Options.Create(new TaxSettings
             {
-                BusinessRevenueThreshold = lower,
                 S2aMaxRevenueThreshold = upper
-            }));
+            }),
+            _taxPolicy.Object);
     }
 
     [Fact]
