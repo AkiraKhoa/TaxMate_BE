@@ -30,4 +30,7 @@ public class Ingredient : BaseEntity
 
     public ICollection<IngredientPurchase> IngredientPurchases { get; set; }
         = new List<IngredientPurchase>();
+
+    public ICollection<InventoryMovement> InventoryMovements { get; set; }
+        = new List<InventoryMovement>();
 }

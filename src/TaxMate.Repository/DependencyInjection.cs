@@ -36,6 +36,13 @@ public static class DependencyInjection
         services.AddScoped<IS2aHkdRepository, S2aHkdRepository>();
         services.AddScoped<ITaxCalculationRepository, TaxCalculationRepository>();
         services.AddScoped<ITaxDeclarationRepository, TaxDeclarationRepository>();
+        services.AddScoped<IAccountingScopeReadRepository, AccountingScopeReadRepository>();
+        services.AddScoped<IAccountingTransactionLockRepository, AccountingTransactionLockRepository>();
+        services.AddScoped<IInventoryBookClosureRepository, InventoryBookClosureRepository>();
+        services.AddScoped<IInventoryMovementRepository, InventoryMovementRepository>();
+        services.AddScoped<IInventoryControlRepository, InventoryControlRepository>();
+        services.AddScoped<IInventoryPurchaseRepository, InventoryPurchaseRepository>();
+        services.AddScoped<IMoneyMovementRepository, MoneyMovementRepository>();
 
         return services;
     }

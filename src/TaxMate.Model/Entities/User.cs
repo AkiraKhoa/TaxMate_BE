@@ -43,6 +43,21 @@ public class User : BaseEntity
 
     public DateTime? EmailVerificationTokenExpiresAt { get; set; }
 
+    [MaxLength(30)]
+    public string? DeclaredRevenueBracket { get; set; }
+
+    [MaxLength(30)]
+    public string? PersonalIncomeTaxMethod { get; set; }
+
+    public int? TaxMethodEffectiveYear { get; set; }
+
+    [MaxLength(30)]
+    public string? CommencementPeriod { get; set; }
+
+    public int? CommencementTaxYear { get; set; }
+
+    public DateTime? TaxProfileConfirmedAt { get; set; }
+
     public ICollection<BusinessProfile> BusinessProfiles { get; set; }
         = new List<BusinessProfile>();
 

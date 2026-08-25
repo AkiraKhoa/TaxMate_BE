@@ -12,6 +12,7 @@ public class ProductServiceAvailableQuantityTests
     private readonly Mock<IProductRepository> _products = new();
     private readonly Mock<IGenericRepository<BusinessProfile>> _businessProfiles = new();
     private readonly Mock<IGenericRepository<BusinessCategory>> _businessCategories = new();
+    private readonly Mock<IInventoryControlRepository> _inventoryControls = new();
 
     [Fact]
     public async Task GetPaged_WithRecipe_ReturnsLimitingWholeProductQuantity()
@@ -107,7 +108,8 @@ public class ProductServiceAvailableQuantityTests
         _unitOfWork.Object,
         _products.Object,
         _businessProfiles.Object,
-        _businessCategories.Object);
+        _businessCategories.Object,
+        _inventoryControls.Object);
 
     private static Product CreateProduct(decimal? stockQuantity) => new()
     {

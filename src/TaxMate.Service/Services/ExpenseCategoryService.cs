@@ -1,4 +1,5 @@
 using AutoMapper;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO.ExpenseCategory;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
@@ -29,6 +30,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
     public async Task<ExpenseCategoryDTO> CreateAsync(Guid ownerId, Guid businessId, CreateExpenseCategoryRequest request)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
+        var s2cGroupCode = NormalizeS2cGroupCode(request.S2cGroupCode);
 
         var exists = await _expenseCategories.AnyAsync(x => 
             x.BusinessId == businessId && 
@@ -43,6 +45,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
             BusinessId = businessId,
             CategoryName = request.CategoryName.Trim(),
             Description = request.Description,
+            S2cGroupCode = s2cGroupCode,
             IsDefault = false
         };
 
@@ -54,6 +57,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
 
     public async Task<ExpenseCategoryDTO> UpdateAsync(Guid ownerId, Guid id, UpdateExpenseCategoryRequest request)
     {
+        var s2cGroupCode = NormalizeS2cGroupCode(request.S2cGroupCode);
         var entity = await _expenseCategories.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException("Expense category not found.");
@@ -73,6 +77,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
 
         entity.CategoryName = request.CategoryName.Trim();
         entity.Description = request.Description;
+        entity.S2cGroupCode = s2cGroupCode;
 
         _expenseCategories.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -124,5 +129,17 @@ public class ExpenseCategoryService : IExpenseCategoryService
 
         if (business.OwnerId != ownerId)
             throw new UnauthorizedAccessException("You do not own this business.");
+    }
+
+    private static string? NormalizeS2cGroupCode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim();
+        if (!S2cGroupCodes.All.Contains(normalized))
+            throw new BadRequestException("Nhóm S2c không hợp lệ.");
+
+        return normalized;
     }
 }

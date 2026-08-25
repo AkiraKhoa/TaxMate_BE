@@ -16,6 +16,8 @@ public class Transaction : BaseEntity
 
     public DateTime TransactionDate { get; set; }
 
+    public DateTime? CompletedAt { get; set; }
+
     [Precision(18, 2)]
     public decimal SubTotal { get; set; }
 
@@ -67,4 +69,6 @@ public class Transaction : BaseEntity
 
     public ICollection<TransactionItem> TransactionItems { get; set; }
         = new List<TransactionItem>();
+
+    public Income? GeneratedIncome { get; set; }
 }

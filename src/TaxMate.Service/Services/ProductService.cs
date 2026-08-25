@@ -13,17 +13,20 @@ public class ProductService : IProductService
     private readonly IProductRepository _products;
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly IGenericRepository<BusinessCategory> _businessCategories;
+    private readonly IInventoryControlRepository _inventoryControls;
 
     public ProductService(
         IUnitOfWork unitOfWork,
         IProductRepository products,
         IGenericRepository<BusinessProfile> businessProfiles,
-        IGenericRepository<BusinessCategory> businessCategories)
+        IGenericRepository<BusinessCategory> businessCategories,
+        IInventoryControlRepository inventoryControls)
     {
         _unitOfWork = unitOfWork;
         _products = products;
         _businessProfiles = businessProfiles;
         _businessCategories = businessCategories;
+        _inventoryControls = inventoryControls;
     }
 
     public async Task<ProductResponse> CreateAsync(
@@ -33,6 +36,8 @@ public class ProductService : IProductService
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
         await EnsureBusinessCategoryValidAsync(request.BusinessCategoryId);
+        EnsureNonNegative(request.StockQuantity, "Số lượng tồn");
+        EnsureNonNegative(request.CostPrice, "Giá vốn");
 
         var exists = await _products.AnyAsync(x =>
             x.BusinessId == businessId
@@ -91,6 +96,35 @@ public class ProductService : IProductService
 
         await EnsureBusinessCategoryValidAsync(request.BusinessCategoryId);
 
+        var hasMovement = await _inventoryControls.HasMovementsForProductAsync(id);
+        if (hasMovement)
+        {
+            EnsureHistoryProtectedFieldUnchanged(
+                NormalizeUnit(entity.Unit),
+                NormalizeUnit(request.Unit),
+                "đơn vị tính");
+            if (request.CostPrice.HasValue)
+            {
+                EnsureHistoryProtectedFieldUnchanged(
+                    entity.CostPrice,
+                    request.CostPrice,
+                    "giá vốn");
+            }
+
+            if (request.StockQuantity.HasValue)
+            {
+                EnsureHistoryProtectedFieldUnchanged(
+                    entity.StockQuantity,
+                    request.StockQuantity,
+                    "số lượng tồn");
+            }
+        }
+        else
+        {
+            EnsureNonNegative(request.StockQuantity, "Số lượng tồn");
+            EnsureNonNegative(request.CostPrice, "Giá vốn");
+        }
+
         var duplicate = await _products.AnyAsync(x =>
             x.BusinessId == entity.BusinessId
             && x.Name.ToLower() == request.Name.ToLower()
@@ -114,10 +148,12 @@ public class ProductService : IProductService
         entity.ProductCategoryId = request.ProductCategoryId;
         entity.BusinessCategoryId = request.BusinessCategoryId;
         entity.Description = request.Description;
-        entity.Unit = request.Unit;
+        if (!hasMovement) entity.Unit = request.Unit;
         entity.ImageUrl = request.ImageUrl;
-        if (request.CostPrice.HasValue) entity.CostPrice = request.CostPrice;
-        if (request.StockQuantity.HasValue) entity.StockQuantity = request.StockQuantity;
+        if (!hasMovement && request.CostPrice.HasValue)
+            entity.CostPrice = request.CostPrice;
+        if (!hasMovement && request.StockQuantity.HasValue)
+            entity.StockQuantity = request.StockQuantity;
 
         _products.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -140,6 +176,18 @@ public class ProductService : IProductService
 
         if (entity.IsDeleted)
             throw new ConflictException($"Product with id '{id}' has been deleted.");
+
+        if (await _inventoryControls.HasMovementsForProductAsync(id))
+        {
+            throw new ConflictException(
+                "Hàng hóa đã có lịch sử kho; giá vốn và tồn chỉ được cập nhật qua phiếu nhập/kiểm kê.");
+        }
+
+        if (request.IncomingQuantity <= 0m || request.IncomingCostPrice < 0m)
+        {
+            throw new BadRequestException(
+                "Số lượng nhập phải lớn hơn 0 và giá nhập không được âm.");
+        }
 
         decimal oldQty = entity.StockQuantity ?? 0;
         decimal oldCost = entity.CostPrice ?? 0;
@@ -259,6 +307,27 @@ public class ProductService : IProductService
         var category = await _businessCategories.GetByIdAsync(businessCategoryId.Value);
         if (category is null)
             throw new BadRequestException($"Business category with id '{businessCategoryId}' not found.");
+    }
+
+    private static string? NormalizeUnit(string? unit) =>
+        string.IsNullOrWhiteSpace(unit) ? null : unit.Trim();
+
+    private static void EnsureNonNegative(decimal? value, string fieldName)
+    {
+        if (value < 0m)
+            throw new BadRequestException($"{fieldName} không được âm.");
+    }
+
+    private static void EnsureHistoryProtectedFieldUnchanged<T>(
+        T existing,
+        T requested,
+        string fieldName)
+    {
+        if (!EqualityComparer<T>.Default.Equals(existing, requested))
+        {
+            throw new ConflictException(
+                $"Không thể sửa {fieldName} vì hàng hóa đã có lịch sử kho.");
+        }
     }
 
     private static ProductResponse MapToResponse(Product entity)

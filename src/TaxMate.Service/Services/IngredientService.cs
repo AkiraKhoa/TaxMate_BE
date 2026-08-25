@@ -12,15 +12,18 @@ public class IngredientService : IIngredientService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IIngredientRepository _ingredients;
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
+    private readonly IInventoryControlRepository _inventoryControls;
 
     public IngredientService(
         IUnitOfWork unitOfWork,
         IIngredientRepository ingredients,
-        IGenericRepository<BusinessProfile> businessProfiles)
+        IGenericRepository<BusinessProfile> businessProfiles,
+        IInventoryControlRepository inventoryControls)
     {
         _unitOfWork = unitOfWork;
         _ingredients = ingredients;
         _businessProfiles = businessProfiles;
+        _inventoryControls = inventoryControls;
     }
 
     public async Task<IngredientResponse> CreateAsync(
@@ -29,6 +32,8 @@ public class IngredientService : IIngredientService
         CreateIngredientRequest request)
     {
         await EnsureBusinessOwnerAsync(businessId, ownerId);
+        EnsureNonNegative(request.StockQuantity, "Số lượng tồn");
+        EnsureNonNegative(request.EstimatedPrice, "Giá ước tính");
 
         var exists = await _ingredients.AnyAsync(x =>
             x.BusinessId == businessId
@@ -69,6 +74,28 @@ public class IngredientService : IIngredientService
         if (entity.IsDeleted)
             throw new ConflictException($"Ingredient with id '{id}' has been deactivated.");
 
+        var hasMovement = await _inventoryControls.HasMovementsForIngredientAsync(id);
+        if (hasMovement)
+        {
+            EnsureHistoryProtectedFieldUnchanged(
+                NormalizeUnit(entity.Unit),
+                NormalizeUnit(request.Unit),
+                "đơn vị tính");
+            EnsureHistoryProtectedFieldUnchanged(
+                entity.EstimatedPrice,
+                request.EstimatedPrice,
+                "giá ước tính");
+            EnsureHistoryProtectedFieldUnchanged(
+                entity.StockQuantity,
+                request.StockQuantity,
+                "số lượng tồn");
+        }
+        else
+        {
+            EnsureNonNegative(request.StockQuantity, "Số lượng tồn");
+            EnsureNonNegative(request.EstimatedPrice, "Giá ước tính");
+        }
+
         var duplicate = await _ingredients.AnyAsync(x =>
             x.BusinessId == entity.BusinessId
             && x.Name.ToLower() == request.Name.ToLower()
@@ -79,9 +106,12 @@ public class IngredientService : IIngredientService
             throw new ConflictException($"Ingredient with name '{request.Name}' already exists.");
 
         entity.Name = request.Name.Trim();
-        entity.Unit = request.Unit;
-        entity.EstimatedPrice = request.EstimatedPrice;
-        entity.StockQuantity = request.StockQuantity;
+        if (!hasMovement)
+        {
+            entity.Unit = request.Unit;
+            entity.EstimatedPrice = request.EstimatedPrice;
+            entity.StockQuantity = request.StockQuantity;
+        }
 
         _ingredients.Update(entity);
         await _unitOfWork.SaveChangesAsync();
@@ -145,6 +175,27 @@ public class IngredientService : IIngredientService
 
         if (business.OwnerId != ownerId)
             throw new UnauthorizedAccessException("You do not own this business.");
+    }
+
+    private static string? NormalizeUnit(string? unit) =>
+        string.IsNullOrWhiteSpace(unit) ? null : unit.Trim();
+
+    private static void EnsureNonNegative(decimal? value, string fieldName)
+    {
+        if (value < 0m)
+            throw new BadRequestException($"{fieldName} không được âm.");
+    }
+
+    private static void EnsureHistoryProtectedFieldUnchanged<T>(
+        T existing,
+        T requested,
+        string fieldName)
+    {
+        if (!EqualityComparer<T>.Default.Equals(existing, requested))
+        {
+            throw new ConflictException(
+                $"Không thể sửa {fieldName} vì nguyên liệu đã có lịch sử kho.");
+        }
     }
 
     private static IngredientResponse MapToResponse(Ingredient entity)

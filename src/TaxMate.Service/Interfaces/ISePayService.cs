@@ -89,7 +89,7 @@ public interface ISePayService
     /// <summary>
     /// Tạo hosted link kết nối SePay Bank Hub, lưu linkTokenXid vào DB và đăng ký webhook.
     /// </summary>
-    Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host, bool isMobileApp = true);
+    Task<string> GetSePayConnectUrlAsync(Guid businessId, bool isMobileApp = true);
 
 
 

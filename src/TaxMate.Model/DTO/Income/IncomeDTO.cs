@@ -9,6 +9,7 @@ public class IncomeDTO
     public string IncomeTitle { get; set; } = null!;
     public decimal Amount { get; set; }
     public DateTime IncomeDate { get; set; }
+    public string? AccountingType { get; set; }
     public string? PaymentMethod { get; set; }
     public string? ReceiptImageUrl { get; set; }
     public string? Note { get; set; }

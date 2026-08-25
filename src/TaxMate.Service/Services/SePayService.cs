@@ -40,7 +40,7 @@ public class SePayService : ISePayService
         _businessProfiles = businessProfiles;
         _unitOfWork = unitOfWork;
         _logger = logger;
-        _baseUrl = _configuration["SePay:BaseUrl"] ?? "https://bankhub-api-sandbox.sepay.vn";
+        _baseUrl = GetRequiredHttpsUrl("SePay:BaseUrl").TrimEnd('/');
     }
 
     // Cloudflare WAF on SePay blocks .NET HttpClient's default User-Agent.
@@ -67,11 +67,11 @@ public class SePayService : ISePayService
     private async Task<string> GetAccessTokenAsync()
     {
         var client = CreateSePayClient();
-        var clientId = _configuration["SePay:ClientId"] ?? "";
-        var clientSecret = _configuration["SePay:ClientSecret"] ?? "";
+        var clientId = GetRequiredConfiguration("SePay:ClientId");
+        var clientSecret = GetRequiredConfiguration("SePay:ClientSecret");
         var authHeader = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{clientId}:{clientSecret}"));
 
-        _logger.LogInformation("[SePay] Getting token for ClientId={ClientId}", clientId);
+        _logger.LogInformation("[SePay] Requesting provider access token.");
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/token");
         request.Headers.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
@@ -81,12 +81,14 @@ public class SePayService : ISePayService
         var response = await client.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
-        _logger.LogInformation("[SePay] /v1/token → Status={Status}, Body={Body}",
-            (int)response.StatusCode, responseContent);
+        _logger.LogInformation(
+            "[SePay] /v1/token completed. Status={Status}",
+            (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new Exception($"SePay token request failed ({(int)response.StatusCode}): {responseContent}");
+            throw new InvalidOperationException(
+                $"SePay token request failed with status {(int)response.StatusCode}.");
         }
 
         // Use case-insensitive options to handle snake_case "access_token"
@@ -94,12 +96,12 @@ public class SePayService : ISePayService
 
         if (tokenRes == null || string.IsNullOrEmpty(tokenRes.AccessToken))
         {
-            _logger.LogError("[SePay] AccessToken is null after deserialization. Raw body: {Body}", responseContent);
-            throw new Exception($"Failed to get SePay access token. Raw response: {responseContent}");
+            _logger.LogError("[SePay] Provider token response did not contain an access token.");
+            throw new InvalidOperationException(
+                "SePay token response did not contain an access token.");
         }
 
-        _logger.LogInformation("[SePay] Got AccessToken (first 10 chars): {Token}",
-            tokenRes.AccessToken[..Math.Min(10, tokenRes.AccessToken.Length)]);
+        _logger.LogInformation("[SePay] Provider access token acquired.");
         return tokenRes.AccessToken;
     }
 
@@ -113,8 +115,9 @@ public class SePayService : ISePayService
 
         if (!string.IsNullOrEmpty(business.SePayCompanyXid))
         {
-            _logger.LogInformation("[SePay] Using existing CompanyXid={Xid} for BusinessId={Id}",
-                business.SePayCompanyXid, businessId);
+            _logger.LogInformation(
+                "[SePay] Reusing provider company for BusinessId={BusinessId}",
+                businessId);
             return business.SePayCompanyXid;
         }
 
@@ -123,7 +126,7 @@ public class SePayService : ISePayService
 
         var body = new { full_name = businessName, status = "Active" };
         var bodyJson = JsonSerializer.Serialize(body);
-        _logger.LogInformation("[SePay] POST /v1/company/create → Body={Body}", bodyJson);
+        _logger.LogInformation("[SePay] Creating provider company.");
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/company/create");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -132,37 +135,35 @@ public class SePayService : ISePayService
         var response = await client.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
-        _logger.LogInformation("[SePay] /v1/company/create → Status={Status}, Body={Body}",
-            (int)response.StatusCode, responseContent);
+        _logger.LogInformation(
+            "[SePay] /v1/company/create completed. Status={Status}",
+            (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new Exception($"SePay company/create failed ({(int)response.StatusCode}): {responseContent}");
+            throw new InvalidOperationException(
+                $"SePay company creation failed with status {(int)response.StatusCode}.");
         }
 
         // Use case-insensitive options so "xid", "full_name" etc. are mapped correctly
         var companyRes = JsonSerializer.Deserialize<SePayCompanyResponse>(responseContent, _jsonOptions);
 
-        _logger.LogInformation("[SePay] Deserialized company: Code={Code}, Data={Data}, Xid={Xid}",
-            companyRes?.Code,
-            companyRes?.Data != null ? "not null" : "NULL",
-            companyRes?.Data?.Xid ?? "NULL");
-
         if (companyRes == null || companyRes.Data == null || string.IsNullOrEmpty(companyRes.Data.Xid))
         {
-            _logger.LogError("[SePay] CompanyXid is null after deserialization. Raw: {Body}", responseContent);
-            throw new Exception($"Failed to create SePay company. Raw response: {responseContent}");
+            _logger.LogError("[SePay] Provider company response did not contain an identity.");
+            throw new InvalidOperationException(
+                "SePay company response did not contain an identity.");
         }
 
         var companyXid = companyRes.Data.Xid;
-        _logger.LogInformation("[SePay] Created company with Xid={Xid}", companyXid);
+        _logger.LogInformation("[SePay] Provider company created.");
 
         // Cập nhật cấu hình transaction_amount = Unlimited để nhận được Webhook IPN
         try
         {
             var editBody = new { transaction_amount = "Unlimited" };
             var editBodyJson = JsonSerializer.Serialize(editBody);
-            _logger.LogInformation("[SePay] POST /v1/company/edit/{Xid} → Body={Body}", companyXid, editBodyJson);
+            _logger.LogInformation("[SePay] Updating provider company settings.");
 
             var editRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/company/edit/{companyXid}");
             editRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -171,12 +172,13 @@ public class SePayService : ISePayService
             var editResponse = await client.SendAsync(editRequest);
             var editResponseContent = await editResponse.Content.ReadAsStringAsync();
 
-            _logger.LogInformation("[SePay] /v1/company/edit/{Xid} → Status={Status}, Body={Body}",
-                companyXid, (int)editResponse.StatusCode, editResponseContent);
+            _logger.LogInformation(
+                "[SePay] Provider company settings update completed. Status={Status}",
+                (int)editResponse.StatusCode);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[SePay] Failed to set transaction_amount to Unlimited for company {Xid}", companyXid);
+            _logger.LogError(ex, "[SePay] Failed to update provider company settings.");
         }
 
         business.SePayCompanyXid = companyXid;
@@ -190,12 +192,16 @@ public class SePayService : ISePayService
         string companyXid, string redirectUri, string purpose = "LINK_BANK_ACCOUNT", string? bankAccountXid = null,
         bool isMobileApp = true)
     {
-        _logger.LogInformation("[SePay] GenerateHostedLinkUrl called with CompanyXid={Xid}, purpose={Purpose}, bankAccountXid={BankXid}",
-            companyXid, purpose, bankAccountXid);
+        ValidateHttpsUrl(redirectUri, nameof(redirectUri));
+        _logger.LogInformation(
+            "[SePay] Generating hosted link. Purpose={Purpose}",
+            purpose);
 
         if (string.IsNullOrEmpty(companyXid))
         {
-            throw new Exception("company_xid is null or empty — cannot create link token.");
+            throw new ArgumentException(
+                "Provider company identity is required.",
+                nameof(companyXid));
         }
 
         var accessToken = await GetAccessTokenAsync();
@@ -219,7 +225,7 @@ public class SePayService : ISePayService
         var bodyJson = JsonSerializer.Serialize(body);
 
 
-        _logger.LogInformation("[SePay] POST /v1/link-token/create → Body={Body}", bodyJson);
+        _logger.LogInformation("[SePay] Creating provider link token.");
 
         var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/link-token/create");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -228,12 +234,14 @@ public class SePayService : ISePayService
         var response = await client.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
-        _logger.LogInformation("[SePay] /v1/link-token/create → Status={Status}, Body={Body}",
-            (int)response.StatusCode, responseContent);
+        _logger.LogInformation(
+            "[SePay] /v1/link-token/create completed. Status={Status}",
+            (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new Exception($"SePay link-token/create failed ({(int)response.StatusCode}): {responseContent}");
+            throw new InvalidOperationException(
+                $"SePay link-token creation failed with status {(int)response.StatusCode}.");
         }
 
         // Response: { xid, hosted_link_url, link_token, expires_at }
@@ -248,19 +256,22 @@ public class SePayService : ISePayService
         if (root.TryGetProperty("xid", out var xidProp))
             linkTokenXid = xidProp.GetString();
 
-        _logger.LogInformation("[SePay] hosted_link_url={Url}, linkTokenXid={Xid}", hostedLinkUrl ?? "NULL", linkTokenXid ?? "NULL");
-
         if (string.IsNullOrEmpty(hostedLinkUrl))
         {
-            throw new Exception($"hosted_link_url is null in SePay response: {responseContent}");
+            throw new InvalidOperationException(
+                "SePay link-token response did not contain a hosted link URL.");
         }
+
+        ValidateHttpsUrl(hostedLinkUrl, "hostedLinkUrl");
 
         return (hostedLinkUrl, linkTokenXid ?? "");
     }
 
     public async Task<List<SePayBankAccountDto>> GetLinkedBankAccountsAsync(string? companyXid = null)
     {
-        _logger.LogInformation("[SePay] GetLinkedBankAccounts for CompanyXid={Xid}", companyXid ?? "ALL");
+        _logger.LogInformation(
+            "[SePay] Fetching linked bank accounts. Scoped={Scoped}",
+            !string.IsNullOrEmpty(companyXid));
 
         var accessToken = await GetAccessTokenAsync();
         var client = CreateSePayClient();
@@ -275,13 +286,15 @@ public class SePayService : ISePayService
         var response = await client.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
-        _logger.LogInformation("[SePay] GET /v1/bank-account → Status={Status}, Body={Body}",
-            (int)response.StatusCode, responseContent);
+        _logger.LogInformation(
+            "[SePay] GET /v1/bank-account completed. Status={Status}",
+            (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("[SePay] GetLinkedBankAccounts failed ({Status}): {Body}",
-                (int)response.StatusCode, responseContent);
+            _logger.LogWarning(
+                "[SePay] GetLinkedBankAccounts failed. Status={Status}",
+                (int)response.StatusCode);
             return new List<SePayBankAccountDto>();
         }
 
@@ -293,7 +306,7 @@ public class SePayService : ISePayService
     {
         if (string.IsNullOrEmpty(bankAccountXid)) return null;
 
-        _logger.LogInformation("[SePay] GetBankAccountDetail for BankAccountXid={Xid}", bankAccountXid);
+        _logger.LogInformation("[SePay] Fetching bank account detail.");
 
         var accessToken = await GetAccessTokenAsync();
         var client = CreateSePayClient();
@@ -305,13 +318,15 @@ public class SePayService : ISePayService
         var response = await client.SendAsync(request);
         var responseContent = await response.Content.ReadAsStringAsync();
 
-        _logger.LogInformation("[SePay] GET /v1/bank-account/{Xid} → Status={Status}, Body={Body}",
-            bankAccountXid, (int)response.StatusCode, responseContent);
+        _logger.LogInformation(
+            "[SePay] GET /v1/bank-account detail completed. Status={Status}",
+            (int)response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("[SePay] GetBankAccountDetail failed ({Status}): {Body}",
-                (int)response.StatusCode, responseContent);
+            _logger.LogWarning(
+                "[SePay] GetBankAccountDetail failed. Status={Status}",
+                (int)response.StatusCode);
             return null;
         }
 
@@ -324,8 +339,13 @@ public class SePayService : ISePayService
         return null;
     }
 
-    public async Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host, bool isMobileApp = true)
+    public async Task<string> GetSePayConnectUrlAsync(
+        Guid businessId,
+        bool isMobileApp = true)
     {
+        var callbackUrl = GetRequiredHttpsUrl("SePay:BankHub:CallbackUrl");
+        var webhookUrl = GetRequiredHttpsUrl("SePay:BankHub:WebhookUrl");
+        var webhookSecret = GetRequiredConfiguration("SePay:BankHub:SecretKey");
         var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null)
         {
@@ -334,22 +354,11 @@ public class SePayService : ISePayService
 
         var companyXid = await GetOrCreateCompanyXidAsync(businessId, business.BusinessName);
 
-        var redirectUri = $"{scheme}://{host}/api/PaymentAccount/sepay-callback";
-
-        // Cloudflare WAF blocks JSON bodies containing "localhost" or "127.0.0.1" in URLs to prevent SSRF.
-        // We use a public dummy domain for local development. The mobile app intercepts this URL via WebView anyway.
-        if (host.Contains("localhost") || host.Contains("127.0.0.1"))
-        {
-            redirectUri = "https://taxmate.vn/api/PaymentAccount/sepay-callback";
-        }
-        else if (scheme == "http")
-        {
-            redirectUri = $"https://{host}/api/PaymentAccount/sepay-callback";
-        }
-
         // Tạo link token và lấy cả URL lẫn linkTokenXid
         var (url, linkTokenXid) = await GenerateHostedLinkUrlAsync(
-            companyXid, redirectUri, isMobileApp: isMobileApp);
+            companyXid,
+            callbackUrl,
+            isMobileApp: isMobileApp);
 
         // Lưu linkTokenXid vào BusinessProfile để sau này trace BANK_ACCOUNT_LINKED webhook
         if (!string.IsNullOrEmpty(linkTokenXid))
@@ -357,28 +366,12 @@ public class SePayService : ISePayService
             business.LastSePayLinkTokenXid = linkTokenXid;
             _businessProfiles.Update(business);
             await _unitOfWork.SaveChangesAsync();
-            _logger.LogInformation("[SePay] Saved LinkTokenXid={Xid} for BusinessId={BusinessId}", linkTokenXid, businessId);
+            _logger.LogInformation(
+                "[SePay] Saved link correlation for BusinessId={BusinessId}",
+                businessId);
         }
 
-        // Đăng ký Webhook URL với SePay Bank Hub
-        var webhookBaseUrl = _configuration["SePay:BankHub:WebhookUrl"];
-        if (string.IsNullOrEmpty(webhookBaseUrl))
-        {
-            var webhookScheme = scheme;
-            if (webhookScheme == "http" && !host.Contains("localhost") && !host.Contains("127.0.0.1"))
-            {
-                webhookScheme = "https";
-            }
-            webhookBaseUrl = $"{webhookScheme}://{host}";
-        }
-        var webhookUrl = $"{webhookBaseUrl}/api/webhook/payment/bankhub";
-        var secretKey = _configuration["SePay:BankHub:SecretKey"] ?? "";
-
-
-        // Fire-and-forget: thất bại đăng ký webhook không chặn việc trả URL cho mobile
-        _ = RegisterWebhookAsync(webhookUrl, secretKey)
-            .ContinueWith(t => _logger.LogWarning(t.Exception, "[SePay] RegisterWebhook error"),
-                TaskContinuationOptions.OnlyOnFaulted);
+        await RegisterWebhookAsync(webhookUrl, webhookSecret);
 
         return url;
     }
@@ -464,6 +457,31 @@ public class SePayService : ISePayService
         if (!response.IsSuccessStatusCode)
         {
             throw new Exception($"Failed to create mock transaction ({(int)response.StatusCode}): {responseContent}");
+        }
+    }
+
+    private string GetRequiredConfiguration(string key)
+    {
+        var value = _configuration[key];
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"Missing required configuration: {key}.");
+
+        return value.Trim();
+    }
+
+    private string GetRequiredHttpsUrl(string key)
+    {
+        var value = GetRequiredConfiguration(key);
+        ValidateHttpsUrl(value, key);
+        return value;
+    }
+
+    private static void ValidateHttpsUrl(string value, string parameterName)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("URL must be an absolute HTTPS URL.", parameterName);
         }
     }
 }

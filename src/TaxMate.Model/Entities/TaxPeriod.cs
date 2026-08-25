@@ -64,7 +64,13 @@ public class TaxPeriod : BaseEntity
 
     public DateTime? PaidDate { get; set; }
 
+    public DateTime? EvidenceReviewedAt { get; set; }
+
+    public Guid? EvidenceReviewedByUserId { get; set; }
+
     public BusinessProfile Business { get; set; } = null!;
+
+    public User? EvidenceReviewedByUser { get; set; }
 
     public ICollection<TaxCalculation> TaxCalculations { get; set; }
         = new List<TaxCalculation>();

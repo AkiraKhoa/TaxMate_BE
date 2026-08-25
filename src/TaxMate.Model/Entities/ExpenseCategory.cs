@@ -16,6 +16,9 @@ public class ExpenseCategory : BaseEntity
 
     public bool IsDefault { get; set; }
 
+    [MaxLength(30)]
+    public string? S2cGroupCode { get; set; }
+
     public Guid? BusinessId { get; set; }
 
     public BusinessProfile? Business { get; set; }

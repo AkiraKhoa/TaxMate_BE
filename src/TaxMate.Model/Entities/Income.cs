@@ -12,6 +12,11 @@ public class Income : BaseEntity
 
     public Guid IncomeCategoryId { get; set; }
 
+    public Guid? TransactionId { get; set; }
+
+    [MaxLength(30)]
+    public string? AccountingType { get; set; }
+
     [Required]
     [MaxLength(200)]
     public string IncomeTitle { get; set; } = null!;
@@ -40,4 +45,6 @@ public class Income : BaseEntity
     public BusinessProfile Business { get; set; } = null!;
 
     public IncomeCategory IncomeCategory { get; set; } = null!;
+
+    public Transaction? Transaction { get; set; }
 }

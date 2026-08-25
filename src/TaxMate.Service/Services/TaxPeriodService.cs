@@ -14,15 +14,24 @@ public class TaxPeriodService : ITaxPeriodService
     private readonly ITaxPeriodRepository _taxPeriodRepository;
     private readonly ITaxCalculationRepository _taxCalculationRepository;
     private readonly ITaxPolicyService _taxPolicyService;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IAccountingTransactionLockRepository _transactionLock;
+    private readonly IS2eBookProjector _s2eProjector;
 
     public TaxPeriodService(
         ITaxPeriodRepository taxPeriodRepository,
         ITaxCalculationRepository taxCalculationRepository,
-        ITaxPolicyService taxPolicyService)
+        ITaxPolicyService taxPolicyService,
+        IUnitOfWork unitOfWork,
+        IAccountingTransactionLockRepository transactionLock,
+        IS2eBookProjector s2eProjector)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxCalculationRepository = taxCalculationRepository;
         _taxPolicyService = taxPolicyService;
+        _unitOfWork = unitOfWork;
+        _transactionLock = transactionLock;
+        _s2eProjector = s2eProjector;
     }
 
     public async Task<IReadOnlyList<TaxPeriodSummaryResponse>>
@@ -134,78 +143,159 @@ public class TaxPeriodService : ITaxPeriodService
     }
     
     public async Task<CloseTaxPeriodResponse> CloseAsync(
-    Guid userId,
-    Guid taxPeriodId,
-    CloseTaxPeriodRequest request,
-    CancellationToken cancellationToken = default)
-{
-    var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
-        taxPeriodId,
-        cancellationToken);
-
-    if (taxPeriod is null)
+        Guid userId,
+        Guid taxPeriodId,
+        CloseTaxPeriodRequest request,
+        CancellationToken cancellationToken = default)
     {
-        throw new NotFoundException("Tax period not found.");
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            // Identity and authorization happen inside the transaction, but
+            // before the advisory lock. The canonical row itself is fetched
+            // again only after serialization, so no stale Open state is used.
+            var identity = await _taxPeriodRepository.GetIdentityAsync(
+                taxPeriodId,
+                cancellationToken);
+            if (identity is null)
+            {
+                throw new NotFoundException("Tax period not found.");
+            }
+
+            if (identity.OwnerId != userId)
+            {
+                throw new ForbiddenException(
+                    "You do not have permission to access this business.");
+            }
+
+            await _transactionLock.AcquireOwnerYearLocksAsync(
+                identity.OwnerId,
+                [identity.Year],
+                cancellationToken);
+
+            var taxPeriod = await _taxPeriodRepository.GetCanonicalByIdAsync(
+                identity.TaxPeriodId,
+                cancellationToken);
+            if (taxPeriod is null)
+            {
+                throw new NotFoundException("Tax period not found.");
+            }
+
+            if (taxPeriod.Status != TaxPeriodStatuses.Open)
+            {
+                throw new BadRequestException(
+                    $"Tax period must be in Open status. Current status: {taxPeriod.Status}.");
+            }
+
+            var preview = await _taxPeriodRepository.GetPreviewAsync(
+                taxPeriod.Id,
+                cancellationToken);
+            if (preview is null)
+            {
+                throw new NotFoundException("Tax period preview not found.");
+            }
+
+            if (!preview.CanClose)
+            {
+                throw new BadRequestException(
+                    "Tax period cannot be closed because no transaction data exists.");
+            }
+
+            if (preview.Warnings.Count > 0 && !request.ConfirmWarnings)
+            {
+                throw new ConflictException(
+                    "Tax period contains warnings. Confirm warnings before closing.");
+            }
+
+            await EnsureS2eCanCloseAsync(
+                identity.OwnerId,
+                taxPeriod.PeriodStartDate,
+                taxPeriod.PeriodEndDate,
+                cancellationToken);
+
+            taxPeriod.SalesRevenue = preview.SalesRevenue;
+            taxPeriod.OtherRevenue = preview.OtherRevenue;
+            taxPeriod.TotalRevenue = preview.TotalRevenue;
+            taxPeriod.TaxableRevenue = preview.TaxableRevenue;
+            taxPeriod.Status = TaxPeriodStatuses.Closed;
+            taxPeriod.ClosedAt = DateTime.UtcNow;
+            taxPeriod.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+            return new CloseTaxPeriodResponse
+            {
+                TaxPeriodId = taxPeriod.Id,
+                Status = taxPeriod.Status,
+                SalesRevenue = taxPeriod.SalesRevenue,
+                OtherRevenue = taxPeriod.OtherRevenue,
+                TotalRevenue = taxPeriod.TotalRevenue,
+                TaxableRevenue = taxPeriod.TaxableRevenue,
+                ClosedAt = taxPeriod.ClosedAt.Value
+            };
+        }
+        catch (Exception originalException)
+        {
+            try
+            {
+                // Request cancellation must not leave the database transaction
+                // open. Rollback gets its own non-cancelled cleanup token.
+                await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            }
+            catch (Exception rollbackException)
+            {
+                // Preserve the business/cancellation failure as the observable
+                // exception while retaining rollback diagnostics for logging.
+                try
+                {
+                    originalException.Data["TaxPeriodCloseRollbackException"] =
+                        rollbackException;
+                }
+                catch
+                {
+                    // Some custom exception Data dictionaries can be read-only.
+                }
+            }
+
+            throw;
+        }
     }
 
-    await EnsureBusinessOwnershipAsync(
-        taxPeriod.BusinessId,
-        userId,
-        cancellationToken);
-
-    if (taxPeriod.Status != TaxPeriodStatuses.Open)
+    private async Task EnsureS2eCanCloseAsync(
+        Guid ownerId,
+        DateTime fromInclusive,
+        DateTime toExclusive,
+        CancellationToken cancellationToken)
     {
-        throw new BadRequestException(
-            $"Tax period must be in Open status. Current status: {taxPeriod.Status}.");
+        var businesses = await _taxPeriodRepository
+            .GetBusinessesWithCategoriesByOwnerAsync(
+                ownerId,
+                cancellationToken);
+        var blockerCount = 0;
+        var firstMessage = string.Empty;
+
+        foreach (var business in businesses)
+        {
+            var projection = await _s2eProjector.ProjectAsync(
+                ownerId,
+                business.Id,
+                fromInclusive,
+                toExclusive,
+                cancellationToken);
+            blockerCount += projection.Blockers.Count;
+            if (firstMessage.Length == 0 && projection.Blockers.Count > 0)
+            {
+                firstMessage = projection.Blockers[0].Message;
+            }
+        }
+
+        if (blockerCount > 0)
+        {
+            throw new ConflictException(
+                $"S2e chưa sẵn sàng để khóa kỳ ({blockerCount} lỗi). {firstMessage}");
+        }
     }
-
-    var preview = await _taxPeriodRepository.GetPreviewAsync(
-        taxPeriodId,
-        cancellationToken);
-
-    if (preview is null)
-    {
-        throw new NotFoundException("Tax period preview not found.");
-    }
-
-    if (!preview.CanClose)
-    {
-        throw new BadRequestException(
-            "Tax period cannot be closed because no transaction data exists.");
-    }
-
-    if (preview.Warnings.Count > 0 &&
-        !request.ConfirmWarnings)
-    {
-        throw new ConflictException(
-            "Tax period contains warnings. Confirm warnings before closing.");
-    }
-
-    taxPeriod.SalesRevenue = preview.SalesRevenue;
-    taxPeriod.OtherRevenue = preview.OtherRevenue;
-    taxPeriod.TotalRevenue = preview.TotalRevenue;
-    taxPeriod.TaxableRevenue = preview.TaxableRevenue;
-
-    taxPeriod.Status = TaxPeriodStatuses.Closed;
-    taxPeriod.ClosedAt = DateTime.UtcNow;
-    taxPeriod.UpdatedAt = DateTime.UtcNow;
-
-    await _taxPeriodRepository.SaveChangesAsync(
-        cancellationToken);
-
-    return new CloseTaxPeriodResponse
-    {
-        TaxPeriodId = taxPeriod.Id,
-        Status = taxPeriod.Status,
-
-        SalesRevenue = taxPeriod.SalesRevenue,
-        OtherRevenue = taxPeriod.OtherRevenue,
-        TotalRevenue = taxPeriod.TotalRevenue,
-        TaxableRevenue = taxPeriod.TaxableRevenue,
-
-        ClosedAt = taxPeriod.ClosedAt.Value
-    };
-}
     
     public async Task<TaxCalculationResponse> CalculateAsync(
         Guid userId,

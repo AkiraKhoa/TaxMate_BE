@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -46,8 +48,8 @@ public class PaymentWebhookService : IPaymentWebhookService
         if (request == null)
             throw new ArgumentException("Invalid payload.");
 
-        var expectedApiKey = _configuration["SePay:ApiKey"] ?? "YOUR_SEPAY_API_KEY";
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.Equals($"Apikey {expectedApiKey}"))
+        var expectedApiKey = GetRequiredSecret("SePay:ApiKey");
+        if (!SecretsEqual(authHeader, $"Apikey {expectedApiKey}"))
         {
             _logger.LogWarning("[SePay IPN] Invalid Authorization header.");
             throw new UnauthorizedAccessException("Authorization failed.");
@@ -90,8 +92,9 @@ public class PaymentWebhookService : IPaymentWebhookService
             }
             else
             {
-                _logger.LogInformation("[SePay IPN] Nhận tiền vào {Amount} VND nhưng không tìm thấy đơn hàng khớp với nội dung: {Content}",
-                    request.Amount, request.Content);
+                _logger.LogInformation(
+                    "[SePay IPN] Received unmatched credit. Amount={Amount}",
+                    request.Amount);
             }
         }
     }
@@ -101,14 +104,16 @@ public class PaymentWebhookService : IPaymentWebhookService
         if (request == null)
             throw new ArgumentException("Invalid payload.");
 
-        var expectedSecretKey = _configuration["SePay:BankHub:SecretKey"] ?? "";
-        if (string.IsNullOrEmpty(expectedSecretKey) || !secretKeyHeader.Equals(expectedSecretKey))
+        var expectedSecretKey = GetRequiredSecret("SePay:BankHub:SecretKey");
+        if (!SecretsEqual(secretKeyHeader, expectedSecretKey))
         {
             _logger.LogWarning("[BankHub Webhook] Invalid X-Secret-Key header.");
             throw new UnauthorizedAccessException("Authorization failed.");
         }
 
-        _logger.LogInformation("[BankHub Webhook] Received event={Event}, xid={Xid}", request.Event, request.Xid);
+        _logger.LogInformation(
+            "[BankHub Webhook] Received event={Event}",
+            request.Event);
 
         switch (request.Event?.ToUpperInvariant())
         {
@@ -142,9 +147,7 @@ public class PaymentWebhookService : IPaymentWebhookService
         var bankName       = meta.BrandName ?? "";
         var linkTokenXid   = meta.LinkTokenXid ?? "";
 
-        _logger.LogInformation(
-            "[BankHub] LINKED: bank={BankName}, account={AccountNumber}, bankAccountXid={BankAccountXid}, linkTokenXid={LinkTokenXid}",
-            bankName, accountNumber, bankAccountXid, linkTokenXid);
+        _logger.LogInformation("[BankHub] Processing linked bank account event.");
 
         await _paymentAccountService.CreateOrUpdateFromLinkTokenAsync(
             linkTokenXid,
@@ -164,9 +167,7 @@ public class PaymentWebhookService : IPaymentWebhookService
             return;
         }
 
-        _logger.LogInformation(
-            "[BankHub] UNLINKED: bankAccountXid={BankAccountXid}, account={AccountNumber}",
-            meta.BankAccountXid, meta.AccountNumber);
+        _logger.LogInformation("[BankHub] Processing unlinked bank account event.");
 
         await _paymentAccountService.DeleteBySePayBankAccountXidAsync(meta.BankAccountXid);
     }
@@ -177,23 +178,21 @@ public class PaymentWebhookService : IPaymentWebhookService
 
         var awaitingTransactions = await _transactions.GetAwaitingTransactionsWithPaymentsAsync();
 
-        if (!string.IsNullOrEmpty(recipientAccountNumber))
+        if (!string.IsNullOrWhiteSpace(recipientAccountNumber))
         {
-            var filteredTransactions = awaitingTransactions
-                .Where(t => t.Payments.Any(p => p.PaymentAccount != null && 
-                            p.PaymentAccount.AccountNumber.Equals(recipientAccountNumber, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            if (filteredTransactions.Any())
-            {
-                foreach (var t in filteredTransactions)
-                {
-                    if (text.Contains(t.TransactionCode, StringComparison.OrdinalIgnoreCase))
+            var normalizedRecipient = NormalizeAccountNumber(recipientAccountNumber);
+            awaitingTransactions = awaitingTransactions
+                .Where(transaction => transaction.Payments.Any(payment =>
+                    payment.PaymentAccount is
                     {
-                        return t;
-                    }
-                }
-            }
+                        AccountType: PaymentAccountTypes.Bank,
+                        AccountNumber: not null
+                    } account &&
+                    string.Equals(
+                        NormalizeAccountNumber(account.AccountNumber),
+                        normalizedRecipient,
+                        StringComparison.OrdinalIgnoreCase)))
+                .ToList();
         }
 
         foreach (var t in awaitingTransactions)
@@ -206,6 +205,34 @@ public class PaymentWebhookService : IPaymentWebhookService
 
         return null;
     }
+
+    private string GetRequiredSecret(string configurationKey)
+    {
+        var value = _configuration[configurationKey];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidOperationException(
+                $"Required webhook secret '{configurationKey}' is missing.");
+        }
+
+        return value;
+    }
+
+    private static bool SecretsEqual(string? provided, string expected)
+    {
+        if (string.IsNullOrEmpty(provided))
+        {
+            return false;
+        }
+
+        var providedBytes = Encoding.UTF8.GetBytes(provided);
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        return providedBytes.Length == expectedBytes.Length &&
+               CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes);
+    }
+
+    private static string NormalizeAccountNumber(string value)
+        => string.Concat(value.Where(character => !char.IsWhiteSpace(character)));
 
     private async Task SendNotificationsToOwnerAsync(Guid businessId, string title, string message)
     {

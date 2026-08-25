@@ -3,6 +3,21 @@ using TaxMate.Model.Entities;
 
 namespace TaxMate.Repository.Interfaces;
 
+public sealed record TaxPeriodIdentity(
+    Guid TaxPeriodId,
+    Guid BusinessId,
+    Guid OwnerId,
+    int Year);
+
+public sealed record QttTaxPaymentSource(
+    Guid TaxPaymentId,
+    string PaymentCode,
+    DateTime PaymentDate,
+    decimal Amount,
+    string TaxType,
+    string Status,
+    string? SourceTaxMethod);
+
 public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
 {
     Task<bool> BusinessBelongsToUserAsync(
@@ -20,6 +35,21 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
         CancellationToken cancellationToken = default);
 
     Task<TaxPeriod?> GetCanonicalByIdAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriod?> GetQuarterAsync(
+        Guid businessId,
+        int year,
+        int quarter,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriod?> GetYearAsync(
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriodIdentity?> GetIdentityAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);
 
@@ -61,10 +91,21 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
         Guid ownerId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<QttTaxPaymentSource>> GetTaxPaymentsByOwnerAsync(
+        Guid ownerId,
+        DateTime startInclusive,
+        DateTime endExclusive,
+        CancellationToken cancellationToken = default);
+
+    Task<string?> GetAnnualTaxMethodSnapshotAsync(
+        Guid ownerId,
+        int year,
+        CancellationToken cancellationToken = default);
+
     Task<decimal> GetRevenueForBusinessInPeriodAsync(
         Guid businessId,
         DateTime periodStart,
-        DateTime periodEnd,
+        DateTime periodEndExclusive,
         CancellationToken cancellationToken = default);
 
 
