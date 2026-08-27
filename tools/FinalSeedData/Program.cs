@@ -811,6 +811,7 @@ static async Task SeedIngredientPurchasesAsync(
                 BusinessId = biz.Id,
                 ExpenseCategoryId = materialExpenseCatId,
                 ExpenseTitle = $"Nhập nguyên liệu tuần {week} - T{target.Month}/{target.Year}",
+                VoucherNumber = "PC-" + Guid.NewGuid().ToString("N")[..6].ToUpper(),
                 Amount = invoiceTotal,
                 ExpenseDate = pDate,
                 PaymentMethod = "BankTransfer",
@@ -894,6 +895,7 @@ static Expense MakeExpense(
     BusinessId = bizId,
     ExpenseCategoryId = catId,
     ExpenseTitle = title,
+    VoucherNumber = "PC-" + Guid.NewGuid().ToString("N")[..6].ToUpper(),
     Amount = amount,
     ExpenseDate = date,
     PaidDate = date,
@@ -1124,8 +1126,8 @@ static (DateTime Start, DateTime EndExclusive) GetTaxPeriodUtcBoundaries(
     }
 
     return (
-        localStart.AddHours(-7),
-        localEndExclusive.AddHours(-7));
+        DateTime.SpecifyKind(localStart.AddHours(-7), DateTimeKind.Utc),
+        DateTime.SpecifyKind(localEndExclusive.AddHours(-7), DateTimeKind.Utc));
 }
 
 // ════════════════════════════════════════════════════════════════════

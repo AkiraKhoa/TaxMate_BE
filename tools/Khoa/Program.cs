@@ -263,6 +263,9 @@ static async Task ClearOldSeedDataAsync(AppDbContext db, Guid businessId)
         var prices = db.ProductPrices.Where(pp => oldProductIds.Contains(pp.ProductId));
         db.ProductPrices.RemoveRange(prices);
 
+        var invoiceDetails = db.InvoiceDetails.Where(id => oldProductIds.Contains(id.ProductId));
+        db.InvoiceDetails.RemoveRange(invoiceDetails);
+
         var prods = db.Products.Where(p => p.BusinessId == businessId);
         db.Products.RemoveRange(prods);
     }
@@ -723,7 +726,7 @@ static async Task<Dictionary<Guid, decimal>> SeedFnBSalesDataAsync(
             var txDate = new DateTime(currentDate.Year, currentDate.Month, currentDate.Day, hour, minute, second, DateTimeKind.Utc);
 
             var txId = Guid.NewGuid();
-            var txCode = $"TXM-{txDate:yyyyMMdd}-{txIndex:0000}";
+            var txCode = $"KHOA-{txDate:yyyyMMdd}-{txIndex:0000}";
             txIndex++;
 
             // Pick 1-3 items per transaction
@@ -995,6 +998,7 @@ static async Task SeedFnBMonthlyExpensesAsync(
             BusinessId = businessId,
             ExpenseCategoryId = categories["Thuê mặt bằng"],
             ExpenseTitle = $"Tiền thuê mặt bằng tháng {month}/2026",
+            VoucherNumber = "PC-" + Guid.NewGuid().ToString("N")[..6].ToUpper(),
             Amount = 22_000_000m,
             ExpenseDate = mStart,
             PaymentMethod = "BankTransfer",
@@ -1013,6 +1017,7 @@ static async Task SeedFnBMonthlyExpensesAsync(
             BusinessId = businessId,
             ExpenseCategoryId = categories["Điện nước"],
             ExpenseTitle = $"Tiền điện nước & internet tháng {month}/2026",
+            VoucherNumber = "PC-" + Guid.NewGuid().ToString("N")[..6].ToUpper(),
             Amount = 13_500_000m,
             ExpenseDate = utilDate,
             PaymentMethod = "BankTransfer",
@@ -1031,6 +1036,7 @@ static async Task SeedFnBMonthlyExpensesAsync(
             BusinessId = businessId,
             ExpenseCategoryId = categories["Lương nhân viên"],
             ExpenseTitle = $"Lương nhân viên nhà hàng tháng {month}/2026",
+            VoucherNumber = "PC-" + Guid.NewGuid().ToString("N")[..6].ToUpper(),
             Amount = 39_000_000m,
             ExpenseDate = salaryDate,
             PaymentMethod = "BankTransfer",
@@ -1208,7 +1214,7 @@ static (DateTime Start, DateTime EndExclusive) GetTaxPeriodUtcBoundaries(
     {
         case TaxPeriodTypes.Monthly when month is >= 1 and <= 12 && quarter is null:
             localStart = new DateTime(
-                year, month.Value, 1, 0, 0, 0, DateTimeKind.Unspecified);
+                year, month.Value, 1, 0, 0, 0, DateTimeKind.Utc);
             localEndExclusive = localStart.AddMonths(1);
             break;
 
@@ -1220,13 +1226,13 @@ static (DateTime Start, DateTime EndExclusive) GetTaxPeriodUtcBoundaries(
                 0,
                 0,
                 0,
-                DateTimeKind.Unspecified);
+                DateTimeKind.Utc);
             localEndExclusive = localStart.AddMonths(3);
             break;
 
         case TaxPeriodTypes.Yearly when month is null && quarter is null:
             localStart = new DateTime(
-                year, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+                year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             localEndExclusive = localStart.AddYears(1);
             break;
 
