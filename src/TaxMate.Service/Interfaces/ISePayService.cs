@@ -84,12 +84,12 @@ public interface ISePayService
     /// <summary>
     /// Tạo link token và trả về URL hosted link + xid của link token để lưu vào DB.
     /// </summary>
-    Task<(string Url, string LinkTokenXid)> GenerateHostedLinkUrlAsync(string companyXid, string redirectUri, string purpose = "LINK_BANK_ACCOUNT", string? bankAccountXid = null);
+    Task<(string Url, string LinkTokenXid)> GenerateHostedLinkUrlAsync(string companyXid, string redirectUri, string purpose = "LINK_BANK_ACCOUNT", string? bankAccountXid = null, bool isMobileApp = true);
 
     /// <summary>
     /// Tạo hosted link kết nối SePay Bank Hub, lưu linkTokenXid vào DB và đăng ký webhook.
     /// </summary>
-    Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host);
+    Task<string> GetSePayConnectUrlAsync(Guid businessId, string scheme, string host, bool isMobileApp = true);
 
 
 

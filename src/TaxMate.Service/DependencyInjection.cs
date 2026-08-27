@@ -59,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<IFirebaseNotificationService, FirebaseNotificationService>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<ITaxBookService, TaxBookService>();
+        services.AddScoped<IRevenueThresholdAlertService, RevenueThresholdAlertService>();
+        services.AddScoped<ITaxPolicyService, TaxPolicyService>();
         
 
         services.AddScoped<IBusinessCategoryService, BusinessCategoryService>();

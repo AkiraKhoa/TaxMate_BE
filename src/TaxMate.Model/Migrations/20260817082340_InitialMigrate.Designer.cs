@@ -12,7 +12,7 @@ using TaxMate.Model.Data;
 namespace TaxMate.Model.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260815151808_InitialMigrate")]
+    [Migration("20260817082340_InitialMigrate")]
     partial class InitialMigrate
     {
         /// <inheritdoc />
@@ -205,6 +205,9 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("timestamp without time zone");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsStockTrackingEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("LastSePayLinkTokenXid")
@@ -1393,6 +1396,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()

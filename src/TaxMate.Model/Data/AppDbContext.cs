@@ -47,6 +47,10 @@ public class AppDbContext : DbContext
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<RevenueThresholdAlert> RevenueThresholdAlerts => Set<RevenueThresholdAlert>();
+
+    public DbSet<TaxThresholdSetting> TaxThresholdSettings =>
+        Set<TaxThresholdSetting>();
 
     public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -561,6 +565,20 @@ public class AppDbContext : DbContext
                 x.CreatedAt
             });
 
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasOne(x => x.Owner)
+            .WithMany(x => x.RevenueThresholdAlerts)
+            .HasForeignKey(x => x.OwnerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RevenueThresholdAlert>()
+            .HasIndex(x => new { x.OwnerId, x.Year })
+            .IsUnique();
+
+        modelBuilder.Entity<TaxThresholdSetting>()
+            .HasIndex(x => new { x.Type, x.EffectiveFrom })
+            .IsUnique();
+
         // Chat Conversation
         modelBuilder.Entity<ChatConversation>()
             .HasOne(x => x.User)
@@ -648,6 +666,26 @@ public class AppDbContext : DbContext
 
         // Seed Business Categories (official GTGT/TNCN rate groups)
         var seedDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<TaxThresholdSetting>().HasData(
+            new TaxThresholdSetting
+            {
+                Id = Guid.Parse("20260000-0000-4000-a000-000000000011"),
+                Type = TaxThresholdTypes.AnnualRevenueTax,
+                Amount = 1_000_000_000m,
+                EffectiveFrom = new DateOnly(2026, 1, 1),
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new TaxThresholdSetting
+            {
+                Id = Guid.Parse("20260000-0000-4000-a000-000000000012"),
+                Type = TaxThresholdTypes.EInvoiceRequirement,
+                Amount = 1_000_000_000m,
+                EffectiveFrom = new DateOnly(2026, 1, 1),
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            });
+
         modelBuilder.Entity<BusinessCategory>().HasData(
             new BusinessCategory
             {

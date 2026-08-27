@@ -97,18 +97,42 @@ public class TaxDeclarationService : ITaxDeclarationService
             "Taxpayer tax code has not been configured.");
     }
     
-    ValidateTaxPaymentInformation(business);
-
     var version =
         await _taxDeclarationRepository.GetNextVersionAsync(
             taxPeriodId,
             cancellationToken);
 
-    if (calculation.RecommendedFormCode != "01/CNKD")
+    var formCode = calculation.RecommendedFormCode;
+
+    if (formCode != "01/CNKD" &&
+        formCode != "01/TKN-CNKD")
     {
         throw new BadRequestException(
-            $"Form {calculation.RecommendedFormCode} is required for this tax period and is not supported yet.");
+            $"Unsupported tax declaration form: {formCode}.");
     }
+
+    if (formCode == "01/CNKD")
+    {
+        ValidateTaxPaymentInformation(business);
+    }
+
+    var isTaxDeclaration =
+        formCode == "01/CNKD";
+
+    var vatTaxAmount =
+        isTaxDeclaration
+            ? calculation.TotalVatTaxAmount
+            : 0m;
+
+    var pitTaxAmount =
+        isTaxDeclaration
+            ? calculation.TotalPersonalIncomeTaxAmount
+            : 0m;
+
+    var totalTaxPayableAmount =
+        isTaxDeclaration
+            ? calculation.TotalTaxPayableAmount
+            : 0m;
     
     var declaration = new TaxDeclaration
     {
@@ -117,7 +141,7 @@ public class TaxDeclarationService : ITaxDeclarationService
         TaxPeriodId = taxPeriod.Id,
         TaxCalculationId = calculation.Id,
 
-        FormCode = calculation.RecommendedFormCode,
+        FormCode = formCode,
 
         DeclarationCode = BuildDeclarationCode(
             taxPeriod,
@@ -140,23 +164,23 @@ public class TaxDeclarationService : ITaxDeclarationService
         TotalRevenue = calculation.TotalRevenue,
 
         TotalVatTaxAmount =
-            calculation.TotalVatTaxAmount,
+            vatTaxAmount,
 
         TotalPersonalIncomeTaxAmount =
-            calculation.TotalPersonalIncomeTaxAmount,
+            pitTaxAmount,
 
         VatExemptionAmount = 0m,
 
         PersonalIncomeTaxExemptionAmount = 0m,
 
         VatPayableAmount =
-            calculation.TotalVatTaxAmount,
+            vatTaxAmount,
 
         PersonalIncomeTaxPayableAmount =
-            calculation.TotalPersonalIncomeTaxAmount,
+            pitTaxAmount,
 
         TotalTaxPayableAmount =
-            calculation.TotalTaxPayableAmount,
+            totalTaxPayableAmount,
 
         GeneratedAt = DateTime.UtcNow,
 
@@ -237,10 +261,13 @@ public class TaxDeclarationService : ITaxDeclarationService
         });
     }
 
-    CreateDefaultObligations(
-        declaration,
-        taxPeriod,
-        business);
+    if (formCode == "01/CNKD")
+    {
+        CreateDefaultObligations(
+            declaration,
+            taxPeriod,
+            business);
+    }
 
     await _taxDeclarationRepository.AddAsync(
         declaration,
@@ -376,118 +403,139 @@ public class TaxDeclarationService : ITaxDeclarationService
     }
     
     private static void CreateDefaultObligations(
-    TaxDeclaration declaration,
-    TaxPeriod period,
-    BusinessProfile business)
-{
-    var chapterCode =
-        ResolveHouseholdChapterCode(
-            business.TaxAuthorityLevel);
-
-    var now = DateTime.UtcNow;
-
-    if (declaration.VatPayableAmount > 0)
+        TaxDeclaration declaration,
+        TaxPeriod period,
+        BusinessProfile business)
     {
-        declaration.Obligations.Add(
-            new TaxDeclarationObligation
+        var chapterCode =
+            ResolveHouseholdChapterCode(
+                business.TaxAuthorityLevel);
+
+        var now = DateTime.UtcNow;
+
+        /*
+         * Multi-location:
+         * mỗi TaxDeclarationLine giữ doanh thu và thuế của đúng
+         * BusinessProfile/location tương ứng.
+         *
+         * Vì vậy obligation phải được tạo từ từng line,
+         * không dùng tổng declaration rồi gắn vào location của anchor business.
+         */
+        foreach (var line in declaration.Lines
+                     .OrderBy(x => x.DisplayOrder))
+        {
+            var businessLocationCode =
+                line.BusinessLocationCode;
+
+            if (line.VatTaxAmount > 0m)
             {
-                Id = Guid.NewGuid(),
+                declaration.Obligations.Add(
+                    new TaxDeclarationObligation
+                    {
+                        Id = Guid.NewGuid(),
 
-                TaxDeclarationId =
-                    declaration.Id,
+                        TaxDeclarationId =
+                            declaration.Id,
 
-                TaxType =
-                    TaxTypes.Vat,
+                        TaxType =
+                            TaxTypes.Vat,
 
-                BusinessLocationCode =
-                    business.BusinessLocationCode,
+                        BusinessLocationCode =
+                            businessLocationCode,
 
-                StateBudgetContent =
-                    StateBudgetCodes2026.VatContent,
+                        StateBudgetContent =
+                            StateBudgetCodes2026.VatContent,
 
-                AssessedAmount =
-                    declaration.TotalVatTaxAmount,
+                        AssessedAmount =
+                            line.VatTaxAmount,
 
-                ExemptionAmount =
-                    declaration.VatExemptionAmount,
+                        ExemptionAmount =
+                            0m,
 
-                PayableAmount =
-                    declaration.VatPayableAmount,
+                        PayableAmount =
+                            line.VatTaxAmount,
 
-                StateBudgetChapterCode =
-                    chapterCode,
+                        StateBudgetChapterCode =
+                            chapterCode,
 
-                StateBudgetSubsectionCode =
-                    StateBudgetCodes2026.VatSubsection,
+                        StateBudgetSubsectionCode =
+                            StateBudgetCodes2026.VatSubsection,
 
-                AdministrativeAreaCode =
-                    business.TaxAdministrationAreaCode,
+                        /*
+                         * Các field quản lý ngân sách hiện chưa nằm trên
+                         * TaxDeclarationLine, nên vẫn kế thừa từ anchor business.
+                         * Bước sau có thể nâng cấp theo từng BusinessProfile
+                         * nếu các location thuộc cơ quan thuế khác nhau.
+                         */
+                        AdministrativeAreaCode =
+                            business.TaxAdministrationAreaCode,
 
-                CollectingAuthority =
-                    business.CollectingAuthority,
+                        CollectingAuthority =
+                            business.CollectingAuthority,
 
-                TaxAuthority =
-                    business.ManagingTaxAuthority,
+                        TaxAuthority =
+                            business.ManagingTaxAuthority,
 
-                DueDate =
-                    period.DueDate,
+                        DueDate =
+                            period.DueDate,
 
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-    }
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    });
+            }
 
-    if (declaration.PersonalIncomeTaxPayableAmount > 0)
-    {
-        declaration.Obligations.Add(
-            new TaxDeclarationObligation
+            if (line.PersonalIncomeTaxAmount > 0m)
             {
-                Id = Guid.NewGuid(),
+                declaration.Obligations.Add(
+                    new TaxDeclarationObligation
+                    {
+                        Id = Guid.NewGuid(),
 
-                TaxDeclarationId =
-                    declaration.Id,
+                        TaxDeclarationId =
+                            declaration.Id,
 
-                TaxType =
-                    TaxTypes.PersonalIncomeTax,
+                        TaxType =
+                            TaxTypes.PersonalIncomeTax,
 
-                BusinessLocationCode =
-                    business.BusinessLocationCode,
+                        BusinessLocationCode =
+                            businessLocationCode,
 
-                StateBudgetContent =
-                    StateBudgetCodes2026.PitBusinessContent,
+                        StateBudgetContent =
+                            StateBudgetCodes2026.PitBusinessContent,
 
-                AssessedAmount =
-                    declaration.TotalPersonalIncomeTaxAmount,
+                        AssessedAmount =
+                            line.PersonalIncomeTaxAmount,
 
-                ExemptionAmount =
-                    declaration.PersonalIncomeTaxExemptionAmount,
+                        ExemptionAmount =
+                            0m,
 
-                PayableAmount =
-                    declaration.PersonalIncomeTaxPayableAmount,
+                        PayableAmount =
+                            line.PersonalIncomeTaxAmount,
 
-                StateBudgetChapterCode =
-                    chapterCode,
+                        StateBudgetChapterCode =
+                            chapterCode,
 
-                StateBudgetSubsectionCode =
-                    StateBudgetCodes2026.PitBusinessSubsection,
+                        StateBudgetSubsectionCode =
+                            StateBudgetCodes2026.PitBusinessSubsection,
 
-                AdministrativeAreaCode =
-                    business.TaxAdministrationAreaCode,
+                        AdministrativeAreaCode =
+                            business.TaxAdministrationAreaCode,
 
-                CollectingAuthority =
-                    business.CollectingAuthority,
+                        CollectingAuthority =
+                            business.CollectingAuthority,
 
-                TaxAuthority =
-                    business.ManagingTaxAuthority,
+                        TaxAuthority =
+                            business.ManagingTaxAuthority,
 
-                DueDate =
-                    period.DueDate,
+                        DueDate =
+                            period.DueDate,
 
-                CreatedAt = now,
-                UpdatedAt = now
-            });
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    });
+            }
+        }
     }
-}
     
     private static string BuildDeclarationCode(
         TaxPeriod period,
@@ -676,8 +724,22 @@ public class TaxDeclarationService : ITaxDeclarationService
                 "Tax declaration does not contain calculation lines.");
         }
 
+        if (declaration.FormCode != "01/CNKD")
+        {
+            throw new BadRequestException(
+                $"Export for form {declaration.FormCode} is not supported yet.");
+        }
+
+        var ownerBusinesses =
+            await _taxPeriodRepository
+                .GetBusinessesWithCategoriesByOwnerAsync(
+                    declaration.TaxPeriod.Business.OwnerId,
+                    cancellationToken);
+
         var formModel =
-            Form01Cnkd2026Mapper.Map(declaration);
+            Form01Cnkd2026Mapper.Map(
+                declaration,
+                ownerBusinesses);
 
         return await _documentGenerator.GenerateAsync(
             formModel,

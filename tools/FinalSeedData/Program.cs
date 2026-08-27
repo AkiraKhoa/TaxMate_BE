@@ -67,6 +67,7 @@ Console.WriteLine($"✅ Categories OK: FNB ({fnbCat.BusinessCategoryId}), SERVIC
 
 // ═══════════════════ STEP 2b: ENSURE MISSING COLUMNS ═══════════════════
 await EnsureMissingColumnsAsync(db);
+await EnsureTaxThresholdSettingsAsync(db);
 
 // ═══════════════════ STEP 3: ADMIN ═══════════════════
 db.Users.Add(new User
@@ -275,6 +276,52 @@ static async Task EnsureMissingColumnsAsync(AppDbContext db)
         END $$;
     """);
     Console.WriteLine("✅ Database columns verified.\n");
+}
+
+static async Task EnsureTaxThresholdSettingsAsync(AppDbContext db)
+{
+    var effectiveFrom = new DateOnly(2026, 1, 1);
+    var seedDate = new DateTime(
+        2026,
+        1,
+        1,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    if (!await db.TaxThresholdSettings.AnyAsync(x =>
+            x.Type == TaxThresholdTypes.AnnualRevenueTax &&
+            x.EffectiveFrom == effectiveFrom))
+    {
+        db.TaxThresholdSettings.Add(new TaxThresholdSetting
+        {
+            Id = Guid.Parse("20260000-0000-4000-a000-000000000011"),
+            Type = TaxThresholdTypes.AnnualRevenueTax,
+            Amount = 1_000_000_000m,
+            EffectiveFrom = effectiveFrom,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        });
+    }
+
+    if (!await db.TaxThresholdSettings.AnyAsync(x =>
+            x.Type == TaxThresholdTypes.EInvoiceRequirement &&
+            x.EffectiveFrom == effectiveFrom))
+    {
+        db.TaxThresholdSettings.Add(new TaxThresholdSetting
+        {
+            Id = Guid.Parse("20260000-0000-4000-a000-000000000012"),
+            Type = TaxThresholdTypes.EInvoiceRequirement,
+            Amount = 1_000_000_000m,
+            EffectiveFrom = effectiveFrom,
+            CreatedAt = seedDate,
+            UpdatedAt = seedDate
+        });
+    }
+
+    await db.SaveChangesAsync();
+    Console.WriteLine("✅ Tax threshold settings verified.\n");
 }
 
 // ════════════════════════════════════════════════════════════════════

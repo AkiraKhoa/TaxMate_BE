@@ -112,13 +112,16 @@ public class PaymentAccountController : ControllerBase
 
     /// <summary>Lấy link WebView để liên kết tài khoản ngân hàng qua SePay Bank Hub.</summary>
     /// <param name="businessId">ID cửa hàng cần liên kết.</param>
+    /// <param name="isMobileApp">True cho ứng dụng mobile; false cho web.</param>
     [HttpGet("sepay-connect-url")]
-    public async Task<IActionResult> GetSePayConnectUrl([FromQuery] Guid businessId)
+    public async Task<IActionResult> GetSePayConnectUrl(
+        [FromQuery] Guid businessId,
+        [FromQuery] bool isMobileApp = true)
     {
         var scheme = Request.Scheme;
         var host = Request.Host.ToString();
 
-        var url = await _sePayService.GetSePayConnectUrlAsync(businessId, scheme, host);
+        var url = await _sePayService.GetSePayConnectUrlAsync(businessId, scheme, host, isMobileApp);
 
         return Ok(ApiResponse<string>.Ok(url, "Get SePay connect URL successfully", HttpContext.TraceIdentifier));
     }

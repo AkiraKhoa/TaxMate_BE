@@ -4,23 +4,23 @@ using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 using TaxMate.Service.Options;
-
+using TaxMate.Model.Common;
 namespace TaxMate.Service.Services;
 
 public class ReportService : IReportService
 {
     private readonly IReportRepository _reportRepository;
     private readonly IGenericRepository<TaxMate.Model.Entities.BusinessProfile> _businessProfiles;
-    private readonly IOptions<TaxSettings> _taxSettings;
+    private readonly ITaxPolicyService _taxPolicyService;
 
     public ReportService(
         IReportRepository reportRepository,
         IGenericRepository<TaxMate.Model.Entities.BusinessProfile> businessProfiles,
-        IOptions<TaxSettings> taxSettings)
+        ITaxPolicyService taxPolicyService)
     {
         _reportRepository = reportRepository;
         _businessProfiles = businessProfiles;
-        _taxSettings = taxSettings;
+        _taxPolicyService = taxPolicyService;
     }
 
     public async Task<SalesDashboardResponse> GetSalesDashboardAsync(
@@ -259,18 +259,39 @@ public class ReportService : IReportService
         throw new NotFoundException("Business profile not found.");
     }
 
+    var ownerId = business.OwnerId;
+
     var accumulatedRevenue =
-        await _reportRepository.GetAccumulatedRevenueAsync(
-            businessId,
+        await _reportRepository.GetAccumulatedRevenueByOwnerAsync(
+            ownerId,
             year);
 
     var quarters =
-        await _reportRepository.GetQuarterRevenuesAsync(
-            businessId,
+        await _reportRepository.GetQuarterRevenuesByOwnerAsync(
+            ownerId,
             year);
 
-    var threshold =
-        _taxSettings.Value.BusinessRevenueThreshold;
+    var yearStart = new DateTime(
+        year,
+        1,
+        1,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    var yearEnd = yearStart.AddYears(1);
+
+    var profileRevenues =
+        await _reportRepository.GetOwnerRevenueByProfileAsync(
+            ownerId,
+            yearStart,
+            yearEnd);
+
+    var policyDate = GetPolicyDateForYear(year);
+    var policy = await _taxPolicyService.GetEffectiveAsync(policyDate);
+    var threshold = policy.AnnualRevenueThreshold;
+    var eInvoiceThreshold = policy.EInvoiceRevenueThreshold;
 
     var progress = threshold <= 0
         ? 0
@@ -338,7 +359,27 @@ public class ReportService : IReportService
             AccumulatedRevenue = accumulatedRevenue,
             RemainingAmount = remaining,
             ProgressPercentage = progress,
-            Status = accumulatedRevenue >= threshold
+            Status = accumulatedRevenue > threshold
+                ? "Taxable"
+                : "NotTaxable"
+        },
+
+        EInvoiceThreshold = new TaxRevenueThresholdResponse
+        {
+            Amount = eInvoiceThreshold,
+            AccumulatedRevenue = accumulatedRevenue,
+            RemainingAmount = Math.Max(
+                eInvoiceThreshold - accumulatedRevenue,
+                0),
+            ProgressPercentage = eInvoiceThreshold <= 0
+                ? 0
+                : Math.Clamp(
+                    Math.Round(
+                        accumulatedRevenue / eInvoiceThreshold * 100,
+                        2),
+                    0,
+                    100),
+            Status = accumulatedRevenue >= eInvoiceThreshold
                 ? "RequiredEInvoice"
                 : "NotRequired"
         },
@@ -354,7 +395,663 @@ public class ReportService : IReportService
                     : $"Dựa trên Q1 - Q{latestQuarterWithRevenue}"
         },
 
-        Quarters = quarters
+        Quarters = quarters,
+
+        Businesses = profileRevenues
     };
+}
+    
+    public async Task<HomeDashboardResponse> GetHomeDashboardAsync(
+    Guid userId,
+    Guid businessId,
+    DateOnly? date,
+    int rangeDays,
+    string groupBy)
+{
+    if (rangeDays < 1 || rangeDays > 365)
+    {
+        throw new BadRequestException(
+            "Range days must be between 1 and 365.");
+    }
+
+    var normalizedGroupBy = groupBy
+        .Trim()
+        .ToLowerInvariant() switch
+    {
+        "day" => "Day",
+        "week" => "Week",
+        "month" => "Month",
+
+        _ => throw new BadRequestException(
+            "GroupBy must be Day, Week or Month.")
+    };
+
+    var business =
+        await _businessProfiles.GetByIdAsync(businessId);
+
+    if (business == null)
+    {
+        throw new NotFoundException(
+            "Business profile not found.");
+    }
+
+    if (business.OwnerId != userId)
+    {
+        throw new ForbiddenException(
+            "You do not have permission to access this business.");
+    }
+
+    var vietnamTimeZone =
+        TimeZoneInfo.FindSystemTimeZoneById(
+            OperatingSystem.IsWindows()
+                ? "SE Asia Standard Time"
+                : "Asia/Ho_Chi_Minh");
+
+    var vietnamNow =
+        TimeZoneInfo.ConvertTimeFromUtc(
+            DateTime.UtcNow,
+            vietnamTimeZone);
+
+    var asOfDate =
+        date ?? DateOnly.FromDateTime(vietnamNow);
+
+    var todayStart = new DateTime(
+        asOfDate.Year,
+        asOfDate.Month,
+        asOfDate.Day,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    var tomorrowStart = todayStart.AddDays(1);
+
+    var yesterdayStart = todayStart.AddDays(-1);
+
+    var monthStart = new DateTime(
+        asOfDate.Year,
+        asOfDate.Month,
+        1,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    var previousMonthStart =
+        monthStart.AddMonths(-1);
+
+    var yearStart = new DateTime(
+        asOfDate.Year,
+        1,
+        1,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc);
+
+    var trendStart =
+        todayStart.AddDays(-(rangeDays - 1));
+
+
+    // =========================================================
+    // TODAY
+    // =========================================================
+
+    var today =
+        await _reportRepository.GetHomeSalesAggregateAsync(
+            businessId,
+            todayStart,
+            tomorrowStart);
+
+    var yesterday =
+        await _reportRepository.GetHomeSalesAggregateAsync(
+            businessId,
+            yesterdayStart,
+            todayStart);
+
+
+    // =========================================================
+    // MONTH PROFIT
+    // =========================================================
+
+    var currentMonth =
+        await _reportRepository.GetHomeSalesAggregateAsync(
+            businessId,
+            monthStart,
+            tomorrowStart);
+
+    var previousMonth =
+        await _reportRepository.GetHomeSalesAggregateAsync(
+            businessId,
+            previousMonthStart,
+            monthStart);
+
+    var currentProfit =
+        currentMonth.Revenue -
+        currentMonth.CostOfGoodsSold;
+
+    var previousProfit =
+        previousMonth.Revenue -
+        previousMonth.CostOfGoodsSold;
+
+    var profitMargin =
+        currentMonth.Revenue == 0
+            ? 0m
+            : Math.Round(
+                currentProfit /
+                currentMonth.Revenue *
+                100m,
+                2);
+
+
+    // =========================================================
+    // TAX ESTIMATE
+    // =========================================================
+
+    var taxContext =
+        await _reportRepository
+            .GetHomeBusinessTaxContextAsync(
+                businessId);
+
+    if (taxContext == null)
+    {
+        throw new NotFoundException(
+            "Business profile not found.");
+    }
+
+    if (!taxContext.BusinessCategoryId.HasValue)
+    {
+        throw new BadRequestException(
+            "Business category is required before tax estimation.");
+    }
+
+    // Doanh thu năm của TOÀN OWNER tính đến ngày dashboard.
+    var annualRevenue =
+        await _reportRepository.GetOwnerSalesRevenueAsync(
+            taxContext.OwnerId,
+            yearStart,
+            tomorrowStart);
+
+    // Doanh thu của toàn Owner trước tháng hiện tại.
+    var previousAnnualRevenue =
+        await _reportRepository.GetOwnerSalesRevenueAsync(
+            taxContext.OwnerId,
+            yearStart,
+            monthStart);
+
+    var taxPolicy = await _taxPolicyService.GetEffectiveAsync(asOfDate);
+    var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
+
+    var isTaxable =
+        annualRevenue >
+        annualRevenueThreshold;
+
+    decimal vatAmount = 0m;
+    decimal pitAmount = 0m;
+
+    if (isTaxable)
+    {
+        var alreadyConsumedDeduction =
+            Math.Min(
+                previousAnnualRevenue,
+                annualRevenueThreshold);
+
+        var remainingDeduction =
+            Math.Max(
+                0m,
+                annualRevenueThreshold -
+                alreadyConsumedDeduction);
+
+        var pitDeductibleRevenue =
+            Math.Min(
+                currentMonth.Revenue,
+                remainingDeduction);
+
+        var pitRevenue =
+            Math.Max(
+                0m,
+                currentMonth.Revenue -
+                pitDeductibleRevenue);
+
+        vatAmount =
+            decimal.Round(
+                currentMonth.Revenue *
+                taxContext.VatRate /
+                100m,
+                2,
+                MidpointRounding.AwayFromZero);
+
+        pitAmount =
+            decimal.Round(
+                pitRevenue *
+                taxContext.PitRate /
+                100m,
+                2,
+                MidpointRounding.AwayFromZero);
+    }
+
+
+    // =========================================================
+    // REVENUE TREND
+    // =========================================================
+
+    var dailyRevenue =
+        await _reportRepository.GetHomeDailyRevenueAsync(
+            businessId,
+            trendStart,
+            tomorrowStart);
+
+    var trendPoints =
+        BuildHomeRevenueTrend(
+            dailyRevenue,
+            DateOnly.FromDateTime(trendStart),
+            asOfDate,
+            normalizedGroupBy);
+
+
+    // =========================================================
+    // REVENUE STRUCTURE
+    // =========================================================
+
+    var revenueStructureRows =
+        await _reportRepository
+            .GetHomeRevenueStructureAsync(
+                businessId,
+                trendStart,
+                tomorrowStart);
+
+    var structureTotal =
+        revenueStructureRows.Sum(x => x.Revenue);
+
+    var structureItems =
+        revenueStructureRows
+            .Select(x =>
+                new HomeRevenueStructureItemResponse
+                {
+                    CategoryId = x.CategoryId,
+                    CategoryName = x.CategoryName,
+                    Revenue = x.Revenue,
+
+                    Percentage =
+                        structureTotal == 0
+                            ? 0m
+                            : Math.Round(
+                                x.Revenue /
+                                structureTotal *
+                                100m,
+                                2)
+                })
+            .ToList();
+
+
+    // =========================================================
+    // TOP PRODUCTS
+    // =========================================================
+
+    var topProducts =
+        await _reportRepository.GetHomeTopProductsAsync(
+            businessId,
+            trendStart,
+            tomorrowStart,
+            5);
+
+
+    // =========================================================
+    // RESPONSE
+    // =========================================================
+
+    return new HomeDashboardResponse
+    {
+        BusinessId = business.Id,
+        BusinessName = business.BusinessName,
+        AsOfDate = asOfDate,
+
+        Summary = new HomeDashboardSummaryResponse
+        {
+            TodayRevenue = new HomeTodayRevenueResponse
+            {
+                Amount = today.Revenue,
+
+                PreviousDayAmount =
+                    yesterday.Revenue,
+
+                ChangePercent =
+                    CalculateChangePercent(
+                        today.Revenue,
+                        yesterday.Revenue)
+            },
+
+            TodayOrders = new HomeTodayOrdersResponse
+            {
+                Count = today.OrderCount,
+
+                PreviousDayCount =
+                    yesterday.OrderCount,
+
+                ChangePercent =
+                    CalculateChangePercent(
+                        today.OrderCount,
+                        yesterday.OrderCount),
+
+                AverageOrderValue =
+                    today.OrderCount == 0
+                        ? 0m
+                        : Math.Round(
+                            today.Revenue /
+                            today.OrderCount,
+                            2)
+            },
+
+            EstimatedTax = new HomeEstimatedTaxResponse
+            {
+                PeriodType = "MonthlyEstimate",
+
+                Year = asOfDate.Year,
+
+                Month = asOfDate.Month,
+
+                PeriodLabel =
+                    $"Tháng {asOfDate.Month:00}/{asOfDate.Year}",
+
+                IsTaxable = isTaxable,
+
+                TotalAmount =
+                    vatAmount + pitAmount,
+
+                Vat = new HomeTaxComponentResponse
+                {
+                    Rate = taxContext.VatRate,
+                    Amount = vatAmount
+                },
+
+                PersonalIncomeTax =
+                    new HomeTaxComponentResponse
+                    {
+                        Rate = taxContext.PitRate,
+                        Amount = pitAmount
+                    }
+            },
+
+            EstimatedProfit =
+                new HomeEstimatedProfitResponse
+                {
+                    Year = asOfDate.Year,
+                    Month = asOfDate.Month,
+
+                    Amount = currentProfit,
+
+                    PreviousMonthAmount =
+                        previousProfit,
+
+                    ChangePercent =
+                        CalculateChangePercent(
+                            currentProfit,
+                            previousProfit),
+
+                    MarginPercent =
+                        profitMargin
+                }
+        },
+
+        RevenueTrend = new HomeRevenueTrendResponse
+        {
+            FromDate =
+                DateOnly.FromDateTime(trendStart),
+
+            ToDate = asOfDate,
+
+            RangeDays = rangeDays,
+
+            GroupBy = normalizedGroupBy,
+
+            Points = trendPoints
+        },
+
+        RevenueStructure =
+            new HomeRevenueStructureResponse
+            {
+                TotalRevenue =
+                    structureTotal,
+
+                Items =
+                    structureItems
+            },
+
+        TopProducts =
+            new HomeTopProductsResponse
+            {
+                FromDate =
+                    DateOnly.FromDateTime(
+                        trendStart),
+
+                ToDate = asOfDate,
+
+                Items = topProducts
+            }
+    };
+}
+    
+    private static decimal CalculateChangePercent(
+        decimal current,
+        decimal previous)
+    {
+        if (previous == 0m)
+        {
+            return current == 0m
+                ? 0m
+                : 100m;
+        }
+
+        return Math.Round(
+            (current - previous) /
+            Math.Abs(previous) *
+            100m,
+            2);
+    }
+
+    private static decimal CalculateChangePercent(
+        int current,
+        int previous)
+    {
+        return CalculateChangePercent(
+            (decimal)current,
+            (decimal)previous);
+    }
+    
+    private static List<HomeRevenueTrendPointResponse>
+    BuildHomeRevenueTrend(
+        List<HomeDailyRevenueRow> dailyRows,
+        DateOnly fromDate,
+        DateOnly toDate,
+        string groupBy)
+{
+    var grouped = dailyRows
+        .GroupBy(x =>
+            GetHomeBucketStart(
+                DateOnly.FromDateTime(x.Date),
+                groupBy))
+        .ToDictionary(
+            x => x.Key,
+            x => x.Sum(y => y.Revenue));
+
+    var points =
+        new List<HomeRevenueTrendPointResponse>();
+
+    var cursor =
+        GetHomeBucketStart(
+            fromDate,
+            groupBy);
+
+    var endBucket =
+        GetHomeBucketStart(
+            toDate,
+            groupBy);
+
+    while (cursor <= endBucket)
+    {
+        points.Add(
+            new HomeRevenueTrendPointResponse
+            {
+                Date = cursor,
+
+                Revenue =
+                    grouped.TryGetValue(
+                        cursor,
+                        out var revenue)
+                        ? revenue
+                        : 0m
+            });
+
+        cursor =
+            GetNextHomeBucket(
+                cursor,
+                groupBy);
+    }
+
+    ApplyLinearTrend(points);
+
+    return points;
+}
+
+
+private static DateOnly GetHomeBucketStart(
+    DateOnly date,
+    string groupBy)
+{
+    return groupBy switch
+    {
+        "Day" => date,
+
+        "Week" =>
+            date.AddDays(
+                -(
+                    (
+                        (int)date.DayOfWeek -
+                        (int)DayOfWeek.Monday +
+                        7
+                    ) % 7
+                )),
+
+        "Month" =>
+            new DateOnly(
+                date.Year,
+                date.Month,
+                1),
+
+        _ => date
+    };
+}
+
+
+private static DateOnly GetNextHomeBucket(
+    DateOnly date,
+    string groupBy)
+{
+    return groupBy switch
+    {
+        "Day" => date.AddDays(1),
+
+        "Week" => date.AddDays(7),
+
+        "Month" => date.AddMonths(1),
+
+        _ => date.AddDays(1)
+    };
+}
+
+
+private static void ApplyLinearTrend(
+    List<HomeRevenueTrendPointResponse> points)
+{
+    if (points.Count == 0)
+    {
+        return;
+    }
+
+    if (points.Count == 1)
+    {
+        points[0].Trend =
+            points[0].Revenue;
+
+        return;
+    }
+
+    decimal sumX = 0m;
+    decimal sumY = 0m;
+    decimal sumXY = 0m;
+    decimal sumXX = 0m;
+
+    for (var i = 0; i < points.Count; i++)
+    {
+        var x = (decimal)i;
+        var y = points[i].Revenue;
+
+        sumX += x;
+        sumY += y;
+        sumXY += x * y;
+        sumXX += x * x;
+    }
+
+    var n = (decimal)points.Count;
+
+    var denominator =
+        n * sumXX -
+        sumX * sumX;
+
+    if (denominator == 0m)
+    {
+        foreach (var point in points)
+        {
+            point.Trend =
+                Math.Round(
+                    sumY / n,
+                    2);
+        }
+
+        return;
+    }
+
+    var slope =
+        (
+            n * sumXY -
+            sumX * sumY
+        ) / denominator;
+
+    var intercept =
+        (
+            sumY -
+            slope * sumX
+        ) / n;
+
+    for (var i = 0; i < points.Count; i++)
+    {
+        var estimated =
+            intercept +
+            slope * i;
+
+        points[i].Trend =
+            Math.Max(
+                0m,
+                Math.Round(
+                    estimated,
+                    2));
+    }
+}
+
+private static DateOnly GetPolicyDateForYear(int year)
+{
+    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+    if (year < today.Year)
+    {
+        return new DateOnly(year, 12, 31);
+    }
+
+    if (year > today.Year)
+    {
+        return new DateOnly(year, 1, 1);
+    }
+
+    return today;
 }
 }

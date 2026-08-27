@@ -67,6 +67,19 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             FillSectionD(body, model);
             FillDeclarationDate(body, model);
 
+            /*
+             * Final presentation pass:
+             * - one font family across the entire exported form;
+             * - compact paragraph spacing inside tables;
+             * - optimized Section A/D numeric and administrative columns.
+             *
+             * This pass intentionally preserves bold/italic and existing
+             * template hierarchy while normalizing the visual system.
+             */
+            ApplyUnifiedDocumentFormatting(body);
+            OptimizeSectionATableLayout(body);
+            OptimizeSectionDTableLayout(body);
+
             mainPart.Document.Save();
         }
 
@@ -209,9 +222,69 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
         var table = tables[SectionATableIndex];
         var rows = table.Elements<TableRow>().ToList();
 
-        foreach (var line in model.Lines.OrderBy(x => x.DisplayOrder))
+        /*
+         * Template 2026:
+         *
+         * row 4  = "1 Trụ sở kinh doanh"
+         * row 5-10 = 1.1 ... 1.6
+         * row 11 = header "2 Mã địa điểm kinh doanh 1 / Tên..."
+         * row 12 = generic 2.1 data-row template
+         * row 13 = continuation placeholder
+         * row 14 = Section II
+         *
+         * Location đầu tiên trong model.Lines là anchor/trụ sở.
+         * Các location còn lại được clone thành các block 2.x, 3.x...
+         */
+        var locationGroups =
+            model.Lines
+                .Where(x =>
+                    string.Equals(
+                        x.SectionCode,
+                        "I",
+                        StringComparison.OrdinalIgnoreCase))
+                .GroupBy(
+                    x => !string.IsNullOrWhiteSpace(x.BusinessLocationCode)
+                        ? x.BusinessLocationCode!
+                        : $"__NO_CODE__::{x.BusinessLocationName ?? string.Empty}",
+                    StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+        if (locationGroups.Count > 0)
         {
-            var row = FindSectionARow(rows, line);
+            FillHeadOfficeLines(
+                rows,
+                locationGroups[0]);
+
+            if (locationGroups.Count > 1)
+            {
+                RebuildAdditionalLocationRows(
+                    table,
+                    locationGroups.Skip(1).ToList());
+            }
+            else
+            {
+                ClearAdditionalLocationTemplateRows(table);
+            }
+        }
+
+        /*
+         * Các section khác (nếu có) vẫn dùng mapping theo activity code.
+         */
+        var refreshedRows =
+            table.Elements<TableRow>().ToList();
+
+        foreach (var line in model.Lines
+                     .Where(x =>
+                         !string.Equals(
+                             x.SectionCode,
+                             "I",
+                             StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(x => x.DisplayOrder))
+        {
+            var row =
+                FindSectionARow(
+                    refreshedRows,
+                    line);
 
             if (row is null)
             {
@@ -220,35 +293,402 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
                     $"and activity code '{line.ActivityCode}'.");
             }
 
-            var cells = row.Elements<TableCell>().ToList();
-
-            if (cells.Count < 10)
-            {
-                throw new InvalidOperationException(
-                    "A section A data row must contain 10 cells.");
-            }
-
-            // Actual 2026 Word structure:
-            // 0 STT [08]
-            // 1 activity [09]
-            // 2 activity code [10]
-            // 3 total revenue [11]
-            // 4 VAT non-taxable revenue [12]
-            // 5 VAT 0% revenue [13]
-            // 6 VAT payable [14]
-            // 7 PIT taxable revenue [15]
-            // 8 PIT deductible revenue [16]
-            // 9 PIT payable [17]
-            SetMoneyCell(cells[3], line.TotalRevenue);
-            SetMoneyCell(cells[4], line.VatNonTaxableRevenue);
-            SetMoneyCell(cells[5], line.ZeroRatedVatRevenue);
-            SetMoneyCell(cells[6], line.VatTaxAmount);
-            SetMoneyCell(cells[7], line.PersonalIncomeTaxableRevenue);
-            SetMoneyCell(cells[8], line.PersonalIncomeTaxDeductibleRevenue);
-            SetMoneyCell(cells[9], line.PersonalIncomeTaxAmount);
+            FillSectionADataRow(
+                row,
+                line,
+                overwriteIdentityCells: false);
         }
 
-        FillSectionASummary(rows, model.Summary);
+        refreshedRows =
+            table.Elements<TableRow>().ToList();
+
+        FillSectionASummary(
+            refreshedRows,
+            model.Summary);
+    }
+
+    private static void FillHeadOfficeLines(
+        IReadOnlyList<TableRow> rows,
+        IEnumerable<Form01Cnkd2026LineModel> lines)
+    {
+        foreach (var line in lines
+                     .OrderBy(x => x.DisplayOrder))
+        {
+            var row =
+                FindFixedLocationActivityRow(
+                    rows,
+                    locationOrdinal: 1,
+                    line.ActivityCode);
+
+            if (row is null)
+            {
+                throw new InvalidOperationException(
+                    $"Could not find head-office activity row for activity '{line.ActivityCode}'.");
+            }
+
+            FillSectionADataRow(
+                row,
+                line,
+                overwriteIdentityCells: false);
+        }
+    }
+
+    private static void RebuildAdditionalLocationRows(
+        Table table,
+        IReadOnlyList<IGrouping<string, Form01Cnkd2026LineModel>> locationGroups)
+    {
+        var rows =
+            table.Elements<TableRow>().ToList();
+
+        if (rows.Count <= 14)
+        {
+            throw new InvalidOperationException(
+                "Section A location template structure is invalid.");
+        }
+
+        var headerTemplate =
+            (TableRow)rows[11].CloneNode(true);
+
+        var dataTemplate =
+            (TableRow)rows[12].CloneNode(true);
+
+        var sectionIIRow =
+            rows.FirstOrDefault(
+                x => x.Elements<TableCell>()
+                    .FirstOrDefault()?
+                    .InnerText.Trim()
+                    .Equals(
+                        "II",
+                        StringComparison.OrdinalIgnoreCase) == true)
+            ?? throw new InvalidOperationException(
+                "Could not locate Section II row after fixed-location section.");
+
+        /*
+         * Xóa header/data placeholder location cũ:
+         * row 11, 12, 13 trong template.
+         */
+        foreach (var oldRow in rows
+                     .Skip(11)
+                     .TakeWhile(x => !ReferenceEquals(x, sectionIIRow))
+                     .ToList())
+        {
+            oldRow.Remove();
+        }
+
+        for (var groupIndex = 0;
+             groupIndex < locationGroups.Count;
+             groupIndex++)
+        {
+            var group =
+                locationGroups[groupIndex];
+
+            var sectionOrdinal =
+                groupIndex + 2;
+
+            var locationSequence =
+                groupIndex + 1;
+
+            var firstLine =
+                group.OrderBy(x => x.DisplayOrder)
+                    .First();
+
+            var headerRow =
+                (TableRow)headerTemplate.CloneNode(true);
+
+            FillLocationHeaderRow(
+                headerRow,
+                sectionOrdinal,
+                locationSequence,
+                firstLine.BusinessLocationCode,
+                firstLine.BusinessLocationName);
+
+            sectionIIRow.InsertBeforeSelf(
+                headerRow);
+
+            foreach (var line in group
+                         .OrderBy(x => x.DisplayOrder))
+            {
+                var dataRow =
+                    (TableRow)dataTemplate.CloneNode(true);
+
+                FillAdditionalLocationDataRow(
+                    table,
+                    dataRow,
+                    sectionOrdinal,
+                    line);
+
+                sectionIIRow.InsertBeforeSelf(
+                    dataRow);
+            }
+        }
+    }
+
+    private static void ClearAdditionalLocationTemplateRows(
+        Table table)
+    {
+        var rows =
+            table.Elements<TableRow>().ToList();
+
+        if (rows.Count <= 14)
+            return;
+
+        var sectionIIRow =
+            rows.FirstOrDefault(
+                x => x.Elements<TableCell>()
+                    .FirstOrDefault()?
+                    .InnerText.Trim()
+                    .Equals(
+                        "II",
+                        StringComparison.OrdinalIgnoreCase) == true);
+
+        if (sectionIIRow is null)
+            return;
+
+        foreach (var oldRow in rows
+                     .Skip(11)
+                     .TakeWhile(x => !ReferenceEquals(x, sectionIIRow))
+                     .ToList())
+        {
+            oldRow.Remove();
+        }
+    }
+
+    private static void FillLocationHeaderRow(
+        TableRow row,
+        int sectionOrdinal,
+        int locationSequence,
+        string? locationCode,
+        string? locationName)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 2)
+        {
+            throw new InvalidOperationException(
+                "Location header row must contain at least 2 cells.");
+        }
+
+        SetCellText(
+            cells[0],
+            sectionOrdinal.ToString(
+                CultureInfo.InvariantCulture));
+
+        var paragraphs =
+            cells[1].Elements<Paragraph>().ToList();
+
+        if (paragraphs.Count >= 2)
+        {
+            SetParagraphText(
+                paragraphs[0],
+                $"Mã địa điểm kinh doanh {locationSequence}: " +
+                $"{locationCode ?? string.Empty}");
+
+            SetParagraphText(
+                paragraphs[1],
+                $"Tên địa điểm kinh doanh {locationSequence}: " +
+                $"{locationName ?? string.Empty}");
+        }
+        else
+        {
+            SetCellText(
+                cells[1],
+                $"Mã địa điểm kinh doanh {locationSequence}: " +
+                $"{locationCode ?? string.Empty}; " +
+                $"Tên địa điểm kinh doanh {locationSequence}: " +
+                $"{locationName ?? string.Empty}");
+        }
+    }
+
+    private static void FillAdditionalLocationDataRow(
+        Table sectionATable,
+        TableRow row,
+        int sectionOrdinal,
+        Form01Cnkd2026LineModel line)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 10)
+        {
+            throw new InvalidOperationException(
+                "Additional-location data row must contain 10 cells.");
+        }
+
+        var activityOrdinal =
+            ResolveActivityOrdinal(
+                line.ActivityCode);
+
+        SetCellText(
+            cells[0],
+            $"{sectionOrdinal}.{activityOrdinal}");
+
+        // Keep the official activity wording/code from the 01/CNKD template.
+        // Internal names such as "FNB" or "Dịch vụ" must not replace [09].
+        CopyOfficialActivityIdentity(
+            sectionATable,
+            row,
+            sectionOrdinal,
+            line.ActivityCode);
+
+        FillSectionADataRow(
+            row,
+            line,
+            overwriteIdentityCells: false);
+    }
+
+    private static void CopyOfficialActivityIdentity(
+        Table sectionATable,
+        TableRow targetRow,
+        int sectionOrdinal,
+        string activityCode)
+    {
+        var sourceRow = FindFixedLocationActivityRow(
+            sectionATable.Elements<TableRow>().ToList(),
+            locationOrdinal: 1,
+            activityCode)
+            ?? throw new InvalidOperationException(
+                $"Could not locate official template activity row for '{activityCode}'.");
+
+        var sourceCells = sourceRow.Elements<TableCell>().ToList();
+        var targetCells = targetRow.Elements<TableCell>().ToList();
+
+        if (sourceCells.Count < 3 || targetCells.Count < 3)
+        {
+            throw new InvalidOperationException(
+                "Section A activity row structure is invalid.");
+        }
+
+        SetCellText(
+            targetCells[0],
+            $"{sectionOrdinal}.{ResolveActivityOrdinal(activityCode)}");
+
+        CopyCellParagraphContent(sourceCells[1], targetCells[1]);
+        CopyCellParagraphContent(sourceCells[2], targetCells[2]);
+    }
+
+    private static void CopyCellParagraphContent(
+        TableCell source,
+        TableCell target)
+    {
+        var targetProperties =
+            target.TableCellProperties?.CloneNode(true) as TableCellProperties;
+
+        target.RemoveAllChildren();
+
+        if (targetProperties is not null)
+        {
+            target.Append(targetProperties);
+        }
+
+        foreach (var paragraph in source.Elements<Paragraph>())
+        {
+            target.Append(paragraph.CloneNode(true));
+        }
+
+        if (!target.Elements<Paragraph>().Any())
+        {
+            target.Append(new Paragraph());
+        }
+    }
+
+    private static void FillSectionADataRow(
+        TableRow row,
+        Form01Cnkd2026LineModel line,
+        bool overwriteIdentityCells)
+    {
+        var cells =
+            row.Elements<TableCell>().ToList();
+
+        if (cells.Count < 10)
+        {
+            throw new InvalidOperationException(
+                "A section A data row must contain 10 cells.");
+        }
+
+        if (overwriteIdentityCells)
+        {
+            SetCellText(
+                cells[1],
+                line.ActivityName);
+
+            SetCellText(
+                cells[2],
+                $"({NormalizeActivityCode(line.ActivityCode)})");
+        }
+
+        // Actual 2026 Word structure:
+        // 0 STT [08]
+        // 1 activity [09]
+        // 2 activity code [10]
+        // 3 total revenue [11]
+        // 4 VAT non-taxable revenue [12]
+        // 5 VAT 0% revenue [13]
+        // 6 VAT payable [14]
+        // 7 PIT taxable revenue [15]
+        // 8 PIT deductible revenue [16]
+        // 9 PIT payable [17]
+        SetMoneyCell(cells[3], line.TotalRevenue);
+        SetMoneyCell(cells[4], line.VatNonTaxableRevenue);
+        SetMoneyCell(cells[5], line.ZeroRatedVatRevenue);
+        SetMoneyCell(cells[6], line.VatTaxAmount);
+        SetMoneyCell(cells[7], line.PersonalIncomeTaxableRevenue);
+        SetMoneyCell(cells[8], line.PersonalIncomeTaxDeductibleRevenue);
+        SetMoneyCell(cells[9], line.PersonalIncomeTaxAmount);
+    }
+
+    private static TableRow? FindFixedLocationActivityRow(
+        IReadOnlyList<TableRow> rows,
+        int locationOrdinal,
+        string activityCode)
+    {
+        if (locationOrdinal != 1)
+        {
+            return null;
+        }
+
+        var marker =
+            $"({NormalizeActivityCode(activityCode)})";
+
+        /*
+         * Trụ sở trong template nằm tại row 5-10.
+         */
+        for (var i = 5;
+             i <= 10 && i < rows.Count;
+             i++)
+        {
+            var cells =
+                rows[i].Elements<TableCell>().ToList();
+
+            if (cells.Count < 3)
+                continue;
+
+            if (NormalizeText(cells[2].InnerText) ==
+                NormalizeText(marker))
+            {
+                return rows[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static int ResolveActivityOrdinal(
+        string activityCode)
+    {
+        return NormalizeActivityCode(
+            activityCode) switch
+        {
+            "a" => 1,
+            "b" => 2,
+            "c" => 3,
+            "d" => 4,
+            "đ" => 5,
+            "e" => 6,
+
+            _ => throw new InvalidOperationException(
+                $"Unsupported Section A activity code: {activityCode}.")
+        };
     }
 
     private static void FillSectionASummary(
@@ -537,7 +977,100 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             cell,
             value == 0m
                 ? string.Empty
-                : value.ToString("#,##0.##", CultureInfo.GetCultureInfo("vi-VN")));
+                : value.ToString(
+                    "#,##0.##",
+                    CultureInfo.GetCultureInfo("vi-VN")));
+
+        EnsureNoWrap(cell);
+        EnsureCompactMoneyFont(cell);
+    }
+
+    private static void EnsureNoWrap(TableCell cell)
+    {
+        var properties = cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<NoWrap>() is null)
+        {
+            properties.Append(new NoWrap());
+        }
+
+        /*
+         * tcFitText keeps long monetary values on one visual line by
+         * horizontally fitting the run inside the existing template cell.
+         * This preserves the official table widths instead of rebuilding
+         * the template grid.
+         */
+        if (properties.GetFirstChild<TableCellFitText>() is null)
+        {
+            properties.Append(
+                new TableCellFitText
+                {
+                    Val = OnOffOnlyValues.On
+                });
+        }
+
+        foreach (var paragraph in cell.Elements<Paragraph>())
+        {
+            var paragraphProperties =
+                paragraph.ParagraphProperties;
+
+            if (paragraphProperties is null)
+            {
+                paragraphProperties = new ParagraphProperties();
+                paragraph.PrependChild(paragraphProperties);
+            }
+
+            var justification =
+                paragraphProperties.GetFirstChild<Justification>();
+
+            if (justification is null)
+            {
+                paragraphProperties.Append(
+                    new Justification
+                    {
+                        Val = JustificationValues.Right
+                    });
+            }
+            else
+            {
+                justification.Val =
+                    JustificationValues.Right;
+            }
+        }
+    }
+
+    private static void EnsureCompactMoneyFont(TableCell cell)
+    {
+        const string fontSize = "17"; // 8.5 pt, numeric cells only.
+
+        foreach (var run in cell.Descendants<Run>())
+        {
+            var properties = run.RunProperties;
+
+            if (properties is null)
+            {
+                properties = new RunProperties();
+                run.PrependChild(properties);
+            }
+
+            var size = properties.GetFirstChild<FontSize>();
+            if (size is null)
+                properties.Append(new FontSize { Val = fontSize });
+            else
+                size.Val = fontSize;
+
+            var complexSize = properties.GetFirstChild<FontSizeComplexScript>();
+            if (complexSize is null)
+                properties.Append(new FontSizeComplexScript { Val = fontSize });
+            else
+                complexSize.Val = fontSize;
+        }
     }
 
     private static void SetCellText(
@@ -625,6 +1158,560 @@ public sealed class OpenXmlTaxDeclarationDocumentGenerator
             value.Split(
                 (char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static void ApplyUnifiedDocumentFormatting(
+        Body body)
+    {
+        const string fontFamily = "Times New Roman";
+
+        foreach (var run in body.Descendants<Run>())
+        {
+            var properties = run.RunProperties;
+
+            if (properties is null)
+            {
+                properties = new RunProperties();
+                run.PrependChild(properties);
+            }
+
+            var fonts =
+                properties.GetFirstChild<RunFonts>();
+
+            if (fonts is null)
+            {
+                fonts = new RunFonts();
+                properties.PrependChild(fonts);
+            }
+
+            fonts.Ascii = fontFamily;
+            fonts.HighAnsi = fontFamily;
+            fonts.EastAsia = fontFamily;
+            fonts.ComplexScript = fontFamily;
+        }
+
+        /*
+         * Table content is intentionally compact. Outside tables we preserve
+         * the template's point sizes so the official title/header hierarchy
+         * remains intact while still using the same font family.
+         */
+        foreach (var table in body.Elements<Table>())
+        {
+            foreach (var paragraph in table.Descendants<Paragraph>())
+            {
+                EnsureCompactParagraphSpacing(paragraph);
+            }
+
+            foreach (var run in table.Descendants<Run>())
+            {
+                EnsureRunFontSize(
+                    run,
+                    halfPoints: "18"); // 9 pt
+            }
+        }
+
+        foreach (var paragraph in body.Elements<Paragraph>())
+        {
+            EnsureBodyParagraphSpacing(paragraph);
+        }
+    }
+
+    private static void EnsureCompactParagraphSpacing(
+        Paragraph paragraph)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var spacing =
+            properties.GetFirstChild<SpacingBetweenLines>();
+
+        if (spacing is null)
+        {
+            spacing = new SpacingBetweenLines();
+            properties.Append(spacing);
+        }
+
+        spacing.Before = "0";
+        spacing.After = "0";
+        spacing.Line = "220";
+        spacing.LineRule = LineSpacingRuleValues.Auto;
+    }
+
+    private static void EnsureBodyParagraphSpacing(
+        Paragraph paragraph)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var spacing =
+            properties.GetFirstChild<SpacingBetweenLines>();
+
+        if (spacing is null)
+        {
+            spacing = new SpacingBetweenLines();
+            properties.Append(spacing);
+        }
+
+        /*
+         * Outside tables keep a little breathing room, but remove the
+         * oversized spacing that makes the form unnecessarily long.
+         */
+        spacing.Before ??= "0";
+        spacing.After ??= "40";
+        spacing.Line ??= "240";
+        spacing.LineRule ??= LineSpacingRuleValues.Auto;
+    }
+
+    private static void EnsureRunFontSize(
+        Run run,
+        string halfPoints)
+    {
+        var properties =
+            run.RunProperties;
+
+        if (properties is null)
+        {
+            properties = new RunProperties();
+            run.PrependChild(properties);
+        }
+
+        var size =
+            properties.GetFirstChild<FontSize>();
+
+        if (size is null)
+        {
+            properties.Append(
+                new FontSize
+                {
+                    Val = halfPoints
+                });
+        }
+        else
+        {
+            size.Val = halfPoints;
+        }
+
+        var complexSize =
+            properties.GetFirstChild<FontSizeComplexScript>();
+
+        if (complexSize is null)
+        {
+            properties.Append(
+                new FontSizeComplexScript
+                {
+                    Val = halfPoints
+                });
+        }
+        else
+        {
+            complexSize.Val = halfPoints;
+        }
+    }
+
+    private static void OptimizeSectionATableLayout(
+        Body body)
+    {
+        var tables =
+            body.Elements<Table>().ToList();
+
+        if (tables.Count <= SectionATableIndex)
+            return;
+
+        var table =
+            tables[SectionATableIndex];
+
+        SetTableFixedLayout(table);
+
+        /*
+         * Keep the official Section A proportions but give monetary columns
+         * enough effective room by making all numeric content compact and
+         * vertically centered. FitText/NoWrap added by SetMoneyCell remains.
+         */
+        foreach (var row in table.Elements<TableRow>())
+        {
+            var cells =
+                row.Elements<TableCell>().ToList();
+
+            if (cells.Count < 10)
+                continue;
+
+            for (var i = 3; i <= 9; i++)
+            {
+                SetCellVerticalCenter(cells[i]);
+
+                foreach (var paragraph in cells[i].Elements<Paragraph>())
+                {
+                    SetParagraphRightAligned(paragraph);
+                }
+            }
+        }
+    }
+
+    private static void OptimizeSectionDTableLayout(
+        Body body)
+    {
+        var tables =
+            body.Elements<Table>().ToList();
+
+        if (tables.Count <= SectionDTableIndex)
+            return;
+
+        var table =
+            tables[SectionDTableIndex];
+
+        SetTableFixedLayout(table);
+
+        /*
+         * A4-friendly fixed grid, total = 9,300 twips.
+         * Priority is readability of:
+         * - business location code,
+         * - NSNN description,
+         * - collecting authority / tax authority,
+         * while keeping code columns compact.
+         */
+        var widths = new[]
+        {
+            430,  // STT
+            900,  // Business location code
+            1480, // NSNN content
+            850,  // Amount
+            700,  // Chapter
+            700,  // Subsection
+            760,  // Administrative area
+            1120, // Collecting authority
+            1120, // Tax authority
+            1240  // Due date
+        };
+
+        SetTableGridWidths(
+            table,
+            widths);
+
+        foreach (var row in table.Elements<TableRow>())
+        {
+            var cells =
+                row.Elements<TableCell>().ToList();
+
+            if (cells.Count < 10)
+                continue;
+
+            for (var i = 0; i < 10; i++)
+            {
+                SetCellWidth(
+                    cells[i],
+                    widths[i]);
+
+                SetCellVerticalCenter(
+                    cells[i]);
+
+                SetCellMargins(
+                    cells[i],
+                    top: 45,
+                    right: 55,
+                    bottom: 45,
+                    left: 55);
+            }
+
+            /*
+             * STT, location code, amount, budget codes and due date should
+             * stay compact and visually stable.
+             */
+            foreach (var index in new[] { 0, 1, 3, 4, 5, 6, 9 })
+            {
+                EnsureCellNoWrapOnly(
+                    cells[index]);
+            }
+
+            foreach (var paragraph in cells[0].Elements<Paragraph>())
+                SetParagraphCenterAligned(paragraph);
+
+            foreach (var paragraph in cells[1].Elements<Paragraph>())
+                SetParagraphCenterAligned(paragraph);
+
+            foreach (var paragraph in cells[3].Elements<Paragraph>())
+                SetParagraphRightAligned(paragraph);
+
+            foreach (var index in new[] { 4, 5, 6, 9 })
+            {
+                foreach (var paragraph in cells[index].Elements<Paragraph>())
+                    SetParagraphCenterAligned(paragraph);
+            }
+
+            /*
+             * Slightly smaller text only in the dense payment table.
+             */
+            foreach (var run in row.Descendants<Run>())
+            {
+                EnsureRunFontSize(
+                    run,
+                    halfPoints: "17"); // 8.5 pt
+            }
+        }
+    }
+
+    private static void SetTableFixedLayout(
+        Table table)
+    {
+        var properties =
+            table.GetFirstChild<TableProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableProperties();
+            table.PrependChild(properties);
+        }
+
+        var layout =
+            properties.GetFirstChild<TableLayout>();
+
+        if (layout is null)
+        {
+            properties.Append(
+                new TableLayout
+                {
+                    Type = TableLayoutValues.Fixed
+                });
+        }
+        else
+        {
+            layout.Type =
+                TableLayoutValues.Fixed;
+        }
+    }
+
+    private static void SetTableGridWidths(
+        Table table,
+        IReadOnlyList<int> widths)
+    {
+        var grid =
+            table.GetFirstChild<TableGrid>();
+
+        if (grid is null)
+        {
+            grid = new TableGrid();
+            var properties =
+                table.GetFirstChild<TableProperties>();
+
+            if (properties is not null)
+            {
+                properties.InsertAfterSelf(grid);
+            }
+            else
+            {
+                table.PrependChild(grid);
+            }
+        }
+
+        grid.RemoveAllChildren<GridColumn>();
+
+        foreach (var width in widths)
+        {
+            grid.Append(
+                new GridColumn
+                {
+                    Width = width.ToString(
+                        CultureInfo.InvariantCulture)
+                });
+        }
+    }
+
+    private static void SetCellWidth(
+        TableCell cell,
+        int width)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var cellWidth =
+            properties.GetFirstChild<TableCellWidth>();
+
+        if (cellWidth is null)
+        {
+            properties.Append(
+                new TableCellWidth
+                {
+                    Type = TableWidthUnitValues.Dxa,
+                    Width = width.ToString(
+                        CultureInfo.InvariantCulture)
+                });
+        }
+        else
+        {
+            cellWidth.Type =
+                TableWidthUnitValues.Dxa;
+
+            cellWidth.Width =
+                width.ToString(
+                    CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static void SetCellVerticalCenter(
+        TableCell cell)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var vertical =
+            properties.GetFirstChild<TableCellVerticalAlignment>();
+
+        if (vertical is null)
+        {
+            properties.Append(
+                new TableCellVerticalAlignment
+                {
+                    Val = TableVerticalAlignmentValues.Center
+                });
+        }
+        else
+        {
+            vertical.Val =
+                TableVerticalAlignmentValues.Center;
+        }
+    }
+
+    private static void SetCellMargins(
+        TableCell cell,
+        int top,
+        int right,
+        int bottom,
+        int left)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        var margins =
+            properties.GetFirstChild<TableCellMargin>();
+
+        if (margins is null)
+        {
+            margins = new TableCellMargin();
+            properties.Append(margins);
+        }
+
+        margins.TopMargin = new TopMargin
+        {
+            Width = top.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.RightMargin = new RightMargin
+        {
+            Width = right.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.BottomMargin = new BottomMargin
+        {
+            Width = bottom.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+
+        margins.LeftMargin = new LeftMargin
+        {
+            Width = left.ToString(
+                CultureInfo.InvariantCulture),
+            Type = TableWidthUnitValues.Dxa
+        };
+    }
+
+    private static void EnsureCellNoWrapOnly(
+        TableCell cell)
+    {
+        var properties =
+            cell.GetFirstChild<TableCellProperties>();
+
+        if (properties is null)
+        {
+            properties = new TableCellProperties();
+            cell.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<NoWrap>() is null)
+        {
+            properties.Append(
+                new NoWrap());
+        }
+    }
+
+    private static void SetParagraphCenterAligned(
+        Paragraph paragraph)
+    {
+        SetParagraphJustification(
+            paragraph,
+            JustificationValues.Center);
+    }
+
+    private static void SetParagraphRightAligned(
+        Paragraph paragraph)
+    {
+        SetParagraphJustification(
+            paragraph,
+            JustificationValues.Right);
+    }
+
+    private static void SetParagraphJustification(
+        Paragraph paragraph,
+        JustificationValues value)
+    {
+        var properties =
+            paragraph.ParagraphProperties;
+
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            paragraph.PrependChild(properties);
+        }
+
+        var justification =
+            properties.GetFirstChild<Justification>();
+
+        if (justification is null)
+        {
+            properties.Append(
+                new Justification
+                {
+                    Val = value
+                });
+        }
+        else
+        {
+            justification.Val =
+                value;
+        }
     }
 
     private static string BuildFileName(

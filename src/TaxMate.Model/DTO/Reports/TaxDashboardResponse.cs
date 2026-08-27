@@ -6,7 +6,11 @@ public class TaxDashboardResponse
 
     public TaxRevenueThresholdResponse Threshold { get; set; } = null!;
 
+    public TaxRevenueThresholdResponse EInvoiceThreshold { get; set; } = null!;
+
     public TaxRevenueForecastResponse Forecast { get; set; } = null!;
 
     public List<TaxQuarterRevenueResponse> Quarters { get; set; } = [];
+
+    public List<OwnerProfileRevenueRow> Businesses { get; set; } = [];
 }
