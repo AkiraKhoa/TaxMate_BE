@@ -27,19 +27,6 @@ public interface IInventoryMovementRepository
         DateTime endExclusive,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<InventoryMovement>> GetRangeAsync(
-        Guid businessId,
-        DateTime startInclusive,
-        DateTime endExclusive,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<InventoryMovement>> GetForItemBeforeAsync(
-        Guid businessId,
-        Guid? productId,
-        Guid? ingredientId,
-        DateTime endExclusive,
-        CancellationToken cancellationToken = default);
-
     Task<IReadOnlyList<Product>> GetProductsIncludingDeletedAsync(
         IReadOnlyCollection<Guid> productIds,
         CancellationToken cancellationToken = default);

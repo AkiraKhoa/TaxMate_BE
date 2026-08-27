@@ -20,6 +20,14 @@ public class TaxPeriod : BaseEntity
 
     public int? Quarter { get; set; }
 
+    [MaxLength(20)]
+    public string? FilingWindow { get; set; }
+
+    [MaxLength(20)]
+    public string? TknQttBridgeChoice { get; set; }
+
+    public DateTime? TknQttBridgeChoiceAt { get; set; }
+
     public DateTime PeriodStartDate { get; set; }
 
     public DateTime PeriodEndDate { get; set; }

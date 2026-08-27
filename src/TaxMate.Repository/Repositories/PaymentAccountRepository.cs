@@ -75,11 +75,6 @@ public class PaymentAccountRepository : GenericRepository<PaymentAccount>, IPaym
             .OrderBy(x => x.CreatedAt)
             .FirstOrDefaultAsync();
 
-    public Task<bool> HasMoneyMovementHistoryAsync(Guid paymentAccountId)
-        => _dbSet.AnyAsync(x =>
-            x.PaymentAccountId == paymentAccountId &&
-            x.MoneyMovements.Any());
-
     public async Task UnsetAllDefaultAsync(Guid businessId)
     {
         var defaults = await _dbSet

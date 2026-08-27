@@ -382,6 +382,8 @@ internal sealed class InventoryPurchaseService : IInventoryPurchaseService
             throw new BadRequestException("Tên phiếu nhập là bắt buộc và tối đa 200 ký tự.");
         }
 
+        var voucherNumber = NormalizePurchaseVoucherNumber(request.VoucherNumber);
+
         var lines = AggregateLines(request.Lines);
         var productIds = lines.Keys
             .Where(x => x.ProductId.HasValue)
@@ -429,6 +431,7 @@ internal sealed class InventoryPurchaseService : IInventoryPurchaseService
         return new ValidatedPurchase
         {
             ExpenseCategory = category,
+            VoucherNumber = voucherNumber,
             ExpenseTitle = title,
             PurchaseDate = purchaseDate,
             Supplier = supplier,
@@ -535,12 +538,39 @@ internal sealed class InventoryPurchaseService : IInventoryPurchaseService
         {
             ExpenseId = expenseId,
             BusinessId = businessId,
-            VoucherNumber = AccountingDocumentNumber.FromSource("PNK", expenseId),
+            VoucherNumber = validated.VoucherNumber ?? BuildPurchaseVoucherNumber(
+                validated.PurchaseDate,
+                expenseId),
             CreatedAt = now
         };
         ApplyExpense(expense, validated, now);
         return expense;
     }
+
+    private static string? NormalizePurchaseVoucherNumber(string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.StartsWith("PNK-", StringComparison.OrdinalIgnoreCase)
+            ? $"PNK-{value[4..]}"
+            : $"PNK-{value}";
+        if (normalized.Length > 100)
+        {
+            throw new BadRequestException(
+                "Số chứng từ nhập kho không được vượt quá 100 ký tự.");
+        }
+
+        return normalized;
+    }
+
+    private static string BuildPurchaseVoucherNumber(
+        DateTime purchaseDate,
+        Guid expenseId)
+        => $"PNK-{purchaseDate:yyMMdd}-{expenseId:N}"[..21].ToUpperInvariant();
 
     private static void ApplyExpense(
         Expense expense,
@@ -611,7 +641,7 @@ internal sealed class InventoryPurchaseService : IInventoryPurchaseService
                 ReferenceId = expense.ExpenseId,
                 OccurredAt = validated.PurchaseDate,
                 DocumentNumber = expense.VoucherNumber,
-                Description = $"Nhập hàng - {validated.ExpenseTitle}",
+                Description = validated.ExpenseTitle,
                 Lines = validated.Lines.Select(x => new InventoryMovementLineInput
                 {
                     ProductId = x.Key.ProductId,
@@ -899,6 +929,8 @@ internal sealed class InventoryPurchaseService : IInventoryPurchaseService
     private sealed class ValidatedPurchase
     {
         public ExpenseCategory ExpenseCategory { get; init; } = null!;
+
+        public string? VoucherNumber { get; init; }
 
         public string ExpenseTitle { get; init; } = null!;
 

@@ -26,6 +26,15 @@ public class TaxPeriodConfiguration : IEntityTypeConfiguration<TaxPeriod>
             .HasFilter($"\"PeriodType\" = '{TaxPeriodTypes.Yearly}'");
 
         builder.HasIndex(x => new
+            {
+                x.BusinessId,
+                x.Year,
+                x.FilingWindow
+            })
+            .IsUnique()
+            .HasFilter($"\"PeriodType\" = '{TaxPeriodTypes.Tkn}'");
+
+        builder.HasIndex(x => new
         {
             x.BusinessId,
             x.Status
@@ -39,11 +48,23 @@ public class TaxPeriodConfiguration : IEntityTypeConfiguration<TaxPeriod>
             .HasMaxLength(30)
             .IsRequired();
 
+        builder.Property(x => x.FilingWindow)
+            .HasMaxLength(20);
+
+        builder.Property(x => x.TknQttBridgeChoice)
+            .HasMaxLength(20);
+
+        builder.ToTable(table => table.HasCheckConstraint(
+            "CK_TaxPeriods_TknQttBridgeChoice",
+            "(\"TknQttBridgeChoice\" IS NULL AND \"TknQttBridgeChoiceAt\" IS NULL) OR " +
+            "(\"PeriodType\" = 'Tkn' AND \"TknQttBridgeChoice\" IN ('Later', 'Refund', 'Offset') AND \"TknQttBridgeChoiceAt\" IS NOT NULL)"));
+
         builder.ToTable(table => table.HasCheckConstraint(
             "CK_TaxPeriods_PeriodShape",
-            "(\"PeriodType\" = 'Monthly' AND \"Month\" BETWEEN 1 AND 12 AND \"Quarter\" IS NULL) OR " +
-            "(\"PeriodType\" = 'Quarterly' AND \"Month\" IS NULL AND \"Quarter\" BETWEEN 1 AND 4) OR " +
-            "(\"PeriodType\" = 'Yearly' AND \"Month\" IS NULL AND \"Quarter\" IS NULL)"));
+            "(\"PeriodType\" = 'Monthly' AND \"Month\" BETWEEN 1 AND 12 AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR " +
+            "(\"PeriodType\" = 'Quarterly' AND \"Month\" IS NULL AND \"Quarter\" BETWEEN 1 AND 4 AND \"FilingWindow\" IS NULL) OR " +
+            "(\"PeriodType\" = 'Yearly' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR " +
+            "(\"PeriodType\" = 'Tkn' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IN ('FirstHalf', 'SecondHalf', 'Annual'))"));
 
         builder.HasOne(x => x.Business)
             .WithMany(x => x.TaxPeriods)

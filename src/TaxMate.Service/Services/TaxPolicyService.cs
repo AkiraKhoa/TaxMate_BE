@@ -67,12 +67,24 @@ public class TaxPolicyService : ITaxPolicyService
             TaxThresholdTypes.EInvoiceRequirement,
             effectiveOn,
             cancellationToken);
+        var incomeBasedRequirement = await GetEffectiveThresholdAsync(
+            TaxThresholdTypes.IncomeBasedRequirement,
+            effectiveOn,
+            cancellationToken);
+        var supportedRevenueCeiling = await GetEffectiveThresholdAsync(
+            TaxThresholdTypes.SupportedRevenueCeiling,
+            effectiveOn,
+            cancellationToken);
 
         return new EffectiveTaxPolicyResponse
         {
             EffectiveOn = effectiveOn,
             AnnualRevenueThreshold = annualRevenue.Amount,
             AnnualRevenueThresholdEffectiveFrom = annualRevenue.EffectiveFrom,
+            IncomeBasedRequirementThreshold = incomeBasedRequirement.Amount,
+            IncomeBasedRequirementEffectiveFrom = incomeBasedRequirement.EffectiveFrom,
+            SupportedRevenueCeiling = supportedRevenueCeiling.Amount,
+            SupportedRevenueCeilingEffectiveFrom = supportedRevenueCeiling.EffectiveFrom,
             EInvoiceRevenueThreshold = eInvoice.Amount,
             EInvoiceRevenueThresholdEffectiveFrom = eInvoice.EffectiveFrom
         };

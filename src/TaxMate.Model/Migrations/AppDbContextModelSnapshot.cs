@@ -2055,7 +2055,7 @@ namespace TaxMate.Model.Migrations
 
                     b.ToTable("TaxCalculations", null, t =>
                         {
-                            t.HasCheckConstraint("CK_TaxCalculations_TaxMethod", "\"TaxMethod\" IN ('RevenueBased', 'IncomeBased')");
+                            t.HasCheckConstraint("CK_TaxCalculations_TaxMethod", "\"TaxMethod\" IN ('RevenueBased', 'IncomeBased', 'NotApplicable')");
                         });
                 });
 
@@ -2606,6 +2606,17 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid?>("EvidenceReviewedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("FilingWindow")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TknQttBridgeChoice")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("TknQttBridgeChoiceAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<int?>("Month")
                         .HasColumnType("integer");
 
@@ -2686,6 +2697,10 @@ namespace TaxMate.Model.Migrations
                         .IsUnique()
                         .HasFilter("\"PeriodType\" = 'Monthly'");
 
+                    b.HasIndex("BusinessId", "Year", "FilingWindow")
+                        .IsUnique()
+                        .HasFilter("\"PeriodType\" = 'Tkn'");
+
                     b.HasIndex("BusinessId", "Year", "Quarter")
                         .IsUnique()
                         .HasFilter("\"PeriodType\" = 'Quarterly'");
@@ -2694,7 +2709,9 @@ namespace TaxMate.Model.Migrations
                         {
                             t.HasCheckConstraint("CK_TaxPeriods_EvidenceReviewPair", "(\"EvidenceReviewedAt\" IS NULL AND \"EvidenceReviewedByUserId\" IS NULL) OR (\"EvidenceReviewedAt\" IS NOT NULL AND \"EvidenceReviewedByUserId\" IS NOT NULL)");
 
-                            t.HasCheckConstraint("CK_TaxPeriods_PeriodShape", "(\"PeriodType\" = 'Monthly' AND \"Month\" BETWEEN 1 AND 12 AND \"Quarter\" IS NULL) OR (\"PeriodType\" = 'Quarterly' AND \"Month\" IS NULL AND \"Quarter\" BETWEEN 1 AND 4) OR (\"PeriodType\" = 'Yearly' AND \"Month\" IS NULL AND \"Quarter\" IS NULL)");
+                            t.HasCheckConstraint("CK_TaxPeriods_PeriodShape", "(\"PeriodType\" = 'Monthly' AND \"Month\" BETWEEN 1 AND 12 AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Quarterly' AND \"Month\" IS NULL AND \"Quarter\" BETWEEN 1 AND 4 AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Yearly' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Tkn' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IN ('FirstHalf', 'SecondHalf', 'Annual'))");
+
+                            t.HasCheckConstraint("CK_TaxPeriods_TknQttBridgeChoice", "(\"TknQttBridgeChoice\" IS NULL AND \"TknQttBridgeChoiceAt\" IS NULL) OR (\"PeriodType\" = 'Tkn' AND \"TknQttBridgeChoice\" IN ('Later', 'Refund', 'Offset') AND \"TknQttBridgeChoiceAt\" IS NOT NULL)");
                         });
                 });
 

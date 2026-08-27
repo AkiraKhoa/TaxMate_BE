@@ -227,7 +227,9 @@ public class PostgresAccountingIntegrationTests
             new Mock<ITaxPolicyService>().Object,
             closeUnitOfWork,
             new AccountingTransactionLockRepository(closeContext),
-            new S2eBookProjector(new MoneyMovementRepository(closeContext)));
+            new S2eBookProjector(new MoneyMovementRepository(closeContext)),
+            new InventoryMovementRepository(closeContext),
+            new InventoryValuationService());
 
         var closeTask = closeService.CloseAsync(
             ownerId,

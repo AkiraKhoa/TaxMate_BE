@@ -30,6 +30,9 @@
     <Content Include="Templates\Tax\2026\mau-01-cnkd.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Templates\Tax\2026\mau-01-tkn-cnkd.docx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Templates\Tax\2026\mau-s2b-hkd.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

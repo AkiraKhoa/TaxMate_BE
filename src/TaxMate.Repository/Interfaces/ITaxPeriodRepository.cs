@@ -18,6 +18,20 @@ public sealed record QttTaxPaymentSource(
     string Status,
     string? SourceTaxMethod);
 
+public sealed record OwnerQuarterlyFilingState(
+    Guid TaxPeriodId,
+    int Quarter,
+    string PeriodStatus,
+    bool HasCompletedIncomeBasedCalculation,
+    bool HasCompletedRevenueBasedCalculation,
+    bool HasSubmittedDeclaration);
+
+public sealed record OwnerTaxMethodHistoryState(
+    string TaxMethod,
+    int TaxMethodEffectiveYear,
+    int TaxYear,
+    DateTime CalculatedAt);
+
 public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
 {
     Task<bool> BusinessBelongsToUserAsync(
@@ -47,6 +61,25 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
     Task<TaxPeriod?> GetYearAsync(
         Guid businessId,
         int year,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriod?> GetTknAsync(
+        Guid ownerId,
+        int year,
+        string filingWindow,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<OwnerQuarterlyFilingState>> GetOwnerQuarterlyFilingStatesAsync(
+        Guid ownerId,
+        int year,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<OwnerTaxMethodHistoryState>> GetOwnerTaxMethodHistoryAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> HasOwnerTaxArtifactsAsync(
+        Guid ownerId,
         CancellationToken cancellationToken = default);
 
     Task<TaxPeriodIdentity?> GetIdentityAsync(

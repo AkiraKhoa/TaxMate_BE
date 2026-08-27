@@ -179,7 +179,10 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             PitPayments = new QttPitPaymentBreakdown
             {
                 Indicator15 = paymentLines
-                    .Where(x => x.IncludedInIndicator15)
+                    .Where(x =>
+                        x.IncludedInIndicator15 &&
+                        (eligibility != QttEligibility.UnderOneBillionRefund ||
+                         x.SourceTaxMethod == PersonalIncomeTaxMethods.IncomeBased))
                     .Sum(x => x.Amount),
                 Payments = paymentLines
             },

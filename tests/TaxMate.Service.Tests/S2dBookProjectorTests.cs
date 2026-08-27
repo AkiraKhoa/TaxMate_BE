@@ -7,11 +7,7 @@ namespace TaxMate.Service.Tests;
 public class S2dBookProjectorTests
 {
     private readonly S2dBookProjector _projector =
-        new(new InventoryValuationService(
-            new FakeAccountingTransactionLockRepository
-            {
-                HasActiveTransaction = true
-            }));
+        new(new InventoryValuationService());
 
     [Fact]
     public void Project_IncludesSoftDeletedItemWithOnlyOpeningBalance()

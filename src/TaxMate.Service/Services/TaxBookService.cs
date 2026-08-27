@@ -498,12 +498,23 @@ public class TaxBookService : ITaxBookService
             businessId,
             periodEndExclusive,
             cancellationToken);
+        var quarterStates = (await _taxPeriods
+                .GetOwnerQuarterlyFilingStatesAsync(
+                    userId,
+                    year,
+                    cancellationToken))
+            .Where(x => x.Quarter == quarter)
+            .ToList();
+        var requireFinalValues = quarterStates.Count > 0 &&
+                                 quarterStates.All(x =>
+                                     x.PeriodStatus != TaxPeriodStatuses.Open);
 
         return _s2dProjector.ProjectQuarter(
             businessId,
             movements,
             year,
-            quarter);
+            quarter,
+            requireFinalValues);
     }
 
     public async Task<TaxDeclarationGeneratedFile> ExportS1aAsync(

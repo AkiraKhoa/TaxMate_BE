@@ -38,6 +38,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             period.Year,
             period.Month?.ToString() ?? string.Empty,
             period.Quarter?.ToString() ?? string.Empty,
+            period.FilingWindow ?? string.Empty,
             period.PeriodStartDate.Ticks,
             period.PeriodEndDate.Ticks);
     }
@@ -169,6 +170,9 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 .ThenBy(x => x.Id)
                 .First())
             .OrderByDescending(period => period.Year)
+            .ThenByDescending(period => period.FilingWindow == TknFilingWindows.Annual ? 3 :
+                period.FilingWindow == TknFilingWindows.SecondHalf ? 2 :
+                period.FilingWindow == TknFilingWindows.FirstHalf ? 1 : 0)
             .ThenByDescending(period => period.Quarter)
             .ThenByDescending(period => period.Month)
             .Select(period => new TaxPeriodSummaryResponse
@@ -179,6 +183,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 Year = period.Year,
                 Month = period.Month,
                 Quarter = period.Quarter,
+                FilingWindow = period.FilingWindow,
                 PeriodStartDate = period.PeriodStartDate,
                 PeriodEndDate = period.PeriodEndDate,
                 DueDate = period.DueDate,
@@ -237,6 +242,56 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 x.PeriodType == TaxPeriodTypes.Yearly &&
                 x.Year == year,
             cancellationToken);
+    }
+
+    public Task<TaxPeriod?> GetTknAsync(
+        Guid ownerId,
+        int year,
+        string filingWindow,
+        CancellationToken cancellationToken = default)
+    {
+        return _dbContext.TaxPeriods
+            .Where(x =>
+                x.Business.OwnerId == ownerId &&
+                x.PeriodType == TaxPeriodTypes.Tkn &&
+                x.Year == year &&
+                x.FilingWindow == filingWindow)
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<OwnerQuarterlyFilingState>>
+        GetOwnerQuarterlyFilingStatesAsync(
+            Guid ownerId,
+            int year,
+            CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.TaxPeriods.AsNoTracking()
+            .Where(x =>
+                x.Business.OwnerId == ownerId &&
+                x.PeriodType == TaxPeriodTypes.Quarterly &&
+                x.Year == year &&
+                x.Quarter.HasValue)
+            .Select(x => new OwnerQuarterlyFilingState(
+                x.Id,
+                x.Quarter!.Value,
+                x.Status,
+                x.TaxCalculations.Any(calculation =>
+                    calculation.IsCurrent &&
+                    calculation.Status == TaxCalculationStatuses.Completed &&
+                    calculation.TaxMethod == PersonalIncomeTaxMethods.IncomeBased),
+                x.TaxCalculations.Any(calculation =>
+                    calculation.IsCurrent &&
+                    calculation.Status == TaxCalculationStatuses.Completed &&
+                    calculation.TaxMethod == PersonalIncomeTaxMethods.RevenueBased),
+                x.TaxDeclarations.Any(declaration =>
+                    declaration.IsCurrent &&
+                    declaration.Status == TaxDeclarationStatuses.Submitted &&
+                    declaration.FormCode == TaxFormCodes.Form01Cnkd)))
+            .OrderBy(x => x.Quarter)
+            .ThenBy(x => x.TaxPeriodId)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<TaxPeriodIdentity?> GetIdentityAsync(
@@ -365,6 +420,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             Year = period.Year,
             Month = period.Month,
             Quarter = period.Quarter,
+            FilingWindow = period.FilingWindow,
             PeriodStartDate = period.PeriodStartDate,
             PeriodEndDate = period.PeriodEndDate,
             SalesRevenue = period.SalesRevenue,
@@ -720,6 +776,42 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             .OrderByDescending(x => x.CalculatedAt)
             .Select(x => x.TaxMethod)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<OwnerTaxMethodHistoryState>>
+        GetOwnerTaxMethodHistoryAsync(
+            Guid ownerId,
+            CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.TaxCalculations
+            .AsNoTracking()
+            .Where(x =>
+                x.IsCurrent &&
+                x.Status == TaxCalculationStatuses.Completed &&
+                x.TaxMethodEffectiveYear.HasValue &&
+                x.TaxPeriod.Business.OwnerId == ownerId)
+            .OrderByDescending(x => x.TaxPeriod.Year)
+            .ThenByDescending(x => x.CalculatedAt)
+            .Select(x => new OwnerTaxMethodHistoryState(
+                x.TaxMethod,
+                x.TaxMethodEffectiveYear!.Value,
+                x.TaxPeriod.Year,
+                x.CalculatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public Task<bool> HasOwnerTaxArtifactsAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        return _dbContext.TaxPeriods
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.Business.OwnerId == ownerId &&
+                (x.Status != TaxPeriodStatuses.Open ||
+                 x.TaxCalculations.Any() ||
+                 x.TaxDeclarations.Any()),
+                cancellationToken);
     }
 
     public async Task<decimal> GetRevenueForBusinessInPeriodAsync(

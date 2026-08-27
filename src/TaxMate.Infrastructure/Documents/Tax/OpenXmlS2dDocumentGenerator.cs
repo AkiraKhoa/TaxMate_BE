@@ -36,6 +36,7 @@ public sealed class OpenXmlS2dDocumentGenerator : IS2dDocumentGenerator
         {
             var mainPart = document.MainDocumentPart
                 ?? throw new InvalidOperationException("S2d template has no main document part.");
+            ClearPublicationHeaders(mainPart);
             var body = mainPart.Document.Body
                 ?? throw new InvalidOperationException("S2d template has no body.");
             var section = body.GetFirstChild<SectionProperties>()?.CloneNode(true);
@@ -191,11 +192,20 @@ public sealed class OpenXmlS2dDocumentGenerator : IS2dDocumentGenerator
         paragraph.Append(run);
     }
 
+    private static void ClearPublicationHeaders(MainDocumentPart mainPart)
+    {
+        foreach (var headerPart in mainPart.HeaderParts)
+        {
+            headerPart.Header = new Header(new Paragraph());
+            headerPart.Header.Save();
+        }
+    }
+
     private static string Number(decimal? value) =>
         !value.HasValue ? "" : value.Value.ToString("#,##0.###", Vietnamese);
 
     private static string Money(decimal? value) =>
-        !value.HasValue ? "" : value.Value.ToString("#,##0.##", Vietnamese);
+        !value.HasValue ? "" : value.Value.ToString("#,##0", Vietnamese);
 
     private static string Unit(decimal value, decimal quantity) =>
         quantity == 0m ? "" : Money(value / quantity);

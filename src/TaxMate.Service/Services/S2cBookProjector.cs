@@ -76,6 +76,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
         var mappedExpenses = expenses
             .Where(x => !x.IsInventoryPurchase)
             .Where(x => !string.IsNullOrWhiteSpace(x.S2cGroupCode))
+            .Where(x => x.S2cGroupCode != S2cGroupCodes.Labor)
             .ToList();
         var excludedCashExpenses = mappedExpenses
             .Where(x => x.Amount >= CashPaymentDeductionThreshold)
@@ -160,7 +161,9 @@ internal sealed class S2cBookProjector : IS2cBookProjector
             MaterialCost = Math.Max(
                 0m,
                 s2d.Items.Sum(x => x.TotalOutboundValue) - excludedInventoryCashCost),
-            LaborCost = SumGroup(lines, S2cGroupCodes.Labor),
+            // TaxMate chưa có payroll engine nên không tự đưa chi phí nhân công
+            // vào S2c/QTT. Chỉ tiêu pháp luật vẫn được xuất với giá trị 0.
+            LaborCost = 0m,
             PurchasedServicesCost = SumGroup(lines, S2cGroupCodes.PurchasedServices),
             OtherDirectCost = SumGroup(lines, S2cGroupCodes.OtherDirect),
             ExcludedCashPaymentExpenseCount = excludedCashExpenses.Count,

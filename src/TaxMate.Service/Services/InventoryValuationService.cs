@@ -1,26 +1,17 @@
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO.Inventory;
 using TaxMate.Model.Entities;
-using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Common;
-using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.Service.Services;
 
-internal sealed class InventoryValuationService : IInventoryValuationService
+internal sealed class InventoryValuationService
+    : IInventoryValuationService, IInventoryQuarterFinalizer
 {
     private const int UnitValueScale = 6;
     private const int TotalValueScale = 2;
     private const decimal OneCent = 0.01m;
-    private readonly IAccountingTransactionLockRepository _lockRepository;
-
-    public InventoryValuationService(
-        IAccountingTransactionLockRepository lockRepository)
-    {
-        _lockRepository = lockRepository;
-    }
-
     public InventoryPeriodValuation PreviewQuarter(
         IReadOnlyCollection<InventoryMovement> movementsBeforePeriodEnd,
         int year,
@@ -28,15 +19,6 @@ internal sealed class InventoryValuationService : IInventoryValuationService
     {
         var (start, end) = BangkokBusinessTime.GetQuarterNaiveUtc(year, quarter);
         return CalculateQuarter(movementsBeforePeriodEnd, start, end);
-    }
-
-    public InventoryPeriodValuation StageFinalizeQuarter(
-        IReadOnlyCollection<InventoryMovement> movementsBeforePeriodEnd,
-        int year,
-        int quarter)
-    {
-        var (start, end) = BangkokBusinessTime.GetQuarterNaiveUtc(year, quarter);
-        return StageFinalizeExactQuarter(movementsBeforePeriodEnd, start, end);
     }
 
     public InventoryPeriodValuation StageFinalizeBookPeriod(
@@ -51,45 +33,6 @@ internal sealed class InventoryValuationService : IInventoryValuationService
             movementsBeforePeriodEnd,
             periodStartNaiveUtc,
             periodEndExclusiveNaiveUtc);
-    }
-
-    public decimal AggregateFinalizedCalendarYearOutboundValue(
-        IReadOnlyCollection<InventoryMovement> finalizedMovements,
-        int year,
-        InventoryAnnualClosureEvidence closureEvidence)
-    {
-        ArgumentNullException.ThrowIfNull(finalizedMovements);
-        ArgumentNullException.ThrowIfNull(closureEvidence);
-        if (_lockRepository.CurrentTransactionId != closureEvidence.TransactionId)
-        {
-            throw new InvalidOperationException(
-                "Annual S2d closure evidence is no longer valid in the active database transaction.");
-        }
-
-        if (closureEvidence.Year != year)
-        {
-            throw new ArgumentException(
-                "Closure evidence does not belong to the requested calendar year.",
-                nameof(year));
-        }
-
-        var (start, end) = BangkokBusinessTime.GetCalendarYearNaiveUtc(year);
-        var outbound = finalizedMovements
-            .Where(x =>
-                closureEvidence.BusinessIds.Contains(x.BusinessId) &&
-                OccurredAt(x) >= start &&
-                OccurredAt(x) < end &&
-                IsOutbound(x.MovementType))
-            .ToList();
-        var missing = outbound.FirstOrDefault(x => !x.TotalValue.HasValue);
-        if (missing is not null)
-        {
-            throw new UnprocessableEntityException(
-                InventoryBookBlockerCodes.MissingOutboundValue,
-                "Không thể tổng hợp quyết toán vì còn dòng S2d chưa có giá trị quý đã chốt.");
-        }
-
-        return RoundTotal(outbound.Sum(x => x.TotalValue!.Value));
     }
 
     private static InventoryPeriodValuation StageFinalizeExactQuarter(

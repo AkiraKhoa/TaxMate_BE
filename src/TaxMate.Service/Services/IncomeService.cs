@@ -19,6 +19,7 @@ public class IncomeService : IIncomeService
     private readonly IPaymentAccountService _paymentAccounts;
     private readonly IMoneyMovementService _moneyMovements;
     private readonly ITaxPeriodMutationGuard _periodGuard;
+    private readonly IRevenueThresholdAlertService _revenueThresholds;
     private readonly IMapper _mapper;
 
     public IncomeService(
@@ -29,6 +30,7 @@ public class IncomeService : IIncomeService
         IPaymentAccountService paymentAccounts,
         IMoneyMovementService moneyMovements,
         ITaxPeriodMutationGuard periodGuard,
+        IRevenueThresholdAlertService revenueThresholds,
         IMapper mapper)
     {
         _unitOfWork = unitOfWork;
@@ -38,6 +40,7 @@ public class IncomeService : IIncomeService
         _paymentAccounts = paymentAccounts;
         _moneyMovements = moneyMovements;
         _periodGuard = periodGuard;
+        _revenueThresholds = revenueThresholds;
         _mapper = mapper;
     }
 
@@ -74,6 +77,9 @@ public class IncomeService : IIncomeService
             await _unitOfWork.SaveChangesAsync();
             var created = await _incomes.GetByIdWithCategoryAsync(entity.IncomeId);
             await _unitOfWork.CommitTransactionAsync();
+            if (accountingType == IncomeAccountingTypes.BusinessRevenue)
+                await TryEvaluateThresholdsAsync(
+                    ownerId, businessId, [RevenueYear(request.IncomeDate)]);
             return _mapper.Map<IncomeDTO>(created!);
         }
         catch
@@ -92,6 +98,9 @@ public class IncomeService : IIncomeService
             if (entity is null)
                 throw new NotFoundException("Income not found.");
             EnsureManualIncome(entity);
+
+            var oldAccountingType = entity.AccountingType;
+            var oldIncomeDate = entity.IncomeDate;
 
             await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
             await EnsureCategoryIsValidAsync(request.IncomeCategoryId, entity.BusinessId);
@@ -116,6 +125,12 @@ public class IncomeService : IIncomeService
             await _unitOfWork.SaveChangesAsync();
             var updated = await _incomes.GetByIdWithCategoryAsync(id);
             await _unitOfWork.CommitTransactionAsync();
+            var years = new HashSet<int>();
+            if (oldAccountingType == IncomeAccountingTypes.BusinessRevenue)
+                years.Add(RevenueYear(oldIncomeDate));
+            if (accountingType == IncomeAccountingTypes.BusinessRevenue)
+                years.Add(RevenueYear(request.IncomeDate));
+            await TryEvaluateThresholdsAsync(ownerId, entity.BusinessId, years);
             return _mapper.Map<IncomeDTO>(updated!);
         }
         catch
@@ -135,6 +150,9 @@ public class IncomeService : IIncomeService
                 throw new NotFoundException("Income not found.");
             EnsureManualIncome(entity);
 
+            var accountingType = entity.AccountingType;
+            var incomeDate = entity.IncomeDate;
+
             await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
             await _periodGuard.EnsureCanDeleteAsync(ownerId, entity.BusinessId, entity.IncomeDate);
             if (entity.ReceivedDate.HasValue && entity.ReceivedDate.Value != entity.IncomeDate)
@@ -144,6 +162,9 @@ public class IncomeService : IIncomeService
             _incomes.Remove(entity);
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
+            if (accountingType == IncomeAccountingTypes.BusinessRevenue)
+                await TryEvaluateThresholdsAsync(
+                    ownerId, entity.BusinessId, [RevenueYear(incomeDate)]);
         }
         catch
         {
@@ -313,6 +334,29 @@ public class IncomeService : IIncomeService
 
         return normalized;
     }
+
+    private async Task TryEvaluateThresholdsAsync(
+        Guid ownerId,
+        Guid businessId,
+        IEnumerable<int> years)
+    {
+        foreach (var year in years.Distinct())
+        {
+            try
+            {
+                await _revenueThresholds.EvaluateAsync(
+                    ownerId, businessId, year);
+            }
+            catch
+            {
+                // Reconciled again when tax profile/dashboard is loaded.
+            }
+        }
+    }
+
+    private static int RevenueYear(DateTime value) =>
+        BangkokBusinessTime.GetBangkokCalendarYear(
+            BangkokBusinessTime.NormalizeNaiveUtc(value));
 
     private sealed record ResolvedPayment(string? PaymentMethod, Guid? PaymentAccountId);
 }

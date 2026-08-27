@@ -17,6 +17,5 @@ public interface IPaymentAccountRepository : IGenericRepository<PaymentAccount>
     Task<PaymentAccount?> GetFirstActiveBankAsync(
         Guid businessId,
         IReadOnlyCollection<Guid> excludedPaymentAccountIds);
-    Task<bool> HasMoneyMovementHistoryAsync(Guid paymentAccountId);
     Task UnsetAllDefaultAsync(Guid businessId);
 }

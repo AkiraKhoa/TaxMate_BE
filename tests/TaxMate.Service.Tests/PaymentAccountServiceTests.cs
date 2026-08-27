@@ -163,16 +163,12 @@ public sealed class PaymentAccountServiceTests
     }
 
     [Fact]
-    public async Task UpdateInitialBalanceAsync_AllowsChangeWhenFinancialHistoryExistsButPeriodIsOpen()
+    public async Task UpdateInitialBalanceAsync_AllowsChangeWhenPeriodIsOpen()
     {
         var bank = Account(PaymentAccountTypes.Bank);
         bank.InitialBalance = 10m;
         bank.InitialBalanceDate = new DateOnly(2026, 1, 1);
         SetupOwnedAccount(bank);
-        _accounts
-            .Setup(x => x.HasMoneyMovementHistoryAsync(bank.PaymentAccountId))
-            .ReturnsAsync(true);
-
         await CreateService().UpdateInitialBalanceAsync(
             _ownerId,
             bank.PaymentAccountId,
@@ -189,9 +185,6 @@ public sealed class PaymentAccountServiceTests
             It.IsAny<DateTime>(),
             It.IsAny<DateTime>(),
             It.IsAny<CancellationToken>()), Times.Once);
-        _accounts.Verify(
-            x => x.HasMoneyMovementHistoryAsync(It.IsAny<Guid>()),
-            Times.Never);
         _unitOfWork.Verify(
             x => x.CommitTransactionAsync(It.IsAny<CancellationToken>()),
             Times.Once);
@@ -221,9 +214,6 @@ public sealed class PaymentAccountServiceTests
                 }));
 
         Assert.Null(cash.InitialBalance);
-        _accounts.Verify(
-            x => x.HasMoneyMovementHistoryAsync(It.IsAny<Guid>()),
-            Times.Never);
         _unitOfWork.Verify(
             x => x.RollbackTransactionAsync(It.IsAny<CancellationToken>()),
             Times.Once);

@@ -17,6 +17,9 @@ public abstract class InventoryPurchaseWriteRequest
 {
     public Guid ExpenseCategoryId { get; set; }
 
+    [MaxLength(100)]
+    public string? VoucherNumber { get; set; }
+
     [Required]
     [MaxLength(200)]
     public string ExpenseTitle { get; set; } = null!;

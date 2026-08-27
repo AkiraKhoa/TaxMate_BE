@@ -35,7 +35,6 @@ public class DependencyInjectionTests
 
         AssertRegisteredOnce<IAccountingScopeReadRepository>(services);
         AssertRegisteredOnce<IAccountingTransactionLockRepository>(services);
-        AssertRegisteredOnce<IInventoryBookClosureRepository>(services);
         AssertRegisteredOnce<IInventoryMovementRepository>(services);
         AssertRegisteredOnce<IMoneyMovementRepository>(services);
         AssertRegisteredOnce<ITaxPeriodMutationGuard>(services);
@@ -43,7 +42,6 @@ public class DependencyInjectionTests
         AssertRegisteredOnce<IInventoryMovementCoordinatorValidator>(services);
         AssertRegisteredOnce<IInventoryMovementService>(services);
         AssertRegisteredOnce<IInventoryValuationService>(services);
-        AssertRegisteredOnce<IInventoryAnnualClosureEvidenceProvider>(services);
         AssertRegisteredOnce<IS2dBookProjector>(services);
         AssertRegisteredOnce<IMoneyMovementService>(services);
         AssertRegisteredOnce<IS2eBookProjector>(services);
@@ -58,7 +56,6 @@ public class DependencyInjectionTests
 
         Assert.NotNull(scoped.GetRequiredService<IAccountingScopeReadRepository>());
         Assert.NotNull(scoped.GetRequiredService<IAccountingTransactionLockRepository>());
-        Assert.NotNull(scoped.GetRequiredService<IInventoryBookClosureRepository>());
         Assert.NotNull(scoped.GetRequiredService<IInventoryMovementRepository>());
         Assert.NotNull(scoped.GetRequiredService<IMoneyMovementRepository>());
         Assert.NotNull(scoped.GetRequiredService<ITaxPeriodMutationGuard>());
@@ -66,7 +63,6 @@ public class DependencyInjectionTests
         Assert.NotNull(scoped.GetRequiredService<IInventoryMovementCoordinatorValidator>());
         Assert.NotNull(scoped.GetRequiredService<IInventoryMovementService>());
         Assert.NotNull(scoped.GetRequiredService<IInventoryValuationService>());
-        Assert.NotNull(scoped.GetRequiredService<IInventoryAnnualClosureEvidenceProvider>());
         Assert.NotNull(scoped.GetRequiredService<IS2dBookProjector>());
         Assert.NotNull(scoped.GetRequiredService<IMoneyMovementService>());
         Assert.NotNull(scoped.GetRequiredService<IS2eBookProjector>());

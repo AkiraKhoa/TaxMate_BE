@@ -37,7 +37,7 @@ public class TaxCalculationConfiguration
 
         builder.ToTable(table => table.HasCheckConstraint(
             "CK_TaxCalculations_TaxMethod",
-            "\"TaxMethod\" IN ('RevenueBased', 'IncomeBased')"));
+            "\"TaxMethod\" IN ('RevenueBased', 'IncomeBased', 'NotApplicable')"));
 
         builder.HasMany(x => x.Lines)
             .WithOne(x => x.TaxCalculation)

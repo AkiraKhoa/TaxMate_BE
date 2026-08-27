@@ -18,6 +18,4 @@ public static class InventoryBookBlockerCodes
     public const string DuplicateSourceItem = "DUPLICATE_SOURCE_ITEM";
     public const string ConflictingFinalizedOutboundValue =
         "CONFLICTING_FINALIZED_OUTBOUND_VALUE";
-    public const string MissingClosedBookQuarters =
-        "MISSING_CLOSED_BOOK_QUARTERS";
 }

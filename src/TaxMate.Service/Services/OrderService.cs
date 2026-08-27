@@ -4,6 +4,7 @@ using TaxMate.Model.DTO.Inventory;
 using TaxMate.Model.DTO.MoneyMovement;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
 using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
@@ -30,6 +31,7 @@ public class OrderService : IOrderService
     private readonly IIncomeCategoryRepository _incomeCategories;
     private readonly IInventoryMovementService _inventoryMovements;
     private readonly IMoneyMovementService _moneyMovements;
+    private readonly TimeProvider _timeProvider;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -50,7 +52,8 @@ public class OrderService : IOrderService
         IIncomeRepository incomes,
         IIncomeCategoryRepository incomeCategories,
         IInventoryMovementService inventoryMovements,
-        IMoneyMovementService moneyMovements)
+        IMoneyMovementService moneyMovements,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -71,6 +74,7 @@ public class OrderService : IOrderService
         _incomeCategories = incomeCategories;
         _inventoryMovements = inventoryMovements;
         _moneyMovements = moneyMovements;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -87,10 +91,10 @@ public class OrderService : IOrderService
             TransactionId = Guid.NewGuid(),
             BusinessId = businessId,
             TransactionCode = code,
-            TransactionDate = DateTime.UtcNow,
+            TransactionDate = UtcNow,
             Status = "Draft",
             Note = request.Note,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = UtcNow
         };
 
         await _transactions.AddAsync(order);
@@ -224,7 +228,7 @@ public class OrderService : IOrderService
             throw new NotFoundException("Product not found or does not belong to this business.");
 
         var prices = await _productPrices.FindAsync(x => x.ProductId == request.ProductId);
-        var now = DateTime.UtcNow;
+        var now = UtcNow;
         var unitPrice = prices
             .Where(p => p.ApplyDate <= now)
             .OrderByDescending(p => p.ApplyDate)
@@ -284,7 +288,7 @@ public class OrderService : IOrderService
                 Note = request.Note,
                 UnitCost = roundedUnitCost,
                 CostAmount = Math.Round(roundedUnitCost * request.Quantity, 2, MidpointRounding.AwayFromZero),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = UtcNow
             };
             await _transactionItems.AddAsync(item);
             // KHÔNG gọi order.TransactionItems.Add(item) ở đây vì EF Core Navigation Fixup
@@ -443,7 +447,7 @@ public class OrderService : IOrderService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            var paidAt = DateTime.UtcNow;
+            var paidAt = UtcNow;
 
             // Kiểm tra xem BankTransfer có dùng tài khoản SePay (có webhook tự động) không.
             // Nếu tài khoản là static VietQR (không có SePayBankAccountXid), đơn sẽ được Complete ngay.
@@ -583,7 +587,9 @@ public class OrderService : IOrderService
 
             if (order.Status == TransactionStatus.Completed)
             {
-                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+                await TryNotifyRevenueThresholdAsync(
+                    order.BusinessId,
+                    order.CompletedAt ?? UtcNow);
             }
 
             return await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
@@ -762,7 +768,7 @@ public class OrderService : IOrderService
                 ?? throw new NotFoundException("Business profile not found.");
             await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment);
 
-            var paidAt = DateTime.UtcNow;
+            var paidAt = UtcNow;
 
             foreach (var payment in order.Payments)
             {
@@ -851,7 +857,9 @@ public class OrderService : IOrderService
 
             if (order.Status == TransactionStatus.Completed)
             {
-                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+                await TryNotifyRevenueThresholdAsync(
+                    order.BusinessId,
+                    order.CompletedAt ?? UtcNow);
             }
 
             return await _invoiceService.GetInvoiceDetailAsync(order.InvoiceId!);
@@ -875,9 +883,11 @@ public class OrderService : IOrderService
         }
 
         order.Status = TransactionStatus.Completed;
-        order.CompletedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+        order.CompletedAt = DateTime.SpecifyKind(UtcNow, DateTimeKind.Unspecified);
         await DeductInventoryForCompletedOrderAsync(order);
     }
+
+    private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
 
     private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
     {
@@ -945,15 +955,25 @@ public class OrderService : IOrderService
         }
     }
 
-    private async Task TryNotifyRevenueThresholdAsync(Guid businessId)
+    private async Task TryNotifyRevenueThresholdAsync(
+        Guid businessId,
+        DateTime revenueDate)
     {
         try
         {
-            await _revenueThresholdAlerts.CheckAfterSaleAsync(businessId);
+            var business = await _businessProfiles.GetByIdAsync(businessId);
+            if (business is null)
+                return;
+            var year = BangkokBusinessTime.GetBangkokCalendarYear(
+                BangkokBusinessTime.NormalizeNaiveUtc(revenueDate));
+            await _revenueThresholdAlerts.EvaluateAsync(
+                business.OwnerId,
+                businessId,
+                year);
         }
         catch
         {
-            // Threshold email must never fail checkout / payment confirm.
+            // Reconciled again when the tax-profile/dashboard is loaded.
         }
     }
 

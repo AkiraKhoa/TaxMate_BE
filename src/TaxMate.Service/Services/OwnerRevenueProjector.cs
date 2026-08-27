@@ -178,13 +178,14 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
             .ToArray();
 
         var lines = qualifyingTransactions
-            .Where(x => x.HasInvoice && HasBusinessCategory(x))
+            .Where(HasBusinessCategory)
             .Select(x => new OwnerRevenueLine(
                 x.BusinessCategoryId!.Value,
                 x.BusinessCategoryCode!,
                 x.TransactionId,
                 "Transaction",
-                x.InvoiceNumber!,
+                x.InvoiceNumber ?? AccountingDocumentNumber.FromSource(
+                    "BH", x.TransactionId),
                 BangkokBusinessTime.NormalizeNaiveUtc(x.CompletedAt!.Value),
                 $"Doanh thu đơn hàng {x.TransactionCode}",
                 x.Amount))

@@ -85,49 +85,6 @@ public class InventoryMovementRepository
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<InventoryMovement>> GetRangeAsync(
-        Guid businessId,
-        DateTime startInclusive,
-        DateTime endExclusive,
-        CancellationToken cancellationToken = default)
-    {
-        return await BookQuery()
-            .Where(x =>
-                x.BusinessId == businessId &&
-                x.OccurredAt >= startInclusive &&
-                x.OccurredAt < endExclusive)
-            .OrderBy(x => x.OccurredAt)
-            .ThenBy(x => x.CreatedAt)
-            .ThenBy(x => x.InventoryMovementId)
-            .ToListAsync(cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<InventoryMovement>> GetForItemBeforeAsync(
-        Guid businessId,
-        Guid? productId,
-        Guid? ingredientId,
-        DateTime endExclusive,
-        CancellationToken cancellationToken = default)
-    {
-        if (productId.HasValue == ingredientId.HasValue)
-        {
-            throw new ArgumentException(
-                "Exactly one of productId and ingredientId must be supplied.");
-        }
-
-        return await BookQuery()
-            .Where(x =>
-                x.BusinessId == businessId &&
-                x.OccurredAt < endExclusive &&
-                (productId.HasValue
-                    ? x.ProductId == productId
-                    : x.IngredientId == ingredientId))
-            .OrderBy(x => x.OccurredAt)
-            .ThenBy(x => x.CreatedAt)
-            .ThenBy(x => x.InventoryMovementId)
-            .ToListAsync(cancellationToken);
-    }
-
     public async Task<IReadOnlyList<Product>> GetProductsIncludingDeletedAsync(
         IReadOnlyCollection<Guid> productIds,
         CancellationToken cancellationToken = default)

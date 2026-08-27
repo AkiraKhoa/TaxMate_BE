@@ -12,238 +12,119 @@ namespace TaxMate.Service.Tests;
 
 public class RevenueThresholdAlertServiceTests
 {
-    private readonly Mock<IGenericRepository<BusinessProfile>> _businessProfiles = new();
+    private readonly Mock<IOwnerRevenueProjector> _revenue = new();
+    private readonly Mock<IGenericRepository<BusinessProfile>> _businesses = new();
     private readonly Mock<IGenericRepository<RevenueThresholdAlert>> _alerts = new();
-    private readonly Mock<IReportRepository> _reports = new();
     private readonly Mock<IUserRepository> _users = new();
+    private readonly Mock<ITaxPolicyService> _policy = new();
     private readonly Mock<IEmailService> _email = new();
     private readonly Mock<IUnitOfWork> _unitOfWork = new();
-    private readonly Mock<ITaxPolicyService> _taxPolicy = new();
-
+    private readonly List<RevenueThresholdAlert> _storedAlerts = [];
     private readonly Guid _ownerId = Guid.NewGuid();
     private readonly Guid _businessId = Guid.NewGuid();
 
-    private RevenueThresholdAlertService CreateService(decimal threshold = 1_000_000_000m)
+    public RevenueThresholdAlertServiceTests()
     {
-        _taxPolicy
-            .Setup(x => x.GetEffectiveAsync(
-                It.IsAny<DateOnly>(),
-                It.IsAny<CancellationToken>()))
+        _businesses.Setup(x => x.GetByIdAsync(_businessId)).ReturnsAsync(
+            new BusinessProfile { Id = _businessId, OwnerId = _ownerId });
+        _alerts.Setup(x => x.FindAsync(
+                It.IsAny<Expression<Func<RevenueThresholdAlert, bool>>>()))
+            .ReturnsAsync((Expression<Func<RevenueThresholdAlert, bool>> predicate) =>
+                _storedAlerts.Where(predicate.Compile()).ToList());
+        _alerts.Setup(x => x.AddAsync(It.IsAny<RevenueThresholdAlert>()))
+            .Callback<RevenueThresholdAlert>(_storedAlerts.Add)
+            .Returns(Task.CompletedTask);
+        _unitOfWork.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        _policy.Setup(x => x.GetEffectiveAsync(
+                It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EffectiveTaxPolicyResponse
             {
-                AnnualRevenueThreshold = threshold,
-                EInvoiceRevenueThreshold = threshold
+                AnnualRevenueThreshold = 1_000_000_000m,
+                IncomeBasedRequirementThreshold = 3_000_000_000m,
+                SupportedRevenueCeiling = 50_000_000_000m
             });
-
-        return new RevenueThresholdAlertService(
-            _businessProfiles.Object,
-            _alerts.Object,
-            _reports.Object,
-            _users.Object,
-            _email.Object,
-            _unitOfWork.Object,
-            _taxPolicy.Object,
-            NullLogger<RevenueThresholdAlertService>.Instance);
     }
 
     [Fact]
-    public async Task CheckAfterSaleAsync_DoesNotEmail_WhenTotalBelowThreshold()
+    public async Task EvaluateAsync_DoesNotCreateAlert_AtExactThreshold()
     {
-        SetupBusiness();
-        SetupNotYetSent();
-        SetupProfiles(400_000_000m, 500_000_000m);
+        SetupProjection(1_000_000_000m);
 
-        await CreateService().CheckAfterSaleAsync(_businessId);
+        var result = await CreateService().EvaluateAsync(
+            _ownerId, _businessId, 2026);
 
-        _email.Verify(
-            x => x.SendRevenueThresholdEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<decimal>(),
-                It.IsAny<IReadOnlyList<OwnerProfileRevenueRow>>(),
-                It.IsAny<decimal>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-        _alerts.Verify(x => x.AddAsync(It.IsAny<RevenueThresholdAlert>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task CheckAfterSaleAsync_SendsOnce_WhenFourPeriodTotalCrossesThreshold()
-    {
-        SetupBusiness();
-        SetupNotYetSent();
-        SetupOwner();
-        var profiles = SetupProfiles(600_000_000m, 500_000_000m);
-
-        await CreateService().CheckAfterSaleAsync(_businessId);
-
-        _alerts.Verify(x => x.AddAsync(It.Is<RevenueThresholdAlert>(alert =>
-            alert.OwnerId == _ownerId &&
-            alert.TotalRevenue == 1_100_000_000m)), Times.Once);
-        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _email.Verify(
-            x => x.SendRevenueThresholdEmailAsync(
-                "owner@example.com",
-                "Chủ hộ",
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                1_000_000_000m,
-                profiles,
-                1_100_000_000m,
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task CheckAfterSaleAsync_Skips_WhenAlreadySentThisYear()
-    {
-        SetupBusiness();
-        _alerts
-            .Setup(x => x.AnyAsync(It.IsAny<Expression<Func<RevenueThresholdAlert, bool>>>()))
-            .ReturnsAsync(true);
-
-        await CreateService().CheckAfterSaleAsync(_businessId);
-
-        _reports.Verify(
-            x => x.GetOwnerRevenueByProfileAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-        _email.Verify(
-            x => x.SendRevenueThresholdEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<decimal>(),
-                It.IsAny<IReadOnlyList<OwnerProfileRevenueRow>>(),
-                It.IsAny<decimal>(),
-                It.IsAny<CancellationToken>()),
+        Assert.Empty(result);
+        _alerts.Verify(x => x.AddAsync(It.IsAny<RevenueThresholdAlert>()),
             Times.Never);
     }
 
     [Fact]
-    public async Task CheckAfterSaleAsync_RemovesAlertAndDoesNotThrow_WhenSmtpFails()
+    public async Task EvaluateAsync_CreatesIndependentAlerts_ForCrossedThresholds()
     {
-        SetupBusiness();
-        SetupNotYetSent();
-        SetupOwner();
-        SetupProfiles(1_000_000_000m);
-        _email
-            .Setup(x => x.SendRevenueThresholdEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
+        SetupProjection(3_000_000_001m);
+
+        var result = await CreateService().EvaluateAsync(
+            _ownerId, _businessId, 2026);
+
+        Assert.Equal(2, result.Count);
+        Assert.Collection(result,
+            x => Assert.Equal("Crossed1B", x.ThresholdCode),
+            x => Assert.Equal("Crossed3B", x.ThresholdCode));
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_KeepsAlert_WhenEmailFails()
+    {
+        SetupProjection(1_000_000_001m);
+        _users.Setup(x => x.GetByIdAsync(_ownerId)).ReturnsAsync(new User
+        {
+            Id = _ownerId,
+            Email = "owner@example.com",
+            FullName = "Chủ hộ"
+        });
+        _email.Setup(x => x.SendRevenueThresholdEmailAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<decimal>(),
                 It.IsAny<IReadOnlyList<OwnerProfileRevenueRow>>(),
-                It.IsAny<decimal>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("smtp down"));
 
-        var ex = await Record.ExceptionAsync(() =>
-            CreateService().CheckAfterSaleAsync(_businessId));
+        var error = await Record.ExceptionAsync(() => CreateService()
+            .EvaluateAsync(_ownerId, _businessId, 2026));
 
-        Assert.Null(ex);
-        _alerts.Verify(x => x.Remove(It.IsAny<RevenueThresholdAlert>()), Times.Once);
-        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
-
-    [Fact]
-    public async Task CheckAfterSaleAsync_DoesNotThrow_WhenBusinessMissing()
-    {
-        _businessProfiles
-            .Setup(x => x.GetByIdAsync(_businessId))
-            .ReturnsAsync((BusinessProfile?)null);
-
-        var ex = await Record.ExceptionAsync(() =>
-            CreateService().CheckAfterSaleAsync(_businessId));
-
-        Assert.Null(ex);
-        _email.Verify(
-            x => x.SendRevenueThresholdEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<int>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<decimal>(),
-                It.IsAny<IReadOnlyList<OwnerProfileRevenueRow>>(),
-                It.IsAny<decimal>(),
-                It.IsAny<CancellationToken>()),
+        Assert.Null(error);
+        Assert.Single(_storedAlerts);
+        _alerts.Verify(x => x.Remove(It.IsAny<RevenueThresholdAlert>()),
             Times.Never);
     }
 
-    private void SetupBusiness()
+    private RevenueThresholdAlertService CreateService() => new(
+        _revenue.Object,
+        _businesses.Object,
+        _alerts.Object,
+        _users.Object,
+        _policy.Object,
+        _email.Object,
+        _unitOfWork.Object,
+        NullLogger<RevenueThresholdAlertService>.Instance);
+
+    private void SetupProjection(decimal revenue)
     {
-        _businessProfiles
-            .Setup(x => x.GetByIdAsync(_businessId))
-            .ReturnsAsync(new BusinessProfile
+        var start = new DateTime(2025, 12, 31, 17, 0, 0);
+        var end = new DateTime(2026, 12, 31, 17, 0, 0);
+        _revenue.Setup(x => x.ProjectCalendarYearAsync(
+                _ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(
+                _ownerId, start, end, revenue, 0m, [])
             {
-                Id = _businessId,
-                OwnerId = _ownerId,
-                BusinessName = "Shop A",
-                IsActive = true
+                Lines =
+                [
+                    new OwnerRevenueLine(
+                        Guid.NewGuid(), "SALE", Guid.NewGuid(), "Sale",
+                        "BH-1", new DateTime(2026, 8, 1), "Doanh thu", revenue)
+                ]
             });
-    }
-
-    private void SetupNotYetSent()
-    {
-        _alerts
-            .Setup(x => x.AnyAsync(It.IsAny<Expression<Func<RevenueThresholdAlert, bool>>>()))
-            .ReturnsAsync(false);
-        _alerts
-            .Setup(x => x.AddAsync(It.IsAny<RevenueThresholdAlert>()))
-            .Returns(Task.CompletedTask);
-        _unitOfWork
-            .Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(1);
-    }
-
-    private void SetupOwner()
-    {
-        _users
-            .Setup(x => x.GetByIdAsync(_ownerId))
-            .ReturnsAsync(new User
-            {
-                Id = _ownerId,
-                Email = "owner@example.com",
-                FullName = "Chủ hộ"
-            });
-    }
-
-    private List<OwnerProfileRevenueRow> SetupProfiles(params decimal[] amounts)
-    {
-        var rows = amounts
-            .Select((amount, index) => new OwnerProfileRevenueRow
-            {
-                BusinessId = Guid.NewGuid(),
-                BusinessName = $"Shop {index + 1}",
-                Revenue = amount
-            })
-            .ToList();
-
-        _reports
-            .Setup(x => x.GetOwnerRevenueByProfileAsync(
-                _ownerId,
-                It.IsAny<DateTime>(),
-                It.IsAny<DateTime>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(rows);
-
-        return rows;
     }
 }
