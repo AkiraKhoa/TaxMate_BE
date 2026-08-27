@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -9,21 +10,28 @@ public class PaymentAccount : BaseEntity
 
     public Guid BusinessId { get; set; }
 
-    [Required]
     [MaxLength(50)]
-    public string BankShortName { get; set; } = null!;
+    public string? BankShortName { get; set; }
 
-    [Required]
     [MaxLength(200)]
-    public string BankName { get; set; } = null!;
+    public string? BankName { get; set; }
 
-    [Required]
     [MaxLength(50)]
-    public string AccountNumber { get; set; } = null!;
+    public string? AccountNumber { get; set; }
+
+    [MaxLength(200)]
+    public string? AccountName { get; set; }
 
     [Required]
-    [MaxLength(200)]
-    public string AccountName { get; set; } = null!;
+    [MaxLength(20)]
+    public string AccountType { get; set; } = PaymentAccountTypes.Bank;
+
+    [Precision(20, 2)]
+    public decimal? InitialBalance { get; set; }
+
+    public DateOnly? InitialBalanceDate { get; set; }
+
+    public bool IsActive { get; set; } = true;
 
     public bool IsDefault { get; set; }
 
@@ -46,4 +54,7 @@ public class PaymentAccount : BaseEntity
 
     public ICollection<Payment> Payments { get; set; }
         = new List<Payment>();
+
+    public ICollection<MoneyMovement> MoneyMovements { get; set; }
+        = new List<MoneyMovement>();
 }

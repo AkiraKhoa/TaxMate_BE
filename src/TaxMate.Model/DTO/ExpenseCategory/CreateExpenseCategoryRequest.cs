@@ -10,4 +10,7 @@ public class CreateExpenseCategoryRequest
 
     [MaxLength(500)]
     public string? Description { get; set; }
+
+    [MaxLength(30)]
+    public string? S2cGroupCode { get; set; }
 }

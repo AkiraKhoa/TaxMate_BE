@@ -14,8 +14,14 @@ public class CreateIncomeRequest
 
     public DateTime IncomeDate { get; set; }
 
+    [Required]
+    [MaxLength(32)]
+    public string AccountingType { get; set; } = null!;
+
     [MaxLength(50)]
     public string? PaymentMethod { get; set; }
+
+    public Guid? PaymentAccountId { get; set; }
 
     [MaxLength(1000)]
     public string? ReceiptImageUrl { get; set; }

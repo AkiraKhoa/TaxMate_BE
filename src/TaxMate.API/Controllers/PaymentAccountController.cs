@@ -1,7 +1,8 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
-using TaxMate.Model.Entities;
-using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Interfaces;
 
 namespace TaxMate.API.Controllers;
@@ -9,23 +10,15 @@ namespace TaxMate.API.Controllers;
 /// <summary>Quản lý tài khoản ngân hàng nhận thanh toán.</summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = UserRoles.Owner)]
+[Authorize(Policy = AuthPolicies.ActiveAccountOnly)]
 public class PaymentAccountController : ControllerBase
 {
     private readonly IPaymentAccountService _paymentAccountService;
-    private readonly ISePayService _sePayService;
-    private readonly IBusinessProfileService _businessProfileService;
-    private readonly ILogger<PaymentAccountController> _logger;
 
-    public PaymentAccountController(
-        IPaymentAccountService paymentAccountService, 
-        ISePayService sePayService,
-        IBusinessProfileService businessProfileService,
-        ILogger<PaymentAccountController> logger)
+    public PaymentAccountController(IPaymentAccountService paymentAccountService)
     {
         _paymentAccountService = paymentAccountService;
-        _sePayService = sePayService;
-        _businessProfileService = businessProfileService;
-        _logger = logger;
     }
 
     /// <summary>Tạo tài khoản thanh toán mới.</summary>
@@ -34,7 +27,10 @@ public class PaymentAccountController : ControllerBase
     [HttpPost("business/{businessId:guid}")]
     public async Task<IActionResult> Create(Guid businessId, [FromBody] CreatePaymentAccountRequest request)
     {
-        var id = await _paymentAccountService.CreateAsync(businessId, request);
+        var id = await _paymentAccountService.CreateAsync(
+            GetUserId(),
+            businessId,
+            request);
         return Created(
             $"api/PaymentAccount/{id}",
             ApiResponse<Guid>.Ok(
@@ -46,9 +42,14 @@ public class PaymentAccountController : ControllerBase
     /// <summary>Danh sách tài khoản theo cửa hàng.</summary>
     /// <param name="businessId">ID cửa hàng.</param>
     [HttpGet("business/{businessId:guid}")]
-    public async Task<IActionResult> GetByBusiness(Guid businessId)
+    public async Task<IActionResult> GetByBusiness(
+        Guid businessId,
+        [FromQuery] bool includeInactive = false)
     {
-        var result = await _paymentAccountService.GetByBusinessIdAsync(businessId);
+        var result = await _paymentAccountService.GetByBusinessIdAsync(
+            GetUserId(),
+            businessId,
+            includeInactive);
         return Ok(
             ApiResponse<IEnumerable<PaymentAccountResponse>>.Ok(
                 result,
@@ -61,7 +62,7 @@ public class PaymentAccountController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var result = await _paymentAccountService.GetByIdAsync(id);
+        var result = await _paymentAccountService.GetByIdAsync(GetUserId(), id);
         return Ok(
             ApiResponse<PaymentAccountResponse>.Ok(
                 result,
@@ -75,7 +76,7 @@ public class PaymentAccountController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePaymentAccountRequest request)
     {
-        await _paymentAccountService.UpdateAsync(id, request);
+        await _paymentAccountService.UpdateAsync(GetUserId(), id, request);
         return Ok(
             ApiResponse<string>.Ok(
                 "Success",
@@ -83,17 +84,76 @@ public class PaymentAccountController : ControllerBase
                 HttpContext.TraceIdentifier));
     }
 
-    /// <summary>Xóa tài khoản thanh toán.</summary>
+    /// <summary>Ngừng sử dụng tài khoản ngân hàng, không xóa lịch sử.</summary>
     /// <param name="id">ID tài khoản thanh toán.</param>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        await _paymentAccountService.DeleteAsync(id);
+        await _paymentAccountService.DeactivateAsync(GetUserId(), id);
         return Ok(
             ApiResponse<string>.Ok(
                 "Success",
-                "Payment account deleted successfully",
+                "Payment account deactivated successfully",
                 HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>
+    /// Danh sách tài khoản tiền Cash và Bank cho luồng S2e.
+    /// Endpoint bank-only phía trên được giữ tương thích cho màn Transfer hiện tại.
+    /// </summary>
+    [HttpGet("business/{businessId:guid}/money-accounts")]
+    public async Task<IActionResult> GetAllMoneyAccounts(
+        Guid businessId,
+        [FromQuery] bool includeInactive = false)
+    {
+        var result = await _paymentAccountService.GetAllMoneyAccountsByBusinessIdAsync(
+            GetUserId(),
+            businessId,
+            includeInactive);
+        return Ok(ApiResponse<IEnumerable<PaymentAccountResponse>>.Ok(
+            result,
+            "Get money accounts successfully",
+            HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Lấy tài khoản Cash hệ thống của cửa hàng cho luồng S2e.</summary>
+    [HttpGet("business/{businessId:guid}/cash")]
+    public async Task<IActionResult> GetCash(Guid businessId)
+    {
+        var result = await _paymentAccountService.GetCashByBusinessIdAsync(
+            GetUserId(),
+            businessId);
+        return Ok(ApiResponse<PaymentAccountResponse>.Ok(
+            result,
+            "Get cash account successfully",
+            HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Kích hoạt lại tài khoản ngân hàng.</summary>
+    [HttpPatch("{id:guid}/activate")]
+    public async Task<IActionResult> Activate(Guid id)
+    {
+        await _paymentAccountService.ActivateAsync(GetUserId(), id);
+        return Ok(ApiResponse<string>.Ok(
+            "Success",
+            "Payment account activated successfully",
+            HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Xác nhận hoặc xóa số dư đầu kỳ S2e.</summary>
+    [HttpPut("{id:guid}/initial-balance")]
+    public async Task<IActionResult> UpdateInitialBalance(
+        Guid id,
+        [FromBody] UpdatePaymentAccountInitialBalanceRequest request)
+    {
+        await _paymentAccountService.UpdateInitialBalanceAsync(
+            GetUserId(),
+            id,
+            request);
+        return Ok(ApiResponse<string>.Ok(
+            "Success",
+            "Initial balance updated successfully",
+            HttpContext.TraceIdentifier));
     }
 
     /// <summary>Đặt tài khoản làm mặc định.</summary>
@@ -102,7 +162,7 @@ public class PaymentAccountController : ControllerBase
     [HttpPatch("{id:guid}/set-default")]
     public async Task<IActionResult> SetDefault(Guid id, [FromQuery] Guid businessId)
     {
-        await _paymentAccountService.SetDefaultAsync(businessId, id);
+        await _paymentAccountService.SetDefaultAsync(GetUserId(), businessId, id);
         return Ok(
             ApiResponse<string>.Ok(
                 "Success",
@@ -118,10 +178,10 @@ public class PaymentAccountController : ControllerBase
         [FromQuery] Guid businessId,
         [FromQuery] bool isMobileApp = true)
     {
-        var scheme = Request.Scheme;
-        var host = Request.Host.ToString();
-
-        var url = await _sePayService.GetSePayConnectUrlAsync(businessId, scheme, host, isMobileApp);
+        var url = await _paymentAccountService.GetSePayConnectUrlAsync(
+            GetUserId(),
+            businessId,
+            isMobileApp);
 
         return Ok(ApiResponse<string>.Ok(url, "Get SePay connect URL successfully", HttpContext.TraceIdentifier));
     }
@@ -131,10 +191,9 @@ public class PaymentAccountController : ControllerBase
     [HttpGet("sepay-disconnect-url")]
     public async Task<IActionResult> GetSePayDisconnectUrl([FromQuery] Guid paymentAccountId)
     {
-        var scheme = Request.Scheme;
-        var host = Request.Host.ToString();
-
-        var url = await _paymentAccountService.GetSePayDisconnectUrlAsync(paymentAccountId, scheme, host);
+        var url = await _paymentAccountService.GetSePayDisconnectUrlAsync(
+            GetUserId(),
+            paymentAccountId);
 
         return Ok(ApiResponse<string>.Ok(url, "Get SePay disconnect URL successfully", HttpContext.TraceIdentifier));
     }
@@ -147,7 +206,9 @@ public class PaymentAccountController : ControllerBase
     [HttpPost("sepay-sync")]
     public async Task<IActionResult> SyncSePayAccounts([FromQuery] Guid businessId)
     {
-        var (synced, total) = await _paymentAccountService.SyncSePayAccountsAsync(businessId);
+        var (synced, total) = await _paymentAccountService.SyncSePayAccountsAsync(
+            GetUserId(),
+            businessId);
 
         return Ok(ApiResponse<object>.Ok(
             new { synced, total },
@@ -163,7 +224,8 @@ public class PaymentAccountController : ControllerBase
     [HttpPost("sepay-recover-all")]
     public async Task<IActionResult> RecoverAllSePayAccounts()
     {
-        var (recovered, total) = await _paymentAccountService.RecoverAllFromSePayAsync();
+        var (recovered, total) = await _paymentAccountService.RecoverAllFromSePayAsync(
+            GetUserId());
 
         return Ok(ApiResponse<object>.Ok(
             new { recovered, total },
@@ -173,6 +235,7 @@ public class PaymentAccountController : ControllerBase
 
     /// <summary>Callback xử lý sau khi liên kết ngân hàng thành công từ SePay.</summary>
     [HttpGet("sepay-callback")]
+    [AllowAnonymous]
     public IActionResult SePayCallback()
     {
         var html = @"
@@ -243,7 +306,23 @@ public class PaymentAccountController : ControllerBase
     [HttpPost("sepay-mock-payment")]
     public async Task<IActionResult> CreateSePayMockPayment([FromQuery] Guid transactionId, [FromQuery] Guid paymentAccountId)
     {
-        await _paymentAccountService.CreateMockPaymentAsync(transactionId, paymentAccountId);
+        await _paymentAccountService.CreateMockPaymentAsync(
+            GetUserId(),
+            transactionId,
+            paymentAccountId);
         return Ok(ApiResponse<string>.Ok("Mock payment generated successfully. The Webhook IPN will process and confirm this order shortly.", "Mock payment triggered.", HttpContext.TraceIdentifier));
+    }
+
+    private Guid GetUserId()
+    {
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+
+        if (sub is null || !Guid.TryParse(sub, out var userId))
+        {
+            throw new UnauthorizedAccessException("Token invalid.");
+        }
+
+        return userId;
     }
 }

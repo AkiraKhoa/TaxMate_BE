@@ -13,25 +13,36 @@ public class BusinessProfileService : IBusinessProfileService
     private readonly IBusinessProfileRepository _businessProfiles;
     private readonly IGenericRepository<User> _users;
     private readonly IGenericRepository<BusinessCategory> _businessCategories;
+    private readonly IInventoryAdjustmentService _inventoryAdjustments;
+    private readonly IPaymentAccountService _paymentAccounts;
 
     public BusinessProfileService(
         IUnitOfWork unitOfWork,
         IBusinessProfileRepository businessProfiles,
         IGenericRepository<User> users,
-        IGenericRepository<BusinessCategory> businessCategories)
+        IGenericRepository<BusinessCategory> businessCategories,
+        IInventoryAdjustmentService inventoryAdjustments,
+        IPaymentAccountService paymentAccounts)
     {
         _unitOfWork = unitOfWork;
         _businessProfiles = businessProfiles;
         _users = users;
         _businessCategories = businessCategories;
+        _inventoryAdjustments = inventoryAdjustments;
+        _paymentAccounts = paymentAccounts;
     }
 
-    public async Task<BusinessProfileResponse> CreateAsync(CreateBusinessProfileRequest request)
+    public async Task<BusinessProfileResponse> CreateAsync(
+        Guid authenticatedOwnerId,
+        CreateBusinessProfileRequest request)
     {
+        if (request.OwnerId != Guid.Empty && request.OwnerId != authenticatedOwnerId)
+            throw new ForbiddenException();
+
         // Validate owner exists
-        var owner = await _users.GetByIdAsync(request.OwnerId);
+        var owner = await _users.GetByIdAsync(authenticatedOwnerId);
         if (owner is null)
-            throw new NotFoundException($"Owner with id '{request.OwnerId}' not found.");
+            throw new NotFoundException($"Owner with id '{authenticatedOwnerId}' not found.");
 
         // Validate MainCategoryId if provided
         if (request.MainCategoryId.HasValue)
@@ -44,7 +55,7 @@ public class BusinessProfileService : IBusinessProfileService
         var entity = new BusinessProfile
         {
             Id = Guid.NewGuid(),
-            OwnerId = request.OwnerId,
+            OwnerId = authenticatedOwnerId,
             BusinessName = request.BusinessName,
             ProvinceCode = request.ProvinceCode,
             WardCode = request.WardCode,
@@ -55,19 +66,35 @@ public class BusinessProfileService : IBusinessProfileService
             IsActive = true
         };
 
-        await _businessProfiles.AddAsync(entity);
-        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            await _businessProfiles.AddAsync(entity);
+            await _unitOfWork.SaveChangesAsync();
+            await _paymentAccounts.EnsureCashAccountAsync(entity.Id);
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
 
         // Reload with category
         var created = await _businessProfiles.GetByIdWithCategoryAsync(entity.Id);
         return MapToResponse(created!);
     }
 
-    public async Task<BusinessProfileResponse> UpdateAsync(Guid id, UpdateBusinessProfileRequest request)
+    public async Task<BusinessProfileResponse> UpdateAsync(
+        Guid authenticatedOwnerId,
+        Guid id,
+        UpdateBusinessProfileRequest request)
     {
         var entity = await _businessProfiles.GetByIdWithCategoryAsync(id);
         if (entity is null)
             throw new NotFoundException($"Business profile with id '{id}' not found.");
+
+        EnsureOwner(entity, authenticatedOwnerId);
 
         if (!entity.IsActive)
             throw new ConflictException($"Business profile with id '{id}' has been deactivated.");
@@ -86,9 +113,11 @@ public class BusinessProfileService : IBusinessProfileService
         entity.Address = request.Address;
         entity.MainCategoryId = request.MainCategoryId;
         entity.PreferElectronicInvoice = request.PreferElectronicInvoice;
-        if (request.IsStockTrackingEnabled.HasValue)
+        if (request.IsStockTrackingEnabled.HasValue &&
+            request.IsStockTrackingEnabled.Value != entity.IsStockTrackingEnabled)
         {
-            entity.IsStockTrackingEnabled = request.IsStockTrackingEnabled.Value;
+            throw new BadRequestException(
+                "Hãy dùng luồng bật/tắt quản lý tồn kho; bật lại cần hoàn tất kiểm kho nhanh.");
         }
 
         _businessProfiles.Update(entity);
@@ -99,16 +128,43 @@ public class BusinessProfileService : IBusinessProfileService
         return MapToResponse(updated!);
     }
 
-    public async Task<BusinessProfileResponse> ToggleStockTrackingAsync(Guid id, bool isEnabled)
+    public async Task<BusinessProfileResponse> ToggleStockTrackingAsync(
+        Guid authenticatedOwnerId,
+        Guid id,
+        ToggleStockTrackingRequest request)
     {
         var entity = await _businessProfiles.GetByIdWithCategoryAsync(id);
         if (entity is null)
             throw new NotFoundException($"Business profile with id '{id}' not found.");
 
+        EnsureOwner(entity, authenticatedOwnerId);
+
         if (!entity.IsActive)
             throw new ConflictException($"Business profile with id '{id}' has been deactivated.");
 
-        entity.IsStockTrackingEnabled = isEnabled;
+        if (request.IsStockTrackingEnabled == entity.IsStockTrackingEnabled)
+            return MapToResponse(entity);
+
+        if (request.IsStockTrackingEnabled)
+        {
+            if (request.Reconciliation is null)
+            {
+                throw new BadRequestException(
+                    "Bật lại quản lý tồn kho cần hoàn tất kiểm kho nhanh.");
+            }
+
+            await _inventoryAdjustments.ReconcileAsync(
+                authenticatedOwnerId,
+                id,
+                request.Reconciliation,
+                enableStockTracking: true);
+            var reconciled = await _businessProfiles.GetByIdWithCategoryAsync(id);
+            return MapToResponse(reconciled!);
+        }
+
+        // OFF only hides inventory quantities/warnings in the UX. It never
+        // deletes movements, resets caches, or disables source-ledger writes.
+        entity.IsStockTrackingEnabled = false;
         _businessProfiles.Update(entity);
         await _unitOfWork.SaveChangesAsync();
 
@@ -116,11 +172,13 @@ public class BusinessProfileService : IBusinessProfileService
         return MapToResponse(updated!);
     }
 
-    public async Task DeactivateAsync(Guid id)
+    public async Task DeactivateAsync(Guid authenticatedOwnerId, Guid id)
     {
         var entity = await _businessProfiles.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Business profile with id '{id}' not found.");
+
+        EnsureOwner(entity, authenticatedOwnerId);
 
         if (!entity.IsActive)
             throw new ConflictException($"Business profile with id '{id}' is already deactivated.");
@@ -145,13 +203,23 @@ public class BusinessProfileService : IBusinessProfileService
         };
     }
 
-    public async Task<BusinessProfileResponse> GetByIdAsync(Guid id)
+    public async Task<BusinessProfileResponse> GetByIdAsync(
+        Guid authenticatedOwnerId,
+        Guid id)
     {
         var entity = await _businessProfiles.GetByIdWithCategoryAsync(id);
         if (entity is null)
             throw new NotFoundException($"Business profile with id '{id}' not found.");
 
+        EnsureOwner(entity, authenticatedOwnerId);
+
         return MapToResponse(entity);
+    }
+
+    private static void EnsureOwner(BusinessProfile entity, Guid ownerId)
+    {
+        if (entity.OwnerId != ownerId)
+            throw new ForbiddenException();
     }
 
     private static BusinessProfileResponse MapToResponse(BusinessProfile entity)

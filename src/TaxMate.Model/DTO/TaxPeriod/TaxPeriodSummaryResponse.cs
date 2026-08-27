@@ -14,6 +14,8 @@ public class TaxPeriodSummaryResponse
 
     public int? Quarter { get; set; }
 
+    public string? FilingWindow { get; set; }
+
     public DateTime PeriodStartDate { get; set; }
 
     public DateTime PeriodEndDate { get; set; }

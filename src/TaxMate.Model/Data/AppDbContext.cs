@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<Ingredient> Ingredients => Set<Ingredient>();
     public DbSet<ProductIngredient> ProductIngredients => Set<ProductIngredient>();
     public DbSet<IngredientPurchase> IngredientPurchases => Set<IngredientPurchase>();
+    public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
 
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<PlanFeature> PlanFeatures => Set<PlanFeature>();
@@ -59,6 +60,7 @@ public class AppDbContext : DbContext
     public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
 
     public DbSet<PaymentAccount> PaymentAccounts => Set<PaymentAccount>();
+    public DbSet<MoneyMovement> MoneyMovements => Set<MoneyMovement>();
     public DbSet<TransactionItem> TransactionItems => Set<TransactionItem>();
     public DbSet<EInvoiceConfig> EInvoiceConfigs => Set<EInvoiceConfig>();
     
@@ -153,7 +155,7 @@ public class AppDbContext : DbContext
             .Property(e => e.CostPrice).HasPrecision(18, 6);
 
         modelBuilder.Entity<Product>()
-            .Property(e => e.StockQuantity).HasPrecision(18, 4);
+            .Property(e => e.StockQuantity).HasPrecision(18, 6);
 
         // ProductCategory relationship
         modelBuilder.Entity<ProductCategory>()
@@ -253,7 +255,7 @@ public class AppDbContext : DbContext
             .HasOne(x => x.Business)
             .WithMany(x => x.PaymentAccounts)
             .HasForeignKey(x => x.BusinessId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PaymentAccount>()
             .HasIndex(x => x.BusinessId);
@@ -272,7 +274,7 @@ public class AppDbContext : DbContext
             .HasOne(x => x.PaymentAccount)
             .WithMany(x => x.Payments)
             .HasForeignKey(x => x.PaymentAccountId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Payment>()
             .HasIndex(x => x.TransactionId);
@@ -333,21 +335,8 @@ public class AppDbContext : DbContext
                 x.IssueDate
             });
         
-        // Tax Period
-        modelBuilder.Entity<TaxPeriod>()
-            .HasOne(x => x.Business)
-            .WithMany(x => x.TaxPeriods)
-            .HasForeignKey(x => x.BusinessId);
-
-        modelBuilder.Entity<TaxPeriod>()
-            .HasIndex(x => new
-            {
-                x.BusinessId,
-                x.Year,
-                x.Month,
-                x.Quarter
-            });
-
+        // Tax Period (relationship and shape-specific identity are configured
+        // in TaxPeriodConfiguration to avoid duplicate/shadow foreign keys).
         modelBuilder.Entity<TaxPeriod>()
             .HasIndex(x => x.Status);
         
@@ -414,7 +403,7 @@ public class AppDbContext : DbContext
             .Property(e => e.EstimatedPrice).HasPrecision(18, 6);
 
         modelBuilder.Entity<Ingredient>()
-            .Property(e => e.StockQuantity).HasPrecision(18, 4);
+            .Property(e => e.StockQuantity).HasPrecision(18, 6);
 
         // Income
         modelBuilder.Entity<Income>()
@@ -571,10 +560,6 @@ public class AppDbContext : DbContext
             .HasForeignKey(x => x.OwnerId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<RevenueThresholdAlert>()
-            .HasIndex(x => new { x.OwnerId, x.Year })
-            .IsUnique();
-
         modelBuilder.Entity<TaxThresholdSetting>()
             .HasIndex(x => new { x.Type, x.EffectiveFrom })
             .IsUnique();
@@ -681,6 +666,24 @@ public class AppDbContext : DbContext
                 Id = Guid.Parse("20260000-0000-4000-a000-000000000012"),
                 Type = TaxThresholdTypes.EInvoiceRequirement,
                 Amount = 1_000_000_000m,
+                EffectiveFrom = new DateOnly(2026, 1, 1),
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new TaxThresholdSetting
+            {
+                Id = Guid.Parse("20260000-0000-4000-a000-000000000013"),
+                Type = TaxThresholdTypes.IncomeBasedRequirement,
+                Amount = 3_000_000_000m,
+                EffectiveFrom = new DateOnly(2026, 1, 1),
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate
+            },
+            new TaxThresholdSetting
+            {
+                Id = Guid.Parse("20260000-0000-4000-a000-000000000014"),
+                Type = TaxThresholdTypes.SupportedRevenueCeiling,
+                Amount = 50_000_000_000m,
                 EffectiveFrom = new DateOnly(2026, 1, 1),
                 CreatedAt = seedDate,
                 UpdatedAt = seedDate

@@ -1,4 +1,5 @@
 ﻿using TaxMate.Model.Common;
+using System.Text.Json;
 using TaxMate.Model.Data;
 using TaxMate.Model.Documents.Tax;
 using TaxMate.Model.DTO.TaxDeclaration;
@@ -16,14 +17,17 @@ public class TaxDeclarationService : ITaxDeclarationService
     private readonly ITaxPeriodRepository _taxPeriodRepository;
     private readonly ITaxDeclarationRepository _taxDeclarationRepository;
     private readonly ITaxDeclarationDocumentGenerator _documentGenerator;
+    private readonly ITknDeclarationDocumentGenerator _tknDocumentGenerator;
     
     public TaxDeclarationService(ITaxPeriodRepository taxPeriodRepository,
         ITaxDeclarationRepository taxDeclarationRepository,
-        ITaxDeclarationDocumentGenerator documentGenerator)
+        ITaxDeclarationDocumentGenerator documentGenerator,
+        ITknDeclarationDocumentGenerator tknDocumentGenerator)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxDeclarationRepository = taxDeclarationRepository;
         _documentGenerator = documentGenerator;
+        _tknDocumentGenerator = tknDocumentGenerator;
     }
     
     public async Task<TaxDeclarationResponse> CreateAsync(
@@ -110,6 +114,16 @@ public class TaxDeclarationService : ITaxDeclarationService
         throw new BadRequestException(
             $"Unsupported tax declaration form: {formCode}.");
     }
+
+    if (formCode == TaxFormCodes.Form01TknCnkd &&
+        taxPeriod.PeriodType != TaxPeriodTypes.Tkn)
+        throw new BadRequestException(
+            "01/TKN-CNKD can only be created from a dedicated TKN period.");
+
+    if (formCode == TaxFormCodes.Form01Cnkd &&
+        taxPeriod.PeriodType == TaxPeriodTypes.Tkn)
+        throw new BadRequestException(
+            "A TKN period cannot create form 01/CNKD.");
 
     if (formCode == "01/CNKD")
     {
@@ -267,6 +281,15 @@ public class TaxDeclarationService : ITaxDeclarationService
             declaration,
             taxPeriod,
             business);
+    }
+
+    if (formCode == TaxFormCodes.Form01TknCnkd)
+    {
+        var snapshot = Form01TknCnkd2026SnapshotFactory.Create(
+            declaration, calculation, taxPeriod);
+        declaration.FormDataJson = JsonSerializer.Serialize(
+            snapshot,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
     }
 
     await _taxDeclarationRepository.AddAsync(
@@ -553,6 +576,15 @@ public class TaxDeclarationService : ITaxDeclarationService
                 TaxPeriodTypes.Yearly =>
                     "Y",
 
+                TaxPeriodTypes.Tkn =>
+                    period.FilingWindow switch
+                    {
+                        TknFilingWindows.FirstHalf => "TKN-H1",
+                        TknFilingWindows.SecondHalf => "TKN-H2",
+                        TknFilingWindows.Annual => "TKN-Y",
+                        _ => "TKN-UNKNOWN"
+                    },
+
                 _ =>
                     "UNKNOWN"
             };
@@ -718,16 +750,41 @@ public class TaxDeclarationService : ITaxDeclarationService
                 "You do not have permission to access this tax declaration.");
         }
 
+        if (declaration.FormCode == TaxFormCodes.Form01TknCnkd)
+        {
+            if (string.IsNullOrWhiteSpace(declaration.FormDataJson))
+                throw new BadRequestException(
+                    "The TKN declaration has no immutable form snapshot and cannot be exported.");
+
+            Form01TknCnkd2026Snapshot snapshot;
+            try
+            {
+                snapshot = JsonSerializer.Deserialize<Form01TknCnkd2026Snapshot>(
+                    declaration.FormDataJson,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    ?? throw new JsonException("TKN snapshot is empty.");
+            }
+            catch (JsonException exception)
+            {
+                throw new BadRequestException(
+                    $"The TKN declaration snapshot is invalid: {exception.Message}");
+            }
+
+            return await _tknDocumentGenerator.GenerateAsync(
+                snapshot,
+                cancellationToken);
+        }
+
+        if (declaration.FormCode != TaxFormCodes.Form01Cnkd)
+        {
+            throw new BadRequestException(
+                $"Export for form {declaration.FormCode} is not supported yet.");
+        }
+
         if (declaration.Lines.Count == 0)
         {
             throw new BadRequestException(
                 "Tax declaration does not contain calculation lines.");
-        }
-
-        if (declaration.FormCode != "01/CNKD")
-        {
-            throw new BadRequestException(
-                $"Export for form {declaration.FormCode} is not supported yet.");
         }
 
         var ownerBusinesses =

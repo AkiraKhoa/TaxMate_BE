@@ -52,4 +52,7 @@ public class Product : BaseEntity
 
     public ICollection<ProductIngredient> ProductIngredients { get; set; }
         = new List<ProductIngredient>();
+
+    public ICollection<InventoryMovement> InventoryMovements { get; set; }
+        = new List<InventoryMovement>();
 }

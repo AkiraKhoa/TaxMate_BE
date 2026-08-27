@@ -47,6 +47,7 @@ public class BatchPurchaseItem
 public class IngredientPurchaseResponse
 {
     public Guid Id { get; set; }
+    public Guid? ExpenseId { get; set; }
     public Guid BusinessId { get; set; }
     public string BusinessName { get; set; } = null!;
     public Guid IngredientId { get; set; }

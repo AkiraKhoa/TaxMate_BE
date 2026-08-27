@@ -13,6 +13,10 @@ public class Expense : BaseEntity
     public Guid ExpenseCategoryId { get; set; }
 
     [Required]
+    [MaxLength(100)]
+    public string VoucherNumber { get; set; } = null!;
+
+    [Required]
     [MaxLength(200)]
     public string ExpenseTitle { get; set; } = null!;
 
@@ -43,4 +47,7 @@ public class Expense : BaseEntity
     public BusinessProfile Business { get; set; } = null!;
 
     public ExpenseCategory ExpenseCategory { get; set; } = null!;
+
+    public ICollection<IngredientPurchase> IngredientPurchases { get; set; }
+        = new List<IngredientPurchase>();
 }

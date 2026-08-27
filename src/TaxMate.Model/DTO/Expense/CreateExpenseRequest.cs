@@ -20,6 +20,8 @@ public class CreateExpenseRequest
     [MaxLength(50)]
     public string? PaymentMethod { get; set; }
 
+    public Guid? PaymentAccountId { get; set; }
+
     [MaxLength(1000)]
     public string? ReceiptImageUrl { get; set; }
 

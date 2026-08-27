@@ -37,4 +37,10 @@ public class CreatePaymentAccountRequest
     /// <example>Tài khoản nhận tiền chính</example>
     [MaxLength(500)]
     public string? Description { get; set; }
+
+    /// <summary>Số dư tại ngày bắt đầu theo dõi S2e. Phải đi cùng InitialBalanceDate.</summary>
+    public decimal? InitialBalance { get; set; }
+
+    /// <summary>Ngày số dư đầu kỳ có hiệu lực. Phải đi cùng InitialBalance.</summary>
+    public DateOnly? InitialBalanceDate { get; set; }
 }

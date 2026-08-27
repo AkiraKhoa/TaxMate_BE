@@ -53,7 +53,13 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddScoped<ISmsService, TwilioSmsService>();
         services.AddScoped<ITaxDeclarationDocumentGenerator, OpenXmlTaxDeclarationDocumentGenerator>();
+        services.AddScoped<ITknDeclarationDocumentGenerator, OpenXmlTknDeclarationDocumentGenerator>();
         services.AddScoped<IS1aDocumentGenerator, OpenXmlS1aDocumentGenerator>();
+        services.AddScoped<IS2bDocumentGenerator, OpenXmlS2bDocumentGenerator>();
+        services.AddScoped<IS2cDocumentGenerator, OpenXmlS2cDocumentGenerator>();
+        services.AddScoped<IS2dDocumentGenerator, OpenXmlS2dDocumentGenerator>();
+        services.AddScoped<IS2eDocumentGenerator, OpenXmlS2eDocumentGenerator>();
+        services.AddScoped<IQttDocumentGenerator, OpenXmlQttDocumentGenerator>();
 
         services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 

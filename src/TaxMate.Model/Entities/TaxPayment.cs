@@ -13,6 +13,10 @@ public class TaxPayment : BaseEntity
     public Guid? TaxDeclarationId { get; set; }
 
     [Required]
+    [MaxLength(30)]
+    public string TaxType { get; set; } = TaxTypes.Unknown;
+
+    [Required]
     [MaxLength(50)]
     public string PaymentCode { get; set; } = null!;
 
