@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
@@ -273,6 +273,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 x.PeriodType == TaxPeriodTypes.Quarterly &&
                 x.Year == year &&
                 x.Quarter.HasValue)
+            .OrderBy(x => x.Quarter)
+            .ThenBy(x => x.Id)
             .Select(x => new OwnerQuarterlyFilingState(
                 x.Id,
                 x.Quarter!.Value,
@@ -289,8 +291,6 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                     declaration.IsCurrent &&
                     declaration.Status == TaxDeclarationStatuses.Submitted &&
                     declaration.FormCode == TaxFormCodes.Form01Cnkd)))
-            .OrderBy(x => x.Quarter)
-            .ThenBy(x => x.TaxPeriodId)
             .ToListAsync(cancellationToken);
     }
 

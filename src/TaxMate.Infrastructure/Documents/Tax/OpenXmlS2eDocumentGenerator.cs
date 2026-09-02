@@ -189,10 +189,26 @@ public sealed class OpenXmlS2eDocumentGenerator : IS2eDocumentGenerator
         if (cells.Count != values.Length)
             throw new InvalidOperationException("S2e data row does not have 5 cells.");
         for (var index = 0; index < cells.Count; index++)
-            SetCellLines(cells[index], values[index]);
+        {
+            // Col 0, 1: Doc num, date -> Center
+            // Col 2: Description -> Left
+            // Col 3, 4: Amount In, Amount Out -> Right
+            JustificationValues alignment = index switch
+            {
+                0 or 1 => JustificationValues.Center,
+                2 => JustificationValues.Left,
+                _ => JustificationValues.Right
+            };
+            SetCellLines(cells[index], values[index], alignment, "20");
+        }
     }
 
     private static void SetCellLines(TableCell cell, params string[] lines)
+    {
+        SetCellLines(cell, (JustificationValues?)null, "20", lines);
+    }
+
+    private static void SetCellLines(TableCell cell, JustificationValues? alignment, string fontSize, params string[] lines)
     {
         var paragraphs = cell.Elements<Paragraph>().ToList();
         var prototype = paragraphs.FirstOrDefault()?.CloneNode(true) as Paragraph
@@ -202,19 +218,50 @@ public sealed class OpenXmlS2eDocumentGenerator : IS2eDocumentGenerator
         foreach (var line in lines)
         {
             var paragraph = (Paragraph)prototype.CloneNode(true);
-            SetParagraphLines(paragraph, line);
+            SetParagraphLines(paragraph, alignment, fontSize, line);
             cell.Append(paragraph);
         }
     }
 
+    private static void SetCellLines(TableCell cell, string line, JustificationValues? alignment = null, string fontSize = "20")
+    {
+        SetCellLines(cell, alignment, fontSize, new[] { line });
+    }
+
     private static void SetParagraphLines(Paragraph paragraph, params string[] lines)
     {
-        var runProperties = paragraph.Descendants<RunProperties>().FirstOrDefault()?.CloneNode(true);
+        SetParagraphLines(paragraph, null, "20", lines);
+    }
+
+    private static void SetParagraphLines(Paragraph paragraph, JustificationValues? alignment, string fontSize, params string[] lines)
+    {
+        if (alignment.HasValue)
+        {
+            var pPr = paragraph.GetFirstChild<ParagraphProperties>() ?? paragraph.PrependChild(new ParagraphProperties());
+            var jc = pPr.GetFirstChild<Justification>();
+            if (jc is null)
+                pPr.AppendChild(new Justification { Val = alignment.Value });
+            else
+                jc.Val = alignment.Value;
+        }
+
+        var runProperties = paragraph.Descendants<RunProperties>().FirstOrDefault()?.CloneNode(true) ?? new RunProperties();
+        var sz = runProperties.GetFirstChild<FontSize>();
+        if (sz is null)
+            runProperties.AppendChild(new FontSize { Val = fontSize });
+        else
+            sz.Val = fontSize;
+
+        var szCs = runProperties.GetFirstChild<FontSizeComplexScript>();
+        if (szCs is null)
+            runProperties.AppendChild(new FontSizeComplexScript { Val = fontSize });
+        else
+            szCs.Val = fontSize;
+
         foreach (var run in paragraph.Elements<Run>().ToList())
             run.Remove();
         var replacement = new Run();
-        if (runProperties is not null)
-            replacement.Append(runProperties);
+        replacement.Append(runProperties);
         for (var index = 0; index < lines.Length; index++)
         {
             if (index > 0)
