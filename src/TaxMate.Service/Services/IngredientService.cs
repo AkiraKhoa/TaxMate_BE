@@ -77,18 +77,25 @@ public class IngredientService : IIngredientService
         var hasMovement = await _inventoryControls.HasMovementsForIngredientAsync(id);
         if (hasMovement)
         {
-            EnsureHistoryProtectedFieldUnchanged(
+            if (!string.IsNullOrWhiteSpace(entity.Unit))
+                EnsureHistoryProtectedFieldUnchanged(
                 NormalizeUnit(entity.Unit),
                 NormalizeUnit(request.Unit),
                 "đơn vị tính");
-            EnsureHistoryProtectedFieldUnchanged(
-                entity.EstimatedPrice,
-                request.EstimatedPrice,
-                "giá ước tính");
-            EnsureHistoryProtectedFieldUnchanged(
-                entity.StockQuantity,
-                request.StockQuantity,
-                "số lượng tồn");
+            if (request.EstimatedPrice.HasValue)
+            {
+                EnsureHistoryProtectedFieldUnchanged(
+                    entity.EstimatedPrice,
+                    request.EstimatedPrice,
+                    "giá ước tính");
+            }
+            if (request.StockQuantity.HasValue)
+            {
+                EnsureHistoryProtectedFieldUnchanged(
+                    entity.StockQuantity,
+                    request.StockQuantity.Value,
+                    "số lượng tồn");
+            }
         }
         else
         {
@@ -106,11 +113,15 @@ public class IngredientService : IIngredientService
             throw new ConflictException($"Ingredient with name '{request.Name}' already exists.");
 
         entity.Name = request.Name.Trim();
+        if (hasMovement && string.IsNullOrWhiteSpace(entity.Unit))
+            entity.Unit = NormalizeUnit(request.Unit);
         if (!hasMovement)
         {
             entity.Unit = request.Unit;
-            entity.EstimatedPrice = request.EstimatedPrice;
-            entity.StockQuantity = request.StockQuantity;
+            if (request.EstimatedPrice.HasValue)
+                entity.EstimatedPrice = request.EstimatedPrice;
+            if (request.StockQuantity.HasValue)
+                entity.StockQuantity = request.StockQuantity.Value;
         }
 
         _ingredients.Update(entity);

@@ -13,7 +13,7 @@ public class UpdateIngredientRequest
     public string Name { get; set; } = null!;
     public string? Unit { get; set; }
     public decimal? EstimatedPrice { get; set; }
-    public decimal StockQuantity { get; set; } = 0;
+    public decimal? StockQuantity { get; set; }
 }
 
 public class IngredientResponse

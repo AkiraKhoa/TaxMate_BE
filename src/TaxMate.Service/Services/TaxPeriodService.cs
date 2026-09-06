@@ -413,14 +413,24 @@ public class TaxPeriodService : ITaxPeriodService
                 "Hãy xác nhận nhóm doanh thu và phương pháp TNCN trước khi tính 01/CNKD.");
         }
         if (_thresholdAlerts is not null &&
-            (await _thresholdAlerts.FindAsync(x =>
+            owner.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.RevenueBased)
+        {
+            var deferredAlerts = await _thresholdAlerts.FindAsync(x =>
                 x.OwnerId == owner.Id &&
                 x.ThresholdCode == RevenueThresholdCodes.Crossed3B &&
                 x.Status == RevenueThresholdAlertStatuses.Acknowledged &&
-                x.Year < taxPeriod.Year)).Any())
-        {
-            throw new ConflictException(
-                "Phải xác nhận chuyển sang IncomeBased trước khi tính kỳ đầu năm mới.");
+                x.Year < taxPeriod.Year);
+            foreach (var alert in deferredAlerts)
+            {
+                var source = await _ownerRevenue.ProjectCalendarYearAsync(
+                    owner.Id, taxPeriod.BusinessId, alert.Year, cancellationToken);
+                ThrowRevenueBlockers(source.Blockers);
+                var sourcePolicy = await _taxPolicyService.GetEffectiveAsync(
+                    new DateOnly(alert.Year, 12, 31), cancellationToken);
+                if (source.TotalRevenue > sourcePolicy.IncomeBasedRequirementThreshold)
+                    throw new ConflictException(
+                        "Phải xác nhận chuyển sang IncomeBased trước khi tính kỳ đầu năm mới.");
+            }
         }
 
         var annualProjection = await _ownerRevenue.ProjectCalendarYearAsync(
@@ -446,7 +456,10 @@ public class TaxPeriodService : ITaxPeriodService
         if (annualRevenue > taxPolicy.SupportedRevenueCeiling)
             throw new ConflictException(
                 "Doanh thu năm đã vượt 50 tỷ đồng, ngoài phạm vi lập hồ sơ của TaxMate.");
-        if (annualRevenue <= annualRevenueThreshold)
+        // A carried method still has quarterly obligations before annual review
+        // can move the owner to TKN. Preserve the existing quarterly formula.
+        var hasCarriedMethod = owner.TaxMethodEffectiveYear.Value < taxPeriod.Year;
+        if (annualRevenue <= annualRevenueThreshold && !hasCarriedMethod)
             throw new ConflictException(
                 "Doanh thu năm chưa vượt 1 tỷ đồng; hãy dùng 01/TKN-CNKD.");
 

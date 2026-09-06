@@ -169,7 +169,9 @@ internal sealed class S2dBookProjector : IS2dBookProjector
                 lines.Add(new S2dBookLine
                 {
                     InventoryMovementId = movement.InventoryMovementId,
-                    DocumentDate = OccurredAt(movement),
+                    // Calendar date for display/export; ledger instants remain UTC.
+                    DocumentDate = BangkokBusinessTime.NaiveUtcToBangkokWallClock(
+                        OccurredAt(movement)).Date,
                     DocumentNumber = movement.DocumentNumber,
                     Description = movement.Description,
                     MovementType = movement.MovementType,

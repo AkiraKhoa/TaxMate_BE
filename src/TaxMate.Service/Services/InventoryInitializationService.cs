@@ -48,6 +48,7 @@ internal sealed class InventoryInitializationService : IInventoryInitializationS
 
         return new InventoryInitializationPreviewResponse
         {
+            Version = InventoryControlRules.Version(products, ingredients, movements),
             BusinessId = businessId,
             IsInitialized = business.InventoryInitializedAt.HasValue || movements.Count > 0,
             IsStockTrackingEnabled = business.IsStockTrackingEnabled,

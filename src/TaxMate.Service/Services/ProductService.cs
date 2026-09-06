@@ -99,7 +99,8 @@ public class ProductService : IProductService
         var hasMovement = await _inventoryControls.HasMovementsForProductAsync(id);
         if (hasMovement)
         {
-            EnsureHistoryProtectedFieldUnchanged(
+            if (!string.IsNullOrWhiteSpace(entity.Unit))
+                EnsureHistoryProtectedFieldUnchanged(
                 NormalizeUnit(entity.Unit),
                 NormalizeUnit(request.Unit),
                 "đơn vị tính");
@@ -148,7 +149,8 @@ public class ProductService : IProductService
         entity.ProductCategoryId = request.ProductCategoryId;
         entity.BusinessCategoryId = request.BusinessCategoryId;
         entity.Description = request.Description;
-        if (!hasMovement) entity.Unit = request.Unit;
+        if (!hasMovement || string.IsNullOrWhiteSpace(entity.Unit))
+            entity.Unit = NormalizeUnit(request.Unit);
         entity.ImageUrl = request.ImageUrl;
         if (!hasMovement && request.CostPrice.HasValue)
             entity.CostPrice = request.CostPrice;

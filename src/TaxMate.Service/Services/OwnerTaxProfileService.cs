@@ -199,17 +199,21 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
             }
             else if (alert.ThresholdCode == RevenueThresholdCodes.Crossed1B)
             {
+                var hasExistingMethod = owner.PersonalIncomeTaxMethod is not null &&
+                                        owner.TaxMethodEffectiveYear.HasValue;
                 var method = review.RequiredTaxMethod ??
                     NormalizeSelectedMethod(request.PersonalIncomeTaxMethod,
                         review.AllowedTaxMethods);
                 owner.DeclaredRevenueBracket =
+                    method == PersonalIncomeTaxMethods.IncomeBased &&
                     projection.TotalRevenue > policy.IncomeBasedRequirementThreshold
                         ? RevenueBrackets.Over3BTo50B
                         : RevenueBrackets.Over1BTo3B;
                 owner.PersonalIncomeTaxMethod = method;
-                owner.TaxMethodEffectiveYear = methodLock.IsLocked
-                    ? methodLock.EffectiveYear
-                    : alert.Year;
+                if (!hasExistingMethod)
+                    owner.TaxMethodEffectiveYear = methodLock.IsLocked
+                        ? methodLock.EffectiveYear
+                        : alert.Year;
                 owner.CommencementPeriod = null;
                 owner.CommencementTaxYear = null;
                 owner.TaxProfileConfirmedAt = now;
@@ -472,13 +476,18 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
         var isCrossed1 = alert.ThresholdCode == RevenueThresholdCodes.Crossed1B;
         var isCrossed3 = alert.ThresholdCode == RevenueThresholdCodes.Crossed3B;
         var isCrossed50 = alert.ThresholdCode == RevenueThresholdCodes.Crossed50B;
-        var requiredMethod = isCrossed3 ||
+        // A 1B alert does not elect a new method for an already configured owner.
+        // Changes after crossing 3B or expiry of a lock use their dedicated flows.
+        var existingMethod = isCrossed1 && owner.TaxMethodEffectiveYear.HasValue
+            ? owner.PersonalIncomeTaxMethod
+            : null;
+        var requiredMethod = existingMethod ?? (isCrossed3 ||
             (isCrossed1 &&
              (currentRevenue > policy.IncomeBasedRequirementThreshold ||
               methodLock.IsLocked))
                 ? PersonalIncomeTaxMethods.IncomeBased
-                : null;
-        IReadOnlyList<string> allowedMethods = isCrossed1 &&
+                : null);
+        IReadOnlyList<string> allowedMethods = existingMethod is null && isCrossed1 &&
             currentRevenue <= policy.IncomeBasedRequirementThreshold &&
             !methodLock.IsLocked
                 ? SelectableMethods

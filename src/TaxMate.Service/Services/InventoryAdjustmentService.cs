@@ -37,6 +37,8 @@ internal sealed class InventoryAdjustmentService : IInventoryAdjustmentService
         await _unitOfWork.BeginTransactionAsync(cancellationToken);
         try
         {
+            await _controls.UseSerializableTransactionAsync(cancellationToken);
+            request.OccurredAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
             await _mutationGuard.EnsureCanCreateAsync(
                 authenticatedOwnerId,
                 businessId,
@@ -59,6 +61,8 @@ internal sealed class InventoryAdjustmentService : IInventoryAdjustmentService
                 tracking: true,
                 cancellationToken);
             var lines = request.Lines ?? [];
+            if (request.ExpectedVersion != InventoryControlRules.Version(products, ingredients, existing))
+                throw new ConflictException("Tồn kho đã thay đổi. Hãy tải lại số tồn hệ thống và đối chiếu số đã đếm trước khi lưu.");
             var submittedKeys = lines
                 .Select(x => InventoryControlRules.GetKey(x.ProductId, x.IngredientId))
                 .ToArray();
@@ -159,9 +163,12 @@ internal sealed class InventoryAdjustmentService : IInventoryAdjustmentService
                 Items = InventoryControlRules.MapItems(products, ingredients)
             };
         }
-        catch
+        catch (Exception error)
         {
-            await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            for (Exception? cause = error; cause is not null; cause = cause.InnerException)
+                if (cause is System.Data.Common.DbException db && db.SqlState is "40001" or "40P01")
+                    throw new ConflictException("Tồn kho đã thay đổi. Hãy tải lại số tồn hệ thống và đối chiếu số đã đếm trước khi lưu.");
             throw;
         }
     }

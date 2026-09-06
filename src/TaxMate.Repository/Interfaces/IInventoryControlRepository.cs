@@ -4,6 +4,7 @@ namespace TaxMate.Repository.Interfaces;
 
 public interface IInventoryControlRepository
 {
+    Task UseSerializableTransactionAsync(CancellationToken cancellationToken = default);
     Task<BusinessProfile?> GetBusinessAsync(
         Guid businessId,
         CancellationToken cancellationToken = default);
