@@ -22,6 +22,7 @@ public class S2aHkdExportService : IS2aHkdExportService
     private readonly IS2aHkdWordService _wordService;
     private readonly decimal _s2aMaxRevenueThreshold;
     private readonly ITaxPolicyService _taxPolicyService;
+    private readonly IOwnerRevenueProjector _ownerRevenue;
 
     public S2aHkdExportService(
         IBusinessProfileRepository businessProfiles,
@@ -30,7 +31,8 @@ public class S2aHkdExportService : IS2aHkdExportService
         IGenericRepository<BusinessCategory> categories,
         IS2aHkdWordService wordService,
         IOptions<TaxSettings> taxSettings,
-        ITaxPolicyService taxPolicyService)
+        ITaxPolicyService taxPolicyService,
+        IOwnerRevenueProjector ownerRevenue)
     {
         _businessProfiles = businessProfiles;
         _s2aHkdRepository = s2aHkdRepository;
@@ -39,6 +41,7 @@ public class S2aHkdExportService : IS2aHkdExportService
         _wordService = wordService;
         _s2aMaxRevenueThreshold = taxSettings.Value.S2aMaxRevenueThreshold;
         _taxPolicyService = taxPolicyService;
+        _ownerRevenue = ownerRevenue;
     }
 
     public Task<S2aHkdDocumentModel> BuildDocumentModelAsync(
@@ -80,7 +83,7 @@ public class S2aHkdExportService : IS2aHkdExportService
                 S2aHkdErrorCodes.MissingTaxCode,
                 "Mã số thuế chưa được cập nhật. Vui lòng cập nhật MST trước khi xuất sổ S2a.");
 
-        var ytdRevenue = await _reportRepository.GetAccumulatedRevenueAsync(businessId, year);
+        var ytdRevenue = (await _ownerRevenue.ProjectCalendarYearAsync(ownerId, businessId, year)).TotalRevenue;
         var (_, quarterEndExclusive) = TaxPeriodWindow.GetQuarterWindow(
             year,
             quarter);

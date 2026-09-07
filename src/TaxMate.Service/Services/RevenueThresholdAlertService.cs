@@ -96,6 +96,7 @@ public sealed class RevenueThresholdAlertService
                 continue;
             }
 
+            var shouldNotify = alert?.Status != RevenueThresholdAlertStatuses.PendingReview;
             var crossing = FindCrossing(projection, threshold.Amount);
             if (crossing is null)
                 continue;
@@ -121,13 +122,13 @@ public sealed class RevenueThresholdAlertService
             alert.WindowStart = projection.StartNaiveUtc;
             alert.WindowEnd = crossing.Value.Date;
             alert.TotalRevenue = crossing.Value.CumulativeRevenue;
-            alert.SentAt = now;
+            if (shouldNotify) alert.SentAt = now;
             alert.ThresholdCode = threshold.Code;
             alert.ThresholdAmount = threshold.Amount;
             alert.Status = RevenueThresholdAlertStatuses.PendingReview;
             alert.ResolvedAt = null;
             alert.UpdatedAt = now;
-            newlyPending.Add(alert);
+            if (shouldNotify) newlyPending.Add(alert);
         }
 
         try
@@ -139,6 +140,8 @@ public sealed class RevenueThresholdAlertService
             _logger.LogWarning(ex,
                 "Concurrent threshold evaluation for owner {OwnerId}, year {Year}.",
                 ownerId, year);
+            // Do not send notifications for changes that were not persisted.
+            newlyPending.Clear();
         }
 
         await NotifyAsync(ownerId, newlyPending, cancellationToken);

@@ -17,6 +17,7 @@ public class S2aHkdExportServiceTests
     private readonly Mock<IBusinessProfileRepository> _businessProfiles = new();
     private readonly Mock<IS2aHkdRepository> _s2aHkdRepository = new();
     private readonly Mock<IReportRepository> _reportRepository = new();
+    private readonly Mock<IOwnerRevenueProjector> _ownerRevenue = new();
     private readonly Mock<IGenericRepository<BusinessCategory>> _categories = new();
     private readonly Mock<IS2aHkdWordService> _wordService = new();
     private readonly Mock<ITaxPolicyService> _taxPolicy = new();
@@ -47,16 +48,15 @@ public class S2aHkdExportServiceTests
             {
                 S2aMaxRevenueThreshold = upper
             }),
-            _taxPolicy.Object);
+            _taxPolicy.Object, _ownerRevenue.Object);
     }
 
     [Fact]
     public async Task BuildDocumentModelAsync_ThrowsNotEligible_WhenYtdBelowThreshold()
     {
         SetupBusiness(taxCode: "123");
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 500_000_000m, 0m, []));
 
         var service = CreateService();
 
@@ -70,9 +70,8 @@ public class S2aHkdExportServiceTests
     public async Task BuildDocumentModelAsync_ThrowsNotEligible_WhenYtdAboveMax()
     {
         SetupBusiness(taxCode: "123");
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(3_500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 3_500_000_000m, 0m, []));
 
         var service = CreateService();
 
@@ -86,9 +85,8 @@ public class S2aHkdExportServiceTests
     public async Task BuildDocumentModelAsync_ThrowsMissingTaxCode()
     {
         SetupBusiness(taxCode: null);
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(1_500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 1_500_000_000m, 0m, []));
 
         var service = CreateService();
 
@@ -102,9 +100,8 @@ public class S2aHkdExportServiceTests
     public async Task BuildDocumentModelAsync_ThrowsNoRevenue_WhenQuarterEmpty()
     {
         SetupBusiness(taxCode: "123");
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(1_500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 1_500_000_000m, 0m, []));
         _s2aHkdRepository
             .Setup(x => x.GetProductAggregatesAsync(_businessId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync([]);
@@ -121,9 +118,8 @@ public class S2aHkdExportServiceTests
     public async Task BuildDocumentModelAsync_ThrowsMissingCategory_WhenProductUnmapped()
     {
         SetupBusiness(taxCode: "123", mainCategoryId: null);
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(1_500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 1_500_000_000m, 0m, []));
         _s2aHkdRepository
             .Setup(x => x.GetProductAggregatesAsync(_businessId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(
@@ -152,9 +148,8 @@ public class S2aHkdExportServiceTests
     public async Task BuildDocumentModelAsync_ReturnsGoldenSampleTotals()
     {
         SetupBusiness(taxCode: "12345566", mainCategoryId: _goodsCategoryId);
-        _reportRepository
-            .Setup(x => x.GetAccumulatedRevenueAsync(_businessId, 2026))
-            .ReturnsAsync(1_500_000_000m);
+        _ownerRevenue.Setup(x => x.ProjectCalendarYearAsync(_ownerId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_ownerId, new DateTime(2026,1,1), new DateTime(2027,1,1), 1_500_000_000m, 0m, []));
         _s2aHkdRepository
             .Setup(x => x.GetProductAggregatesAsync(_businessId, It.IsAny<DateTime>(), It.IsAny<DateTime>()))
             .ReturnsAsync(
