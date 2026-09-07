@@ -18,17 +18,23 @@ public sealed class QttCalculationService : IQttCalculationService
     private readonly IQttCalculationEngine _engine;
     private readonly ITaxPeriodRepository _taxPeriods;
     private readonly ITaxCalculationRepository _calculations;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IAccountingTransactionLockRepository _transactionLock;
 
     public QttCalculationService(
         IAnnualTaxAggregateService annualAggregate,
         IQttCalculationEngine engine,
         ITaxPeriodRepository taxPeriods,
-        ITaxCalculationRepository calculations)
+        ITaxCalculationRepository calculations,
+        IUnitOfWork unitOfWork,
+        IAccountingTransactionLockRepository transactionLock)
     {
         _annualAggregate = annualAggregate;
         _engine = engine;
         _taxPeriods = taxPeriods;
         _calculations = calculations;
+        _unitOfWork = unitOfWork;
+        _transactionLock = transactionLock;
     }
 
     public async Task<QttCalculationResponse> CalculateAsync(
@@ -37,18 +43,32 @@ public sealed class QttCalculationService : IQttCalculationService
         int year,
         CancellationToken cancellationToken = default)
     {
-        var aggregate = await _annualAggregate.PreviewAsync(
-            userId,
-            businessId,
-            year,
-            cancellationToken);
-        var calculated = _engine.Calculate(aggregate);
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken))
+            throw new NotFoundException("Business profile not found.");
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _transactionLock.AcquireOwnerYearLocksAsync(userId, [year], cancellationToken);
+            var result = await CalculateCoreAsync(userId, businessId, year, cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task<QttCalculationResponse> CalculateCoreAsync(
+        Guid userId, Guid businessId, int year, CancellationToken cancellationToken)
+    {
         var taxPeriod = await _taxPeriods.GetYearAsync(
             businessId,
             year,
             cancellationToken);
 
-        if (taxPeriod is not null && taxPeriod.Status == TaxPeriodStatuses.Calculated)
+        if (taxPeriod is not null && taxPeriod.Status is TaxPeriodStatuses.Calculated or TaxPeriodStatuses.Submitted)
         {
             var current = await _calculations.FirstOrDefaultAsync(x =>
                 x.TaxPeriodId == taxPeriod.Id &&
@@ -78,6 +98,10 @@ public sealed class QttCalculationService : IQttCalculationService
         var now = DateTime.UtcNow;
         var (periodStart, periodEndExclusive) =
             BangkokBusinessTime.GetCalendarYearNaiveUtc(year);
+        if (now < periodEndExclusive)
+            throw new ConflictException("Chưa thể chốt quyết toán trước khi năm kết thúc.");
+        var aggregate = await _annualAggregate.PreviewAsync(userId, businessId, year, cancellationToken);
+        var calculated = _engine.Calculate(aggregate);
         if (taxPeriod is null)
         {
             taxPeriod = new TaxPeriod

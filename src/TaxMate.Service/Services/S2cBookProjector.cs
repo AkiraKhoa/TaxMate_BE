@@ -56,7 +56,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
             quarter);
         var historyStart = movements.Count == 0
             ? periodStart
-            : movements.Min(x => BangkokBusinessTime.NormalizeNaiveUtc(x.OccurredAt));
+            : new[] { periodStart, movements.Min(x => BangkokBusinessTime.NormalizeNaiveUtc(x.OccurredAt)) }.Min();
         var expenseHistory = await _accountingSources.GetS2cExpensesAsync(
             businessId,
             historyStart,

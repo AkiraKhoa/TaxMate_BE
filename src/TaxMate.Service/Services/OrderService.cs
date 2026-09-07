@@ -32,6 +32,7 @@ public class OrderService : IOrderService
     private readonly IInventoryMovementService _inventoryMovements;
     private readonly IMoneyMovementService _moneyMovements;
     private readonly TimeProvider _timeProvider;
+    private readonly ITaxPeriodMutationGuard _taxPeriodGuard;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -53,6 +54,7 @@ public class OrderService : IOrderService
         IIncomeCategoryRepository incomeCategories,
         IInventoryMovementService inventoryMovements,
         IMoneyMovementService moneyMovements,
+        ITaxPeriodMutationGuard taxPeriodGuard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
@@ -74,6 +76,7 @@ public class OrderService : IOrderService
         _incomeCategories = incomeCategories;
         _inventoryMovements = inventoryMovements;
         _moneyMovements = moneyMovements;
+        _taxPeriodGuard = taxPeriodGuard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -448,6 +451,7 @@ public class OrderService : IOrderService
         try
         {
             var paidAt = UtcNow;
+            await _taxPeriodGuard.EnsureCanCreateAsync(businessProfile.OwnerId, order.BusinessId, paidAt);
 
             // Kiểm tra xem BankTransfer có dùng tài khoản SePay (có webhook tự động) không.
             // Nếu tài khoản là static VietQR (không có SePayBankAccountXid), đơn sẽ được Complete ngay.
@@ -482,7 +486,7 @@ public class OrderService : IOrderService
             }
             else
             {
-                await CompleteOrderAsync(order, TransactionStatus.Draft);
+                await CompleteOrderAsync(order, TransactionStatus.Draft, paidAt);
             }
 
             foreach (var paymentEntry in request.Payments)
@@ -766,9 +770,9 @@ public class OrderService : IOrderService
         {
             var businessProfile = await _businessProfiles.GetByIdAsync(order.BusinessId)
                 ?? throw new NotFoundException("Business profile not found.");
-            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment);
-
             var paidAt = UtcNow;
+            await _taxPeriodGuard.EnsureCanCreateAsync(businessProfile.OwnerId, order.BusinessId, paidAt);
+            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment, paidAt);
 
             foreach (var payment in order.Payments)
             {
@@ -871,7 +875,7 @@ public class OrderService : IOrderService
         }
     }
 
-    private async Task CompleteOrderAsync(Transaction order, string expectedStatus)
+    private async Task CompleteOrderAsync(Transaction order, string expectedStatus, DateTime paidAt)
     {
         var transitioned = await _transactions.TryTransitionStatusAsync(
             order.TransactionId,
@@ -883,7 +887,7 @@ public class OrderService : IOrderService
         }
 
         order.Status = TransactionStatus.Completed;
-        order.CompletedAt = DateTime.SpecifyKind(UtcNow, DateTimeKind.Unspecified);
+        order.CompletedAt = DateTime.SpecifyKind(paidAt, DateTimeKind.Unspecified);
         await DeductInventoryForCompletedOrderAsync(order);
     }
 

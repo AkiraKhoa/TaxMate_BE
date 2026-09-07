@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -86,6 +87,10 @@ public class PaymentWebhookService : IPaymentWebhookService
                     }
                     catch (ConflictException ex)
                     {
+                        // Only a concurrent successful confirmation is safe to acknowledge.
+                        // A locked tax period must not be mistaken for a paid order.
+                        var refreshed = await _transactions.GetByIdWithDetailsAsync(transaction.TransactionId);
+                        if (refreshed?.Status != TransactionStatus.Completed) throw;
                         _logger.LogWarning(ex, "[SePay IPN] Đơn hàng {Code} đã được xác nhận thanh toán bởi luồng khác đồng thời. Trả về thành công.", transaction.TransactionCode);
                     }
                 }
@@ -195,15 +200,19 @@ public class PaymentWebhookService : IPaymentWebhookService
                 .ToList();
         }
 
+        Transaction? match = null;
         foreach (var t in awaitingTransactions)
         {
-            if (text.Contains(t.TransactionCode, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(t.TransactionCode) && Regex.IsMatch(
+                text, @"(?<![\p{L}\p{N}])" + Regex.Escape(t.TransactionCode) + @"(?![\p{L}\p{N}])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             {
-                return t;
+                if (match is not null) return null;
+                match = t;
             }
         }
 
-        return null;
+        return match;
     }
 
     private string GetRequiredSecret(string configurationKey)

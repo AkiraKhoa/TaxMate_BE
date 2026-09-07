@@ -19,17 +19,23 @@ public sealed class QttDeclarationService : IQttDeclarationService
     private readonly ITaxDeclarationRepository _declarations;
     private readonly IGenericRepository<PaymentAccount> _paymentAccounts;
     private readonly IQttDocumentGenerator _documentGenerator;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IAccountingTransactionLockRepository _transactionLock;
 
     public QttDeclarationService(
         ITaxPeriodRepository taxPeriods,
         ITaxDeclarationRepository declarations,
         IGenericRepository<PaymentAccount> paymentAccounts,
-        IQttDocumentGenerator documentGenerator)
+        IQttDocumentGenerator documentGenerator,
+        IUnitOfWork unitOfWork,
+        IAccountingTransactionLockRepository transactionLock)
     {
         _taxPeriods = taxPeriods;
         _declarations = declarations;
         _paymentAccounts = paymentAccounts;
         _documentGenerator = documentGenerator;
+        _unitOfWork = unitOfWork;
+        _transactionLock = transactionLock;
     }
 
     public async Task<TaxDeclarationGeneratedFile> ExportAsync(
@@ -41,7 +47,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId ||
             declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
@@ -103,21 +109,40 @@ public sealed class QttDeclarationService : IQttDeclarationService
         int year,
         CancellationToken cancellationToken = default)
     {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _transactionLock.AcquireOwnerYearLocksAsync(userId, [year], cancellationToken);
+            var result = await CreateCoreAsync(userId, businessId, year, cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task<QttDeclarationResponse> CreateCoreAsync(
+        Guid userId, Guid businessId, int year, CancellationToken cancellationToken)
+    {
         var period = await _taxPeriods.GetYearAsync(
             businessId,
             year,
             cancellationToken) ?? throw new NotFoundException(
             "Chưa có bản tính quyết toán cho năm này.");
         await EnsureOwnershipAsync(period.BusinessId, userId, cancellationToken);
-        if (period.Status != TaxPeriodStatuses.Calculated)
-            throw new ConflictException("Kỳ năm phải được tính xong trước khi tạo hồ sơ QTT.");
-
         var existing = await _declarations.GetCurrentByTaxPeriodAndFormAsync(
             period.Id,
             TaxFormCodes.Form02CnkdTncnQtt,
             cancellationToken);
         if (existing is not null)
             return Map(existing, ReadFormSnapshot(existing));
+
+        if (period.Status != TaxPeriodStatuses.Calculated)
+            throw new ConflictException("Kỳ năm phải được tính xong trước khi tạo hồ sơ QTT.");
 
         var calculation = await _declarations.GetCurrentCalculationWithLinesAsync(
             period.Id,
@@ -213,7 +238,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
         if (declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
@@ -271,7 +296,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
         if (declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
@@ -291,10 +316,11 @@ public sealed class QttDeclarationService : IQttDeclarationService
         if (snapshot.Indicators.Indicator19 > 0m &&
             declaration.Obligations.All(x => x.TaxType != TaxTypes.PersonalIncomeTax))
         {
-            declaration.Obligations.Add(CreatePitObligation(
+            var obligation = CreatePitObligation(
                 declaration,
                 snapshot.Indicators,
-                now));
+                now);
+            _declarations.AddObligation(obligation);
         }
 
         declaration.Status = TaxDeclarationStatuses.Generated;

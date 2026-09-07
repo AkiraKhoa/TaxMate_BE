@@ -9,6 +9,8 @@ namespace TaxMate.Repository.Repositories;
 public class TaxDeclarationRepository : GenericRepository<TaxDeclaration>, ITaxDeclarationRepository
 {
     private readonly AppDbContext _dbContext;
+    public void AddObligation(TaxDeclarationObligation obligation) =>
+        _dbContext.Set<TaxDeclarationObligation>().Add(obligation);
 
     public TaxDeclarationRepository(AppDbContext dbContext) : base(dbContext)
     {

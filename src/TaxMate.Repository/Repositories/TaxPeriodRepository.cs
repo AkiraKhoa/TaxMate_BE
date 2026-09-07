@@ -231,17 +231,18 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             cancellationToken);
     }
 
-    public Task<TaxPeriod?> GetYearAsync(
+    public async Task<TaxPeriod?> GetYearAsync(
         Guid businessId,
         int year,
         CancellationToken cancellationToken = default)
     {
-        return _dbContext.TaxPeriods.FirstOrDefaultAsync(
-            x =>
-                x.BusinessId == businessId &&
-                x.PeriodType == TaxPeriodTypes.Yearly &&
-                x.Year == year,
-            cancellationToken);
+        var ownerId = await GetOwnerIdByBusinessAsync(businessId, cancellationToken);
+        if (!ownerId.HasValue) return null;
+        return await _dbContext.TaxPeriods
+            .Where(x => x.Business.OwnerId == ownerId.Value &&
+                x.PeriodType == TaxPeriodTypes.Yearly && x.Year == year)
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public Task<TaxPeriod?> GetTknAsync(
