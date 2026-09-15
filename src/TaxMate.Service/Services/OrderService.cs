@@ -194,10 +194,14 @@ public class OrderService : IOrderService
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false)
     {
-        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount);
-        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount);
+        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount, startDate, endDate, search, excludeEmptyDrafts);
+        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount, startDate, endDate, search, excludeEmptyDrafts);
 
         var items = transactions.Select(x => new OrderSummaryResponse
         {

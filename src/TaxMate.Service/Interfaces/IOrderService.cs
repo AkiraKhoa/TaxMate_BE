@@ -14,7 +14,11 @@ public interface IOrderService
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null);
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false);
 
     Task AddItemAsync(Guid transactionId, AddOrderItemRequest request);
     Task UpdateItemAsync(Guid transactionId, Guid itemId, UpdateOrderItemRequest request);

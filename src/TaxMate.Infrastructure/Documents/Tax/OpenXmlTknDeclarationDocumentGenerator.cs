@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using TaxMate.Model.Documents.Tax;
@@ -31,8 +33,15 @@ public sealed class OpenXmlTknDeclarationDocumentGenerator : ITknDeclarationDocu
             var body = mainDocument.Body
                 ?? throw new InvalidOperationException("The 01/TKN-CNKD template has no body.");
             var replacements = BuildReplacements(snapshot);
-            foreach (var text in body.Descendants<Text>())
-                if (replacements.TryGetValue(text.Text, out var value)) text.Text = value;
+            foreach (var cell in body.Descendants<TableCell>())
+            {
+                var marker = cell.InnerText.Trim();
+                if (marker.StartsWith("{{A", StringComparison.Ordinal)
+                    && marker.Length > 3 && char.IsDigit(marker[3])
+                    && replacements.TryGetValue(marker, out var value))
+                    SetCellLines(cell, value, JustificationValues.Right);
+            }
+            ReplacePlaceholders(body, replacements);
             mainDocument.Save();
         }
         return new TaxDeclarationGeneratedFile
@@ -101,6 +110,160 @@ public sealed class OpenXmlTknDeclarationDocumentGenerator : ITknDeclarationDocu
             throw new InvalidOperationException("The current TKN exporter only supports official activity indicator [08].");
         if (snapshot.SectionALines.Any(x => x.VatTaxAmount != 0m || x.PersonalIncomeTaxAmount != 0m))
             throw new InvalidOperationException("A <=1B TKN notice cannot contain tax payable amounts.");
+    }
+
+    private static void ReplacePlaceholders(Body body, Dictionary<string, string> replacements)
+    {
+        var orderedReplacements = replacements
+            .OrderByDescending(r => r.Key.Length)
+            .ToList();
+
+        foreach (var paragraph in body.Descendants<Paragraph>())
+        {
+            var fullText = paragraph.InnerText;
+            if (!fullText.Contains("{{"))
+                continue;
+
+            var texts = paragraph.Descendants<Text>().ToList();
+            if (texts.Count == 0)
+                continue;
+
+            // 1. Try direct replacement inside each Text element
+            foreach (var text in texts)
+            {
+                if (string.IsNullOrEmpty(text.Text) || !text.Text.Contains("{{"))
+                    continue;
+
+                foreach (var (marker, value) in orderedReplacements)
+                {
+                    if (text.Text.Contains(marker))
+                    {
+                        text.Text = text.Text.Replace(marker, value);
+                        text.Space = SpaceProcessingModeValues.Preserve;
+                    }
+                }
+            }
+
+            // 2. If any placeholder was split across multiple runs / text nodes, merge and replace
+            if (paragraph.InnerText.Contains("{{"))
+            {
+                var runs = paragraph.Elements<Run>().ToList();
+                if (runs.Count > 0)
+                {
+                    var sb = new StringBuilder();
+                    foreach (var run in runs)
+                    {
+                        foreach (var t in run.Elements<Text>())
+                            sb.Append(t.Text);
+                    }
+
+                    var merged = sb.ToString();
+                    foreach (var (marker, value) in orderedReplacements)
+                    {
+                        if (merged.Contains(marker))
+                            merged = merged.Replace(marker, value);
+                    }
+
+                    var firstRun = runs[0];
+                    var firstText = firstRun.GetFirstChild<Text>();
+                    if (firstText is null)
+                    {
+                        firstText = new Text { Space = SpaceProcessingModeValues.Preserve };
+                        firstRun.AppendChild(firstText);
+                    }
+                    firstText.Text = merged;
+                    firstText.Space = SpaceProcessingModeValues.Preserve;
+
+                    foreach (var extraText in firstRun.Elements<Text>().Skip(1).ToList())
+                        extraText.Remove();
+
+                    foreach (var otherRun in runs.Skip(1))
+                    {
+                        foreach (var t in otherRun.Elements<Text>().ToList())
+                            t.Remove();
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback pass: catch any remaining text element anywhere in body
+        foreach (var text in body.Descendants<Text>())
+        {
+            if (!string.IsNullOrEmpty(text.Text) && text.Text.Contains("{{"))
+            {
+                foreach (var (marker, value) in orderedReplacements)
+                {
+                    if (text.Text.Contains(marker))
+                    {
+                        text.Text = text.Text.Replace(marker, value);
+                        text.Space = SpaceProcessingModeValues.Preserve;
+                    }
+                }
+            }
+        }
+    }
+
+    private static void SetCellLines(TableCell cell, JustificationValues? alignment, string fontSize, params string[] lines)
+    {
+        var paragraphs = cell.Elements<Paragraph>().ToList();
+        var prototype = paragraphs.FirstOrDefault()?.CloneNode(true) as Paragraph
+            ?? new Paragraph(new Run(new Text()));
+        foreach (var paragraph in paragraphs)
+            paragraph.Remove();
+        foreach (var line in lines)
+        {
+            var paragraph = (Paragraph)prototype.CloneNode(true);
+            SetParagraphLines(paragraph, alignment, fontSize, line);
+            cell.Append(paragraph);
+        }
+    }
+
+    private static void SetCellLines(TableCell cell, string line, JustificationValues? alignment = null, string fontSize = "18")
+    {
+        SetCellLines(cell, alignment, fontSize, new[] { line });
+    }
+
+    private static void SetParagraphLines(Paragraph paragraph, params string[] lines)
+    {
+        SetParagraphLines(paragraph, null, "18", lines);
+    }
+
+    private static void SetParagraphLines(Paragraph paragraph, JustificationValues? alignment, string fontSize, params string[] lines)
+    {
+        if (alignment.HasValue)
+        {
+            var pPr = paragraph.GetFirstChild<ParagraphProperties>() ?? paragraph.PrependChild(new ParagraphProperties());
+            var jc = pPr.GetFirstChild<Justification>();
+            if (jc is null)
+                pPr.AppendChild(new Justification { Val = alignment.Value });
+            else
+                jc.Val = alignment.Value;
+        }
+
+        var runProperties = paragraph.Descendants<RunProperties>().FirstOrDefault()?.CloneNode(true) ?? new RunProperties();
+        var sz = runProperties.GetFirstChild<FontSize>();
+        if (sz is null)
+            runProperties.AppendChild(new FontSize { Val = fontSize });
+        else
+            sz.Val = fontSize;
+
+        var szCs = runProperties.GetFirstChild<FontSizeComplexScript>();
+        if (szCs is null)
+            runProperties.AppendChild(new FontSizeComplexScript { Val = fontSize });
+        else
+            szCs.Val = fontSize;
+
+        foreach (var existingRun in paragraph.Elements<Run>().ToList())
+            existingRun.Remove();
+        var run = new Run();
+        run.Append(runProperties);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (i > 0)
+                run.Append(new Break());
+            run.Append(new Text(lines[i]) { Space = SpaceProcessingModeValues.Preserve });
+        }
+        paragraph.Append(run);
     }
 
     private static string Check(bool value) => value ? "☒" : "☐";

@@ -61,6 +61,15 @@ public class TaxBookController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
+    [HttpGet("qtt/declaration")]
+    public async Task<IActionResult> GetQttDeclaration(Guid businessId, [FromQuery] int year,
+        [FromServices] IQttDeclarationService service, CancellationToken cancellationToken)
+    {
+        if (year < 2000 || year > 9998) return BadRequest("Invalid year.");
+        var result = await service.GetAsync(GetUserId(), businessId, year, cancellationToken);
+        return Ok(ApiResponse<QttDeclarationResponse?>.Ok(result, "QTT loaded", HttpContext.TraceIdentifier));
+    }
+
     [HttpPost("qtt/declaration")]
     public async Task<IActionResult> CreateQttDeclaration(
         Guid businessId,

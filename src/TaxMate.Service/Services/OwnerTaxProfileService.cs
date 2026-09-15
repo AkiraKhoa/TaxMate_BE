@@ -502,7 +502,9 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
               canActivateDeferred)) &&
             (!outsideScope || isCrossed50);
 
-        var message = !isExceeded
+        var message = alert.Status == RevenueThresholdAlertStatuses.Resolved
+            ? "Cảnh báo đã được xử lý. Phương pháp hiện tại không thay đổi."
+            : !isExceeded
             ? "Doanh thu hiện không còn vượt mốc này; có thể đóng cảnh báo."
             : outsideScope && !isCrossed50
                 ? "Doanh thu đã vượt 50 tỷ đồng; hãy xử lý cảnh báo ngoài phạm vi hỗ trợ."
@@ -627,6 +629,26 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
         var issues = projection.Blockers
             .Select(x => new AnnualRevenueConclusionIssue(x.Code, x.Message))
             .ToList();
+
+        // A historical conclusion must not rewrite a later election or filed year.
+        // Zero revenue itself remains valid; this guard is about lifecycle ordering.
+        var laterElection = owner.TaxMethodEffectiveYear > taxYear ||
+                            owner.CommencementTaxYear > taxYear;
+        var laterFiling = false;
+        for (var laterYear = taxYear + 1; laterYear <= CurrentBangkokYear(); laterYear++)
+        {
+            var laterStates = await _periods.GetOwnerQuarterlyFilingStatesAsync(
+                owner.Id, laterYear, cancellationToken);
+            if (laterStates.Any(x => x.HasCompletedIncomeBasedCalculation ||
+                                    x.HasCompletedRevenueBasedCalculation || x.HasSubmittedDeclaration))
+            {
+                laterFiling = true;
+                break;
+            }
+        }
+        if (laterElection || laterFiling)
+            issues.Add(new("LaterTaxProfileInUse",
+                "Đã có phương pháp hoặc hồ sơ thuế của năm sau. Không thể dùng kết luận năm cũ để thay đổi hồ sơ hiện tại."));
 
         if (!HasTaxYearEnded(taxYear))
             issues.Add(new(

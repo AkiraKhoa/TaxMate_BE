@@ -35,11 +35,26 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false)
     {
         var query = _dbSet
             .Include(x => x.TransactionItems)
             .Where(x => x.BusinessId == businessId);
+
+
+        if (startDate.HasValue) query = query.Where(x => x.TransactionDate >= startDate.Value);
+        if (endDate.HasValue) query = query.Where(x => x.TransactionDate < endDate.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x => x.TransactionCode.ToLower().Contains(term) ||
+                (x.InvoiceId != null && x.InvoiceId.ToLower().Contains(term)));
+        }
+        if (excludeEmptyDrafts) query = query.Where(x => x.Status != "Draft" || x.TransactionItems.Any());
 
         if (!string.IsNullOrEmpty(status))
         {
@@ -74,9 +89,24 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false)
     {
         var query = _dbSet.Where(x => x.BusinessId == businessId);
+
+
+        if (startDate.HasValue) query = query.Where(x => x.TransactionDate >= startDate.Value);
+        if (endDate.HasValue) query = query.Where(x => x.TransactionDate < endDate.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x => x.TransactionCode.ToLower().Contains(term) ||
+                (x.InvoiceId != null && x.InvoiceId.ToLower().Contains(term)));
+        }
+        if (excludeEmptyDrafts) query = query.Where(x => x.Status != "Draft" || x.TransactionItems.Any());
 
         if (!string.IsNullOrEmpty(status))
         {

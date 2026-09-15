@@ -13,6 +13,55 @@ namespace TaxMate.Service.Tests;
 
 public class TaxProfileTransitionRegressionTests
 {
+    [Fact]
+    public async Task ResolvedThreeBAlert_DoesNotInviteAnotherConfirmation()
+    {
+        var f = new Fixture(4_000_000_000m);
+        f.ClockYear = 2026;
+        f.Owner.PersonalIncomeTaxMethod = PersonalIncomeTaxMethods.IncomeBased;
+        f.Owner.TaxMethodEffectiveYear = 2026;
+        f.Alerts.Add(new RevenueThresholdAlert {
+            Id = Guid.NewGuid(), OwnerId = f.Owner.Id, Year = 2026,
+            ThresholdCode = RevenueThresholdCodes.Crossed3B,
+            ThresholdAmount = 3_000_000_000m, Status = RevenueThresholdAlertStatuses.Resolved
+        });
+        f.ReturnEvaluatedAlerts();
+        var reviews = await f.ProfileService().GetThresholdReviewsAsync(f.Owner.Id, f.Business.Id, 2026);
+        var review = Assert.Single(reviews);
+        Assert.False(review.CanConfirm);
+        Assert.Contains("đã được xử lý", review.Message);
+        Assert.Equal(PersonalIncomeTaxMethods.IncomeBased, f.Owner.PersonalIncomeTaxMethod);
+        Assert.Equal(2026, f.Owner.TaxMethodEffectiveYear);
+    }
+
+    [Theory]
+    [InlineData(2026, false)]
+    [InlineData(2025, true)]
+    public async Task HistoricalConclusion_CannotClearLaterProfile(int effectiveYear, bool filedLater)
+    {
+        var f = new Fixture(0m);
+        f.ClockYear = 2026;
+        f.Owner.TaxMethodEffectiveYear = effectiveYear;
+        if (filedLater) f.CompleteQuarters(PersonalIncomeTaxMethods.RevenueBased);
+        var preview = await f.ProfileService().PreviewAnnualConclusionAsync(f.Owner.Id, f.Business.Id, 2025);
+        Assert.False(preview.CanConfirm);
+        Assert.Contains(preview.BlockingIssues, x => x.Code == "LaterTaxProfileInUse");
+        await Assert.ThrowsAsync<ConflictException>(() => f.ProfileService().ConfirmAnnualConclusionAsync(
+            f.Owner.Id, f.Business.Id, 2025, new ConfirmAnnualRevenueConclusionRequest(true, null)));
+        Assert.Equal(PersonalIncomeTaxMethods.RevenueBased, f.Owner.PersonalIncomeTaxMethod);
+        Assert.Equal(effectiveYear, f.Owner.TaxMethodEffectiveYear);
+    }
+
+    [Fact]
+    public async Task GenuineZeroRevenue_CanStillConcludeWithoutLaterProfile()
+    {
+        var f = new Fixture(0m);
+        f.CompleteQuarters(PersonalIncomeTaxMethods.RevenueBased);
+        var result = await f.ProfileService().ConfirmAnnualConclusionAsync(f.Owner.Id, f.Business.Id, 2026,
+            new ConfirmAnnualRevenueConclusionRequest(true, null));
+        Assert.True(result.AlreadyConfirmed);
+    }
+
     [Theory]
     [InlineData(PersonalIncomeTaxMethods.RevenueBased)]
     [InlineData(PersonalIncomeTaxMethods.IncomeBased)]
@@ -209,6 +258,8 @@ public class TaxProfileTransitionRegressionTests
             evaluator.Setup(x => x.EvaluateAsync(Owner.Id, Business.Id, It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
             periods.Setup(x => x.GetOwnerTaxMethodHistoryAsync(Owner.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
         }
+        public void ReturnEvaluatedAlerts() => evaluator.Setup(x => x.EvaluateAsync(
+            Owner.Id, Business.Id, It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(Alerts);
         public void CompleteQuarters(string method) => periods.Setup(x => x.GetOwnerQuarterlyFilingStatesAsync(
                 Owner.Id, 2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Enumerable.Range(1, 4).Select(q => new OwnerQuarterlyFilingState(Guid.NewGuid(), q,

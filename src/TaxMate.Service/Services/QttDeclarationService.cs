@@ -103,6 +103,15 @@ public sealed class QttDeclarationService : IQttDeclarationService
             x.PayableAmount)).ToList();
     }
 
+    public async Task<QttDeclarationResponse?> GetAsync(Guid userId, Guid businessId, int year, CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        var period = await _taxPeriods.GetYearAsync(businessId, year, cancellationToken);
+        if (period is null) return null;
+        var existing = await _declarations.GetCurrentByTaxPeriodAndFormAsync(period.Id, TaxFormCodes.Form02CnkdTncnQtt, cancellationToken);
+        return existing is null ? null : Map(existing, ReadFormSnapshot(existing));
+    }
+
     public async Task<QttDeclarationResponse> CreateAsync(
         Guid userId,
         Guid businessId,
