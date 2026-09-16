@@ -350,6 +350,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                     transaction.Status != "Completed" &&
                     transaction.Status != "Cancelled"),
                 MissingInvoiceCount = group.Count(transaction =>
+                    transaction.Status == "Completed" &&
                     transaction.Invoice == null),
                 Revenue = group.Where(transaction => transaction.Status == "Completed").Sum(t => (decimal?)t.TotalAmount) ?? 0m
             })
@@ -444,7 +445,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 transaction.TransactionDate < endExclusive &&
                 transaction.TransactionType == TransactionTypes.Sale)
             .CountAsync(
-                transaction => transaction.Invoice == null,
+                transaction => transaction.Status == "Completed" && transaction.Invoice == null,
                 cancellationToken);
 
         var expenseSummary = await _dbContext.Expenses
@@ -609,7 +610,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
 
         var missingInvoiceCount = await transactions
             .CountAsync(
-                transaction => transaction.Invoice == null,
+                transaction => transaction.Status == "Completed" && transaction.Invoice == null,
                 cancellationToken);
 
         var expensesQuery = _dbContext.Expenses
