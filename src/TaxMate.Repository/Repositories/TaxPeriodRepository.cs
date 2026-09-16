@@ -268,13 +268,13 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             int year,
             CancellationToken cancellationToken = default)
     {
-        return await _dbContext.TaxPeriods.AsNoTracking()
+        var periods = await _dbContext.TaxPeriods.AsNoTracking()
             .Where(x =>
                 x.Business.OwnerId == ownerId &&
                 x.PeriodType == TaxPeriodTypes.Quarterly &&
                 x.Year == year &&
                 x.Quarter.HasValue)
-            .OrderBy(x => x.Quarter)
+            .OrderBy(x => x.CreatedAt)
             .ThenBy(x => x.Id)
             .Select(x => new OwnerQuarterlyFilingState(
                 x.Id,
@@ -291,8 +291,16 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 x.TaxDeclarations.Any(declaration =>
                     declaration.IsCurrent &&
                     declaration.Status == TaxDeclarationStatuses.Submitted &&
-                    declaration.FormCode == TaxFormCodes.Form01Cnkd)))
+                    declaration.FormCode == TaxFormCodes.Form01Cnkd),
+                x.BusinessId,
+                x.Business.BusinessName))
             .ToListAsync(cancellationToken);
+
+        return periods
+            .GroupBy(x => x.Quarter)
+            .Select(group => group.First())
+            .OrderBy(x => x.Quarter)
+            .ToList();
     }
 
     public async Task<TaxPeriodIdentity?> GetIdentityAsync(

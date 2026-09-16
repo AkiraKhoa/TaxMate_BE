@@ -128,7 +128,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                 .Where(x => !x.HasEvidence)
                 .Select(x => new S2cBookWarning(
                     "MissingExpenseEvidence",
-                    $"Khoản chi {x.VoucherNumber} chưa có ảnh hoặc tệp chứng từ.",
+                    $"Khoản chi {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) chưa có ảnh hoặc tệp chứng từ.",
                     x.ExpenseId,
                     true)))
             .Concat(expenses
@@ -137,7 +137,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                     string.IsNullOrWhiteSpace(x.S2cGroupCode))
                 .Select(x => new S2cBookWarning(
                     "ExpenseNotMappedToS2c",
-                    $"Khoản chi {x.VoucherNumber} chưa chọn nhóm S2c nên chưa được đưa vào chi phí dự kiến được trừ.",
+                    $"Khoản chi {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) chưa chọn nhóm S2c nên chưa được đưa vào chi phí dự kiến được trừ.",
                     x.ExpenseId,
                     true)))
             .Concat(expenseHistory
@@ -147,7 +147,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                     inventoryPurchaseIdsUsedByS2d.Contains(x.ExpenseId))
                 .Select(x => new S2cBookWarning(
                     "MissingInventoryPurchaseEvidence",
-                    $"Phiếu nhập {x.VoucherNumber} đang được S2d dùng để tính giá xuất nhưng chưa có ảnh hoặc tệp chứng từ.",
+                    $"Phiếu nhập {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) đang được S2d dùng để tính giá xuất nhưng chưa có ảnh hoặc tệp chứng từ.",
                     x.ExpenseId,
                     true)))
             .ToList();

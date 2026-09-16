@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.DTO.TaxPeriod;
+using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
 
 namespace TaxMate.Repository.Interfaces;
@@ -24,7 +24,9 @@ public sealed record OwnerQuarterlyFilingState(
     string PeriodStatus,
     bool HasCompletedIncomeBasedCalculation,
     bool HasCompletedRevenueBasedCalculation,
-    bool HasSubmittedDeclaration);
+    bool HasSubmittedDeclaration,
+    Guid BusinessId = default,
+    string BusinessName = "");
 
 public sealed record OwnerTaxMethodHistoryState(
     string TaxMethod,

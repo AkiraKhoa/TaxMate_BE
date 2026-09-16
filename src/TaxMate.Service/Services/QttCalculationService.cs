@@ -96,12 +96,10 @@ public sealed class QttCalculationService : IQttCalculationService
             throw new ConflictException("Kỳ quyết toán năm đã khóa và không thể tính lại.");
 
         var now = DateTime.UtcNow;
-        var (periodStart, periodEndExclusive) =
-            BangkokBusinessTime.GetCalendarYearNaiveUtc(year);
-        if (now < periodEndExclusive)
-            throw new ConflictException("Chưa thể chốt quyết toán trước khi năm kết thúc.");
         var aggregate = await _annualAggregate.PreviewAsync(userId, businessId, year, cancellationToken);
         var calculated = _engine.Calculate(aggregate);
+        var (periodStart, periodEndExclusive) =
+            BangkokBusinessTime.GetCalendarYearNaiveUtc(year);
         if (taxPeriod is null)
         {
             taxPeriod = new TaxPeriod

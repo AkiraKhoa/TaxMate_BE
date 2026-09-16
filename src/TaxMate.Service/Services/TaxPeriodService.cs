@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.Common;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
@@ -429,7 +429,7 @@ public class TaxPeriodService : ITaxPeriodService
                     new DateOnly(alert.Year, 12, 31), cancellationToken);
                 if (source.TotalRevenue > sourcePolicy.IncomeBasedRequirementThreshold)
                     throw new ConflictException(
-                        "Phải xác nhận chuyển sang IncomeBased trước khi tính kỳ đầu năm mới.");
+                        "Phải xác nhận chuyển sang phương pháp Doanh thu - Chi phí trước khi tính kỳ đầu năm mới.");
             }
         }
 

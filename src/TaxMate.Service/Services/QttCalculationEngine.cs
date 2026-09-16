@@ -121,7 +121,7 @@ public sealed class QttCalculationEngine : IQttCalculationEngine
 
     private static string BuildRateReason(decimal revenue, decimal rate) => rate switch
     {
-        0m => "Doanh thu năm không quá 1 tỷ đồng; QTT này chỉ xử lý khoản PIT IncomeBased đã nộp thừa.",
+        0m => "Doanh thu năm không quá 1 tỷ đồng; QTT này chỉ xử lý khoản thuế TNCN (Doanh thu - Chi phí) đã nộp thừa.",
         15m => "Doanh thu năm trên 1 tỷ đến 3 tỷ đồng nên áp dụng thuế suất 15%.",
         17m => "Doanh thu năm trên 3 tỷ đến 50 tỷ đồng nên áp dụng thuế suất 17%.",
         _ => $"Thuế suất {rate}% được xác định từ doanh thu năm {revenue:N0} đồng."

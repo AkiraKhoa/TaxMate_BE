@@ -511,9 +511,9 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
                 : isCrossed50
                     ? "Doanh thu đã vượt phạm vi TaxMate hỗ trợ lập hồ sơ thuế."
                     : deferredRevenueBased && currentYear <= alert.Year
-                        ? $"Năm {alert.Year} tiếp tục RevenueBased; IncomeBased bắt buộc từ năm {alert.Year + 1}."
+                        ? $"Năm {alert.Year} tiếp tục theo phương pháp Doanh thu; chuyển sang phương pháp Doanh thu - Chi phí từ năm {alert.Year + 1}."
                         : methodLock.IsLocked && isCrossed1
-                            ? $"IncomeBased còn ổn định đến hết năm {methodLock.LockedThroughYear}."
+                            ? $"Phương pháp Doanh thu - Chi phí còn ổn định đến hết năm {methodLock.LockedThroughYear}."
                             : "Hãy xác nhận phương pháp và nhóm doanh thu áp dụng.";
 
         return new RevenueThresholdReviewResponse
@@ -687,7 +687,7 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
             TaxYear = taxYear,
             AnnualRevenue = projection.TotalRevenue,
             RevenueThreshold = policy.AnnualRevenueThreshold,
-            ShouldShow = shouldShow && !alreadyConfirmed,
+            ShouldShow = shouldShow && !alreadyConfirmed && !laterElection && !laterFiling,
             CanConfirm = !alreadyConfirmed && issues.Count == 0,
             AlreadyConfirmed = alreadyConfirmed,
             CurrentRevenueBracket = owner.DeclaredRevenueBracket,

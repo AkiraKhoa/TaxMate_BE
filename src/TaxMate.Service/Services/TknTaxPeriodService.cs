@@ -288,7 +288,7 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
             throw new ConflictException(
                 current.RequiresPaymentSourceReview
                     ? "Khoản PIT đã nộp chưa truy được snapshot phương pháp nguồn; hãy rà soát trước khi tạo QTT."
-                    : "TKN này không đủ điều kiện tạo QTT xử lý PIT IncomeBased nộp thừa.");
+                    : "TKN này không đủ điều kiện tạo QTT xử lý thuế TNCN (Doanh thu - Chi phí) nộp thừa.");
         }
 
         if (choice == TknQttBridgeChoices.Refund &&

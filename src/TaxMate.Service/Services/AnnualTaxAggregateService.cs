@@ -109,6 +109,10 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             authenticatedOwnerId,
             year,
             cancellationToken) ?? ResolveConfiguredTaxMethod(owner, year);
+        var quarterStates = await _taxPeriods.GetOwnerQuarterlyFilingStatesAsync(
+            authenticatedOwnerId,
+            year,
+            cancellationToken);
 
         var s2cRevenue = s2cBooks.Sum(x => x.TotalRevenue);
         var deductibleMaterial = s2cBooks.Sum(x => x.MaterialCost);
@@ -140,7 +144,8 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             inventoryBooks,
             checks,
             taxMethodSnapshot,
-            paymentLines);
+            paymentLines,
+            quarterStates);
         if (s2b.TotalRevenue > FiftyBillion)
         {
             hardBlockers.Add(new QttPreviewIssue(
@@ -283,7 +288,8 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
         IReadOnlyDictionary<Guid, IReadOnlyList<S2dBook>> inventoryBooks,
         IEnumerable<QttCrossBookCheck> checks,
         string? taxMethodSnapshot,
-        IReadOnlyCollection<QttPitPaymentLine> payments)
+        IReadOnlyCollection<QttPitPaymentLine> payments,
+        IReadOnlyList<OwnerQuarterlyFilingState> quarterStates)
     {
         var blockers = s2b.Blockers.Select(x => new QttPreviewIssue(
             x.Code,
@@ -308,6 +314,36 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             .Select(x => new QttPreviewIssue(
                 x.Code,
                 $"{x.Label} đang lệch {Math.Abs(x.ExpectedAmount - x.ActualAmount):N0} đồng.")));
+
+        for (var quarter = 1; quarter <= 4; quarter++)
+        {
+            var states = quarterStates.Where(x => x.Quarter == quarter).ToList();
+            var openStates = states.Where(x => x.PeriodStatus == TaxPeriodStatuses.Open).ToList();
+            var isClosed = states.Count > 0 && openStates.Count == 0;
+            if (!isClosed)
+            {
+                if (openStates.Count > 0)
+                {
+                    foreach (var openState in openStates)
+                    {
+                        var bizName = !string.IsNullOrWhiteSpace(openState.BusinessName)
+                            ? openState.BusinessName
+                            : "Cơ sở kinh doanh";
+                        blockers.Add(new QttPreviewIssue(
+                            $"Quarter{quarter}NotClosed",
+                            $"Quý {quarter} — {bizName}",
+                            openState.BusinessId,
+                            openState.TaxPeriodId));
+                    }
+                }
+                else
+                {
+                    blockers.Add(new QttPreviewIssue(
+                        $"Quarter{quarter}NotClosed",
+                        $"Quý {quarter} chưa đóng kỳ kê khai thuế trước khi quyết toán năm."));
+                }
+            }
+        }
 
         if (taxMethodSnapshot != PersonalIncomeTaxMethods.IncomeBased &&
             payments.Any(x =>
