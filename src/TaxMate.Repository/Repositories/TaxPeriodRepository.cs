@@ -320,6 +320,73 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             : null;
     }
 
+    private async Task<List<TaxPeriodBusinessBreakdown>> GetBusinessBreakdownsAsync(
+        List<Guid> businessIds,
+        DateTime startDate,
+        DateTime endExclusive,
+        CancellationToken cancellationToken)
+    {
+        var businessProfiles = await _dbContext.BusinessProfiles
+            .AsNoTracking()
+            .Where(x => businessIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.BusinessName })
+            .ToListAsync(cancellationToken);
+
+        var perBusinessTransactions = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction =>
+                businessIds.Contains(transaction.BusinessId) &&
+                transaction.TransactionDate >= startDate &&
+                transaction.TransactionDate < endExclusive &&
+                transaction.TransactionType == TransactionTypes.Sale)
+            .GroupBy(transaction => transaction.BusinessId)
+            .Select(group => new
+            {
+                BusinessId = group.Key,
+                TransactionCount = group.Count(),
+                PaidTransactionCount = group.Count(transaction =>
+                    transaction.Status == "Completed"),
+                UnpaidTransactionCount = group.Count(transaction =>
+                    transaction.Status != "Completed" &&
+                    transaction.Status != "Cancelled"),
+                MissingInvoiceCount = group.Count(transaction =>
+                    transaction.Invoice == null),
+                Revenue = group.Where(transaction => transaction.Status == "Completed").Sum(t => (decimal?)t.TotalAmount) ?? 0m
+            })
+            .ToListAsync(cancellationToken);
+
+        var perBusinessExpenses = await _dbContext.Expenses
+            .AsNoTracking()
+            .Where(expense =>
+                businessIds.Contains(expense.BusinessId) &&
+                expense.ExpenseDate >= startDate &&
+                expense.ExpenseDate < endExclusive)
+            .GroupBy(expense => expense.BusinessId)
+            .Select(group => new
+            {
+                BusinessId = group.Key,
+                ExpenseCount = group.Count()
+            })
+            .ToListAsync(cancellationToken);
+
+        return businessProfiles.Select(bp =>
+        {
+            var tx = perBusinessTransactions.FirstOrDefault(t => t.BusinessId == bp.Id);
+            var exp = perBusinessExpenses.FirstOrDefault(e => e.BusinessId == bp.Id);
+            return new TaxPeriodBusinessBreakdown
+            {
+                BusinessId = bp.Id,
+                BusinessName = bp.BusinessName,
+                TransactionCount = tx?.TransactionCount ?? 0,
+                PaidTransactionCount = tx?.PaidTransactionCount ?? 0,
+                UnpaidTransactionCount = tx?.UnpaidTransactionCount ?? 0,
+                MissingInvoiceCount = tx?.MissingInvoiceCount ?? 0,
+                ExpenseCount = exp?.ExpenseCount ?? 0,
+                Revenue = tx?.Revenue ?? 0m
+            };
+        }).ToList();
+    }
+
     public async Task<TaxPeriodDetailResponse?> GetDetailAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default)
@@ -364,7 +431,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 PaidTransactionCount = group.Count(transaction =>
                     transaction.Status == "Completed"),
                 UnpaidTransactionCount = group.Count(transaction =>
-                    transaction.Status != "Completed")
+                    transaction.Status != "Completed" &&
+                    transaction.Status != "Cancelled")
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -392,6 +460,12 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 TotalExpense = group.Sum(expense => expense.Amount)
             })
             .FirstOrDefaultAsync(cancellationToken);
+
+        var businessBreakdowns = await GetBusinessBreakdownsAsync(
+            businessIds,
+            startDate,
+            endExclusive,
+            cancellationToken);
 
         var transactionCount =
             transactionSummary?.TransactionCount ?? 0;
@@ -446,7 +520,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             PaidDate = period.PaidDate,
             ClosedAt = period.ClosedAt,
             CalculatedAt = period.CalculatedAt,
-            SubmittedAt = period.SubmittedAt
+            SubmittedAt = period.SubmittedAt,
+            BusinessBreakdowns = businessBreakdowns
         };
     }
 
@@ -605,6 +680,12 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                     ? "Warning"
                     : "Good";
 
+        var businessBreakdowns = await GetBusinessBreakdownsAsync(
+            businessIds,
+            startDate,
+            endExclusive,
+            cancellationToken);
+
         return new TaxPeriodPreviewResponse
         {
             TaxPeriodId = period.Id,
@@ -623,7 +704,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             ExpenseCount = expenseCount,
             DataCheckStatus = dataCheckStatus,
             CanClose = transactionCount > 0,
-            Warnings = warnings
+            Warnings = warnings,
+            BusinessBreakdowns = businessBreakdowns
         };
     }
 
@@ -632,7 +714,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
     {
         return _dbContext.SaveChangesAsync(cancellationToken);
     }
-    
+
     public async Task<int> GetNextCalculationVersionAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default)

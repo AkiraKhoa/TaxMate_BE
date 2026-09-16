@@ -18,7 +18,8 @@ public interface IOrderService
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? search = null,
-        bool excludeEmptyDrafts = false);
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null);
 
     Task AddItemAsync(Guid transactionId, AddOrderItemRequest request);
     Task UpdateItemAsync(Guid transactionId, Guid itemId, UpdateOrderItemRequest request);

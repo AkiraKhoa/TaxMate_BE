@@ -39,7 +39,8 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? search = null,
-        bool excludeEmptyDrafts = false)
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null)
     {
         var query = _dbSet
             .Include(x => x.TransactionItems)
@@ -58,7 +59,26 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
 
         if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(x => x.Status == status);
+            if (string.Equals(status, "Unpaid", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.Status != "Completed" && x.Status != "Cancelled");
+            }
+            else
+            {
+                query = query.Where(x => x.Status == status);
+            }
+        }
+
+        if (hasInvoice.HasValue)
+        {
+            if (hasInvoice.Value)
+            {
+                query = query.Where(x => x.InvoiceId != null && x.InvoiceId != "");
+            }
+            else
+            {
+                query = query.Where(x => x.InvoiceId == null || x.InvoiceId == "");
+            }
         }
 
         if (!string.IsNullOrEmpty(paymentMethod))
@@ -93,7 +113,8 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? search = null,
-        bool excludeEmptyDrafts = false)
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null)
     {
         var query = _dbSet.Where(x => x.BusinessId == businessId);
 
@@ -110,7 +131,26 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
 
         if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(x => x.Status == status);
+            if (string.Equals(status, "Unpaid", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.Status != "Completed" && x.Status != "Cancelled");
+            }
+            else
+            {
+                query = query.Where(x => x.Status == status);
+            }
+        }
+
+        if (hasInvoice.HasValue)
+        {
+            if (hasInvoice.Value)
+            {
+                query = query.Where(x => x.InvoiceId != null && x.InvoiceId != "");
+            }
+            else
+            {
+                query = query.Where(x => x.InvoiceId == null || x.InvoiceId == "");
+            }
         }
 
         if (!string.IsNullOrEmpty(paymentMethod))

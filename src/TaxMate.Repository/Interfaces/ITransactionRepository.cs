@@ -17,7 +17,8 @@ public interface ITransactionRepository : IGenericRepository<Transaction>
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? search = null,
-        bool excludeEmptyDrafts = false);
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null);
     Task<string> GenerateTransactionCodeAsync(Guid businessId);
     Task<int> CountByBusinessIdAsync(
         Guid businessId,
@@ -28,7 +29,8 @@ public interface ITransactionRepository : IGenericRepository<Transaction>
         DateTime? startDate = null,
         DateTime? endDate = null,
         string? search = null,
-        bool excludeEmptyDrafts = false);
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null);
     Task<IEnumerable<Transaction>> GetAwaitingTransactionsWithPaymentsAsync();
     Task<bool> TryTransitionStatusAsync(Guid transactionId, string expectedStatus, string targetStatus);
 }

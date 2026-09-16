@@ -70,7 +70,8 @@ public class OrderController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] string? search = null,
-        [FromQuery] bool excludeEmptyDrafts = false)
+        [FromQuery] bool excludeEmptyDrafts = false,
+        [FromQuery] bool? hasInvoice = null)
     {
         int activePage = page ?? pageNumber;
         if (activePage < 1 || pageSize < 1 || (startDate.HasValue && endDate.HasValue && startDate >= endDate))
@@ -84,7 +85,7 @@ public class OrderController : ControllerBase
             status,
             paymentMethod,
             minAmount,
-            maxAmount, startDate, endDate, search, excludeEmptyDrafts);
+            maxAmount, startDate, endDate, search, excludeEmptyDrafts, hasInvoice);
         return Ok(
             ApiResponse<PagedResult<OrderSummaryResponse>>.Ok(
                 result,
