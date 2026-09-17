@@ -19,6 +19,7 @@ public sealed class S2cBookProjection
         MaterialCost + LaborCost + PurchasedServicesCost + OtherDirectCost;
     public decimal NetIncome => TotalRevenue - TotalExpense;
     public IReadOnlyList<S2cExpenseLine> Lines { get; init; } = [];
+    public IReadOnlyList<S2cExpenseReviewLine> ReviewLines { get; init; } = [];
     public IReadOnlyList<S2cBookWarning> Warnings { get; init; } = [];
     public bool IsReady => Warnings.Count == 0;
 }
@@ -38,3 +39,14 @@ public sealed record S2cBookWarning(
     string Message,
     Guid? SourceId = null,
     bool CanOverride = false);
+
+// Source amounts are not necessarily deductible amounts (especially inventory purchases).
+public sealed record S2cExpenseReviewLine(
+    Guid ExpenseId,
+    string SourceType,
+    string VoucherNumber,
+    DateTime ExpenseDate,
+    string ExpenseTitle,
+    decimal Amount,
+    decimal? IncludedAmount,
+    IReadOnlyList<string> IssueCodes);

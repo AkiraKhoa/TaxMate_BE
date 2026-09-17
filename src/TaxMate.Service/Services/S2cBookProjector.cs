@@ -152,6 +152,27 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                     true)))
             .ToList();
 
+        var reviewLines = expenseHistory
+            .Where(x => expenses.Any(e => e.ExpenseId == x.ExpenseId) ||
+                        warnings.Any(w => w.SourceId == x.ExpenseId))
+            .Select(x =>
+            {
+                var issues = warnings.Where(w => w.SourceId == x.ExpenseId)
+                    .Select(w => w.Code).ToList();
+                if (excludedCashIds.Contains(x.ExpenseId))
+                    issues.Add("CashExpenseExcluded");
+                if (!x.IsInventoryPurchase && x.S2cGroupCode == S2cGroupCodes.Labor)
+                    issues.Add("LaborExpenseUnsupported");
+                var included = lines.FirstOrDefault(line => line.ExpenseId == x.ExpenseId);
+                return new S2cExpenseReviewLine(
+                    x.ExpenseId,
+                    x.IsInventoryPurchase ? "inventoryPurchase" : "expense",
+                    x.VoucherNumber, x.ExpenseDate, x.ExpenseTitle, x.Amount,
+                    x.IsInventoryPurchase ? null : included?.Amount ?? 0m,
+                    issues);
+            })
+            .OrderBy(x => x.ExpenseDate).ThenBy(x => x.VoucherNumber).ToList();
+
         return new S2cBookProjection
         {
             BusinessId = businessId,
@@ -172,6 +193,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
             EvidenceReviewedAt = taxPeriod?.EvidenceReviewedAt,
             EvidenceReviewedByUserId = taxPeriod?.EvidenceReviewedByUserId,
             Lines = lines,
+            ReviewLines = reviewLines,
             Warnings = warnings
         };
     }

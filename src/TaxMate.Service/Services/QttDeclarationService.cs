@@ -588,6 +588,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         Status = declaration.Status,
         TaxpayerName = declaration.TaxpayerName,
         TaxCode = declaration.TaxCode,
+        TaxpayerAddress = snapshot.TaxpayerAddress,
         Indicators = snapshot.Indicators,
         InventoryTotals = snapshot.InventoryTotals,
         InventoryRows = snapshot.InventoryRows,

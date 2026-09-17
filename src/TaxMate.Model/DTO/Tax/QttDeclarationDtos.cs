@@ -11,6 +11,7 @@ public sealed class QttDeclarationResponse
     public string Status { get; init; } = null!;
     public string TaxpayerName { get; init; } = null!;
     public string TaxCode { get; init; } = null!;
+    public string? TaxpayerAddress { get; init; }
     public QttIndicators09To24 Indicators { get; init; } = null!;
     public QttInventoryTotals31To34 InventoryTotals { get; init; } = null!;
     public IReadOnlyList<QttInventoryRow> InventoryRows { get; init; } = [];

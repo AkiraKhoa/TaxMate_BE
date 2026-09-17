@@ -99,6 +99,10 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
     Task SaveChangesAsync(
         CancellationToken cancellationToken = default);
 
+    Task<int> CancelDraftTransactionsAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
     Task<int> GetNextCalculationVersionAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);

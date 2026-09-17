@@ -926,4 +926,42 @@ public class TaxPeriodService : ITaxPeriodService
                 "Use the dedicated TKN workflow for this tax period.");
         }
     }
+
+    public async Task<int> CancelDraftsAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = await _taxPeriodRepository.GetIdentityAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (identity is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        if (identity.OwnerId != userId)
+        {
+            throw new ForbiddenException(
+                "You do not have permission to access this business.");
+        }
+
+        var period = await _taxPeriodRepository.GetCanonicalByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (period is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        if (period.Status != TaxPeriodStatuses.Open)
+        {
+            throw new BadRequestException(
+                $"Tax period must be in Open status to cancel drafts. Current status: {period.Status}.");
+        }
+
+        return await _taxPeriodRepository.CancelDraftTransactionsAsync(
+            taxPeriodId,
+            cancellationToken);
+    }
 }

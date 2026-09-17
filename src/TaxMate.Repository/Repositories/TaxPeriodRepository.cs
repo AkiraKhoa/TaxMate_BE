@@ -973,4 +973,37 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                        cancellationToken)
                ?? 0m;
     }
+
+    public async Task<int> CancelDraftTransactionsAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var period = await GetCanonicalByIdAsync(taxPeriodId, cancellationToken);
+        if (period == null) return 0;
+
+        var ownerId = await GetOwnerIdByBusinessAsync(period.BusinessId, cancellationToken);
+        if (ownerId == null) return 0;
+
+        var businessIds = await _dbContext.BusinessProfiles
+            .AsNoTracking()
+            .Where(b => b.OwnerId == ownerId)
+            .Select(b => b.Id)
+            .ToListAsync(cancellationToken);
+
+        var startDate = period.PeriodStartDate;
+        var endExclusive = period.PeriodEndDate;
+
+        var affectedRows = await _dbContext.Transactions
+            .Where(tx =>
+                businessIds.Contains(tx.BusinessId) &&
+                tx.Status == "Draft" &&
+                tx.TransactionDate >= startDate &&
+                tx.TransactionDate < endExclusive)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(t => t.Status, "Cancelled")
+                .SetProperty(t => t.UpdatedAt, DateTime.UtcNow),
+                cancellationToken);
+
+        return affectedRows;
+    }
 }

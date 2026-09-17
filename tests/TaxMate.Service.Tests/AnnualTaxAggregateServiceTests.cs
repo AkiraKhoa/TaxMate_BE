@@ -85,6 +85,8 @@ public class AnnualTaxAggregateServiceTests
         Assert.False(preview.CanClose);
         Assert.Contains(preview.HardBlockers, b => b.Code == "Quarter4NotClosed");
         Assert.DoesNotContain(preview.HardBlockers, b => b.Code == "Quarter1NotClosed");
+        Assert.False(preview.Quarters.Single(x => x.Quarter == 4).Closed);
+        Assert.NotNull(preview.Quarters.Single(x => x.Quarter == 4).TaxPeriodId);
     }
 
     [Fact]
@@ -111,5 +113,48 @@ public class AnnualTaxAggregateServiceTests
 
         Assert.DoesNotContain(preview.HardBlockers, b => b.Code.StartsWith("Quarter") && b.Code.EndsWith("NotClosed"));
         Assert.True(preview.CanClose);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ReviewDataPreservesBusinessQuarterAndSourceAmounts()
+    {
+        var secondBusiness = Guid.NewGuid();
+        var sourceId = Guid.NewGuid();
+        _taxPeriods.Setup(x => x.GetBusinessesWithCategoriesByOwnerAsync(_ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new BusinessProfile { Id = _businessId, OwnerId = _ownerId, BusinessName = "Cửa hàng A" },
+                new BusinessProfile { Id = secondBusiness, OwnerId = _ownerId, BusinessName = "Cửa hàng B" }
+            ]);
+        _taxPeriods.Setup(x => x.GetOwnerQuarterlyFilingStatesAsync(_ownerId, Year, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _inventoryMovements.Setup(x => x.GetBeforeAsync(secondBusiness, It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        _s2dProjector.Setup(x => x.ProjectQuarter(secondBusiness, It.IsAny<IReadOnlyList<InventoryMovement>>(), Year, It.IsAny<int>(), It.IsAny<bool>()))
+            .Returns(new S2dBook { BusinessId = secondBusiness });
+        _s2cProjector.Setup(x => x.ProjectQuarterAsync(_ownerId, secondBusiness, Year, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new S2cBookProjection { BusinessId = secondBusiness });
+        _s2cProjector.Setup(x => x.ProjectQuarterAsync(_ownerId, secondBusiness, Year, 3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new S2cBookProjection
+            {
+                BusinessId = secondBusiness,
+                ReviewLines = [new S2cExpenseReviewLine(sourceId, "inventoryPurchase", "PNK-3",
+                    new DateTime(2026, 8, 1), "Mua nguyên liệu", 8_000_000m, null, ["MissingInventoryPurchaseEvidence"])]
+            });
+        var service = new AnnualTaxAggregateService(_revenueProjector.Object, _s2cProjector.Object,
+            _s2dProjector.Object, _inventoryMovements.Object, _taxPeriods.Object, _users.Object);
+
+        var result = await service.PreviewAsync(_ownerId, _businessId, Year);
+
+        var row = Assert.Single(result.ExpenseReviewRows);
+        Assert.Equal(secondBusiness, row.BusinessId);
+        Assert.Equal(3, row.Quarter);
+        Assert.Equal(sourceId, row.SourceId);
+        Assert.Equal(8_000_000m, row.Amount);
+        Assert.Null(row.IncludedAmount); // Purchase value must never be called deductible expense.
+        var period = result.EvidenceReviewPeriods.Single(x => x.BusinessId == secondBusiness && x.Quarter == 3);
+        Assert.True(period.Required);
+        Assert.False(period.Reviewed);
+        Assert.Equal(8, result.EvidenceReviewPeriods.Count);
+        Assert.Contains(result.Warnings, x => x.Code == "EvidenceReviewRequired" && x.BusinessId == secondBusiness);
     }
 }
