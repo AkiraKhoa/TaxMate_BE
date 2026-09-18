@@ -14,8 +14,6 @@ public sealed class QttCalculationEngine : IQttCalculationEngine
     public QttCalculationPreviewResponse Calculate(QttPreviewResponse preview)
     {
         ArgumentNullException.ThrowIfNull(preview);
-        if (!preview.CanClose)
-            throw new ConflictException("Dữ liệu quyết toán còn nội dung phải xử lý trước khi tính thuế.");
 
         var indicator09a = RoundVnd(preview.Revenue.Indicator09a);
         var indicator09b = RoundVnd(preview.Revenue.Indicator09b);
@@ -103,7 +101,9 @@ public sealed class QttCalculationEngine : IQttCalculationEngine
                 0,
                 0,
                 DateTimeKind.Unspecified),
-            Warnings = preview.Warnings
+            Warnings = preview.Warnings,
+            HardBlockers = preview.HardBlockers,
+            CanClose = preview.CanClose
         };
     }
 

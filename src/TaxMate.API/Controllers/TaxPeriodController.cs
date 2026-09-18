@@ -85,6 +85,24 @@ public class TaxPeriodController : ControllerBase
                 "Tax period preview retrieved successfully.",
                 HttpContext.TraceIdentifier));
     }
+
+    [HttpGet("{taxPeriodId:guid}/calculation-preview")]
+    public async Task<IActionResult> GetCalculationPreview(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken)
+    {
+        var result =
+            await _taxPeriodService.GetCalculationPreviewAsync(
+                GetUserId(),
+                taxPeriodId,
+                cancellationToken);
+
+        return Ok(
+            ApiResponse<TaxCalculationResponse>.Ok(
+                result,
+                "Tax calculation preview retrieved successfully.",
+                HttpContext.TraceIdentifier));
+    }
     
     [HttpPost("{taxPeriodId:guid}/close")]
     public async Task<IActionResult> Close(

@@ -32,6 +32,12 @@ public sealed class TknTaxPeriodController : ControllerBase
             await _service.CalculateAsync(GetUserId(), taxPeriodId, token),
             "TKN period calculated successfully.", HttpContext.TraceIdentifier));
 
+    [HttpGet("{taxPeriodId:guid}/calculation-preview")]
+    public async Task<IActionResult> CalculationPreview(Guid taxPeriodId, CancellationToken token)
+        => Ok(ApiResponse<TknTaxCalculationResponse>.Ok(
+            await _service.GetCalculationPreviewAsync(GetUserId(), taxPeriodId, token),
+            "TKN period calculation preview retrieved successfully.", HttpContext.TraceIdentifier));
+
     [HttpGet("{taxPeriodId:guid}/qtt-next-step")]
     public async Task<IActionResult> GetQttNextStep(
         Guid taxPeriodId,

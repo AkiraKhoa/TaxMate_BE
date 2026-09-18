@@ -100,6 +100,17 @@ public class TaxBookService : ITaxBookService
             declarationId,
             cancellationToken);
 
+    public Task<TaxDeclarationGeneratedFile> ExportQttPreviewAsync(
+        Guid userId,
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default) =>
+        _qttDeclarationService.ExportPreviewAsync(
+            userId,
+            businessId,
+            year,
+            cancellationToken);
+
     public Task<IReadOnlyList<QttOffsetObligationOption>> GetQttOffsetObligationsAsync(
         Guid userId,
         Guid businessId,

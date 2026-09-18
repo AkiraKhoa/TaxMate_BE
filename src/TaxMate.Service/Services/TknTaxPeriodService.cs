@@ -197,6 +197,25 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
             TaxFormCodes.Form01TknCnkd, now);
     }
 
+    public async Task<TknTaxCalculationResponse> GetCalculationPreviewAsync(Guid userId,
+        Guid taxPeriodId, CancellationToken cancellationToken = default)
+    {
+        var context = await LoadAsync(userId, taxPeriodId, cancellationToken);
+        var projection = await GetRevenueProjectionAsync(
+            userId, context.Period, cancellationToken);
+        var policy = await GetPolicyAsync(context.Period, cancellationToken);
+        var now = UtcNow();
+        var total = projection.TotalRevenue;
+        return new TknTaxCalculationResponse(
+            context.Period.Id,
+            Guid.Empty,
+            0,
+            total,
+            policy.AnnualRevenueThreshold,
+            TaxFormCodes.Form01TknCnkd,
+            now);
+    }
+
     public async Task<TknQttNextStepResponse> GetQttNextStepAsync(
         Guid userId,
         Guid taxPeriodId,

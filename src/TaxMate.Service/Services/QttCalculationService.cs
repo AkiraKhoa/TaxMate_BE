@@ -97,6 +97,8 @@ public sealed class QttCalculationService : IQttCalculationService
 
         var now = DateTime.UtcNow;
         var aggregate = await _annualAggregate.PreviewAsync(userId, businessId, year, cancellationToken);
+        if (!aggregate.CanClose)
+            throw new ConflictException("Dữ liệu quyết toán còn nội dung phải xử lý trước khi tính thuế.");
         var calculated = _engine.Calculate(aggregate);
         var (periodStart, periodEndExclusive) =
             BangkokBusinessTime.GetCalendarYearNaiveUtc(year);

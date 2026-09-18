@@ -79,6 +79,64 @@ public sealed class QttDeclarationService : IQttDeclarationService
             cancellationToken);
     }
 
+    public async Task<TaxDeclarationGeneratedFile> ExportPreviewAsync(
+        Guid userId,
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        var business = await _taxPeriods.GetBusinessWithCategoryAsync(businessId, cancellationToken)
+            ?? throw new NotFoundException("Business profile not found.");
+
+        var saved = await GetAsync(userId, businessId, year, cancellationToken);
+        if (saved != null && (saved.Status == TaxDeclarationStatuses.Generated || saved.Status == TaxDeclarationStatuses.Submitted))
+        {
+            return await ExportAsync(userId, businessId, saved.DeclarationId, cancellationToken);
+        }
+
+        var now = DateTime.UtcNow;
+        var snapshot = new QttFormSnapshot
+        {
+            SchemaVersion = "2026.01",
+            LegalVersion = "2026.01",
+            TemplateVersion = "2026.01",
+            DeclarationId = Guid.Empty,
+            DeclarationCode = $"02-QTT-PREVIEW-{year}",
+            DeclarationVersion = 1,
+            DraftRevision = 1,
+            CalculationId = Guid.Empty,
+            CalculationVersion = 1,
+            OwnerId = userId,
+            TaxYear = year,
+            TaxpayerName = business.BusinessName,
+            TaxCode = business.Owner?.TaxCode ?? "0123456789",
+            TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
+            Indicators = saved?.Indicators ?? new QttIndicators09To24(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            InventoryTotals = saved?.InventoryTotals ?? new QttInventoryTotals31To34(0, 0, 0, 0),
+            InventoryRows = [],
+            RefundAccount = null,
+            OffsetItems = [],
+            CreatedAt = now
+        };
+
+        var file = await _documentGenerator.GenerateAsync(
+            new QttDocumentModel
+            {
+                Snapshot = snapshot,
+                ExportDate = DateTime.Now,
+                PaymentSupportRows = []
+            },
+            cancellationToken);
+
+        return new TaxDeclarationGeneratedFile
+        {
+            Content = file.Content,
+            FileName = $"02-CNKD-TNCN-QTT_XEM-TRUOC_{snapshot.TaxCode}_{year}.docx",
+            ContentType = file.ContentType
+        };
+    }
+
     public async Task<IReadOnlyList<QttOffsetObligationOption>> GetOffsetObligationsAsync(
         Guid userId,
         Guid businessId,
