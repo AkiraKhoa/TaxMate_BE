@@ -21,6 +21,8 @@ public sealed class QttDeclarationService : IQttDeclarationService
     private readonly IQttDocumentGenerator _documentGenerator;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAccountingTransactionLockRepository _transactionLock;
+    private readonly IAnnualTaxAggregateService? _annualTaxAggregate;
+    private readonly IQttCalculationEngine? _qttCalculationEngine;
 
     public QttDeclarationService(
         ITaxPeriodRepository taxPeriods,
@@ -28,7 +30,9 @@ public sealed class QttDeclarationService : IQttDeclarationService
         IGenericRepository<PaymentAccount> paymentAccounts,
         IQttDocumentGenerator documentGenerator,
         IUnitOfWork unitOfWork,
-        IAccountingTransactionLockRepository transactionLock)
+        IAccountingTransactionLockRepository transactionLock,
+        IAnnualTaxAggregateService? annualTaxAggregate = null,
+        IQttCalculationEngine? qttCalculationEngine = null)
     {
         _taxPeriods = taxPeriods;
         _declarations = declarations;
@@ -36,6 +40,8 @@ public sealed class QttDeclarationService : IQttDeclarationService
         _documentGenerator = documentGenerator;
         _unitOfWork = unitOfWork;
         _transactionLock = transactionLock;
+        _annualTaxAggregate = annualTaxAggregate;
+        _qttCalculationEngine = qttCalculationEngine;
     }
 
     public async Task<TaxDeclarationGeneratedFile> ExportAsync(
@@ -89,36 +95,97 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var business = await _taxPeriods.GetBusinessWithCategoryAsync(businessId, cancellationToken)
             ?? throw new NotFoundException("Business profile not found.");
 
-        var saved = await GetAsync(userId, businessId, year, cancellationToken);
-        if (saved != null && (saved.Status == TaxDeclarationStatuses.Generated || saved.Status == TaxDeclarationStatuses.Submitted))
+        var period = await _taxPeriods.GetYearAsync(businessId, year, cancellationToken);
+        var existing = period is null
+            ? null
+            : await _declarations.GetCurrentByTaxPeriodAndFormAsync(
+                period.Id,
+                TaxFormCodes.Form02CnkdTncnQtt,
+                cancellationToken);
+
+        if (existing is not null &&
+            (existing.Status == TaxDeclarationStatuses.Generated ||
+             existing.Status == TaxDeclarationStatuses.Submitted))
         {
-            return await ExportAsync(userId, businessId, saved.DeclarationId, cancellationToken);
+            return await ExportAsync(userId, businessId, existing.Id, cancellationToken);
         }
 
+        QttFormSnapshot snapshot;
         var now = DateTime.UtcNow;
-        var snapshot = new QttFormSnapshot
+
+        if (existing is not null)
         {
-            SchemaVersion = "2026.01",
-            LegalVersion = "2026.01",
-            TemplateVersion = "2026.01",
-            DeclarationId = Guid.Empty,
-            DeclarationCode = $"02-QTT-PREVIEW-{year}",
-            DeclarationVersion = 1,
-            DraftRevision = 1,
-            CalculationId = Guid.Empty,
-            CalculationVersion = 1,
-            OwnerId = userId,
-            TaxYear = year,
-            TaxpayerName = business.BusinessName,
-            TaxCode = business.Owner?.TaxCode ?? "0123456789",
-            TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
-            Indicators = saved?.Indicators ?? new QttIndicators09To24(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-            InventoryTotals = saved?.InventoryTotals ?? new QttInventoryTotals31To34(0, 0, 0, 0),
-            InventoryRows = [],
-            RefundAccount = null,
-            OffsetItems = [],
-            CreatedAt = now
-        };
+            // Tier 1: Draft declaration exists in DB -> read its full QttFormSnapshot (preserves InventoryRows, RefundAccount, OffsetItems)
+            snapshot = ReadFormSnapshot(existing);
+        }
+        else
+        {
+            QttIndicators09To24? indicators = null;
+            QttInventoryTotals31To34? inventoryTotals = null;
+            IReadOnlyList<QttInventoryRow> inventoryRows = [];
+
+            if (period is not null)
+            {
+                // Tier 2: Current TaxCalculation exists in DB
+                var calculation = await _declarations.GetCurrentCalculationWithLinesAsync(
+                    period.Id,
+                    TaxFormCodes.Form02CnkdTncnQtt,
+                    cancellationToken);
+
+                if (calculation is not null &&
+                    calculation.RecommendedFormCode == TaxFormCodes.Form02CnkdTncnQtt &&
+                    !string.IsNullOrWhiteSpace(calculation.CalculationDataJson))
+                {
+                    var calcSnapshot = JsonSerializer.Deserialize<QttCalculationSnapshot>(
+                        calculation.CalculationDataJson,
+                        JsonOptions);
+                    if (calcSnapshot is not null)
+                    {
+                        indicators = calcSnapshot.Calculation.Indicators;
+                        inventoryTotals = calcSnapshot.Calculation.InventoryTotals;
+                        inventoryRows = calcSnapshot.Aggregate.Inventory.Rows;
+                    }
+                }
+            }
+
+            if (indicators is null && _annualTaxAggregate is not null && _qttCalculationEngine is not null)
+            {
+                // Tier 3: Pure read-only live projection (identical to Web QTT preview)
+                var aggregate = await _annualTaxAggregate.PreviewAsync(
+                    userId,
+                    businessId,
+                    year,
+                    cancellationToken);
+                var calcPreview = _qttCalculationEngine.Calculate(aggregate);
+                indicators = calcPreview.Indicators;
+                inventoryTotals = calcPreview.InventoryTotals;
+                inventoryRows = aggregate.Inventory.Rows;
+            }
+
+            snapshot = new QttFormSnapshot
+            {
+                SchemaVersion = "2026.01",
+                LegalVersion = "2026.01",
+                TemplateVersion = "2026.01",
+                DeclarationId = Guid.Empty,
+                DeclarationCode = $"02-QTT-PREVIEW-{year}",
+                DeclarationVersion = 1,
+                DraftRevision = 1,
+                CalculationId = Guid.Empty,
+                CalculationVersion = 1,
+                OwnerId = userId,
+                TaxYear = year,
+                TaxpayerName = business.Owner?.FullName ?? business.BusinessName,
+                TaxCode = business.Owner?.TaxCode ?? "0123456789",
+                TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
+                Indicators = indicators ?? new QttIndicators09To24(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                InventoryTotals = inventoryTotals ?? new QttInventoryTotals31To34(0, 0, 0, 0),
+                InventoryRows = inventoryRows,
+                RefundAccount = null,
+                OffsetItems = [],
+                CreatedAt = now
+            };
+        }
 
         var file = await _documentGenerator.GenerateAsync(
             new QttDocumentModel

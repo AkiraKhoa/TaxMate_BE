@@ -12,10 +12,17 @@ public sealed record CloseTknTaxPeriodRequest(bool ConfirmWarnings);
 public sealed record CloseTknTaxPeriodResponse(Guid TaxPeriodId, string Status,
     decimal TotalRevenue, DateTime ClosedAt);
 
+public sealed record TknTaxCalculationLineResponse(
+    Guid BusinessCategoryId,
+    string BusinessCategoryCode,
+    string BusinessCategoryName,
+    decimal TotalRevenue);
+
 public sealed record TknTaxCalculationResponse(Guid TaxPeriodId,
     Guid TaxCalculationId, int Version, decimal TotalRevenue,
     decimal ApplicableRevenueThreshold, string RecommendedFormCode,
-    DateTime CalculatedAt);
+    DateTime CalculatedAt,
+    IReadOnlyList<TknTaxCalculationLineResponse>? Lines = null);
 
 public static class TknQttBridgeChoices
 {

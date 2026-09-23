@@ -15,7 +15,7 @@ namespace TaxMate.Service.Services;
 
 public class TaxBookService : ITaxBookService
 {
-    private readonly IGenericRepository<BusinessProfile> _businessProfiles;
+    private readonly IBusinessProfileRepository _businessProfiles;
     private readonly IGenericRepository<User> _users;
     private readonly IGenericRepository<Income> _incomeRepository;
     private readonly IOwnerRevenueProjector _ownerRevenueProjector;
@@ -35,7 +35,7 @@ public class TaxBookService : ITaxBookService
     private readonly IQttDeclarationService _qttDeclarationService;
 
     public TaxBookService(
-        IGenericRepository<BusinessProfile> businessProfiles,
+        IBusinessProfileRepository businessProfiles,
         IGenericRepository<User> users,
         IGenericRepository<Income> incomeRepository,
         IOwnerRevenueProjector ownerRevenueProjector,
@@ -74,7 +74,45 @@ public class TaxBookService : ITaxBookService
         _qttDeclarationService = qttDeclarationService;
     }
 
-    public Task<QttDeclarationResponse> CreateQttDeclarationAsync(
+    private async Task EnsureIncomeBasedEligibleAsync(
+        Guid userId,
+        Guid businessId,
+        CancellationToken cancellationToken)
+    {
+        var business = await _businessProfiles.GetByIdAsync(businessId)
+            ?? throw new NotFoundException("Business profile not found.");
+        if (business.OwnerId != userId)
+            throw new NotFoundException("Business profile not found.");
+
+        var user = await _users.GetByIdAsync(userId)
+            ?? throw new NotFoundException("User not found.");
+
+        if (user.DeclaredRevenueBracket == RevenueBrackets.AtOrBelow1B ||
+            user.PersonalIncomeTaxMethod != PersonalIncomeTaxMethods.IncomeBased)
+        {
+            throw new ConflictException(
+                "Chế độ sổ sách kế toán S2b–S2e và quyết toán thuế năm chỉ áp dụng cho hộ kinh doanh nộp thuế theo phương pháp Thu nhập tính thuế (IncomeBased).");
+        }
+    }
+
+    private async Task EnsureInventoryTrackingEligibleAsync(
+        Guid businessId,
+        CancellationToken cancellationToken)
+    {
+        var business = await _businessProfiles.GetByIdWithOwnerAndCategoryAsync(businessId)
+            ?? throw new NotFoundException("Business profile not found.");
+
+        var isService = business.MainCategoryId == Guid.Parse("d2222222-2222-2222-2222-222222222222") ||
+                        (business.MainCategory?.Name?.Contains("dịch vụ", StringComparison.OrdinalIgnoreCase) ?? false);
+
+        if (isService || business.IsStockTrackingEnabled == false)
+        {
+            throw new ConflictException(
+                "Cơ sở kinh doanh dịch vụ hoặc không theo dõi kho không áp dụng Sổ chi tiết vật liệu, dụng cụ, sản phẩm, hàng hóa (S2d).");
+        }
+    }
+
+    public async Task<QttDeclarationResponse> CreateQttDeclarationAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -82,71 +120,89 @@ public class TaxBookService : ITaxBookService
     {
         if (year is < 2000 or > 9998)
             throw new BadRequestException("Năm quyết toán không hợp lệ.");
-        return _qttDeclarationService.CreateAsync(
+
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
+        return await _qttDeclarationService.CreateAsync(
             userId,
             businessId,
             year,
             cancellationToken);
     }
 
-    public Task<TaxDeclarationGeneratedFile> ExportQttAsync(
+    public async Task<TaxDeclarationGeneratedFile> ExportQttAsync(
         Guid userId,
         Guid businessId,
         Guid declarationId,
-        CancellationToken cancellationToken = default) =>
-        _qttDeclarationService.ExportAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        return await _qttDeclarationService.ExportAsync(
             userId,
             businessId,
             declarationId,
             cancellationToken);
+    }
 
-    public Task<TaxDeclarationGeneratedFile> ExportQttPreviewAsync(
+    public async Task<TaxDeclarationGeneratedFile> ExportQttPreviewAsync(
         Guid userId,
         Guid businessId,
         int year,
-        CancellationToken cancellationToken = default) =>
-        _qttDeclarationService.ExportPreviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        return await _qttDeclarationService.ExportPreviewAsync(
             userId,
             businessId,
             year,
             cancellationToken);
+    }
 
-    public Task<IReadOnlyList<QttOffsetObligationOption>> GetQttOffsetObligationsAsync(
+    public async Task<IReadOnlyList<QttOffsetObligationOption>> GetQttOffsetObligationsAsync(
         Guid userId,
         Guid businessId,
-        CancellationToken cancellationToken = default) =>
-        _qttDeclarationService.GetOffsetObligationsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        return await _qttDeclarationService.GetOffsetObligationsAsync(
             userId,
             businessId,
             cancellationToken);
+    }
 
-    public Task<QttDeclarationResponse> UpdateQttOverpaymentAllocationAsync(
+    public async Task<QttDeclarationResponse> UpdateQttOverpaymentAllocationAsync(
         Guid userId,
         Guid businessId,
         Guid declarationId,
         UpdateQttOverpaymentAllocationRequest request,
-        CancellationToken cancellationToken = default) =>
-        _qttDeclarationService.UpdateAllocationAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        return await _qttDeclarationService.UpdateAllocationAsync(
             userId,
             businessId,
             declarationId,
             request,
             cancellationToken);
+    }
 
-    public Task<QttDeclarationResponse> ConfirmQttDeclarationAsync(
+    public async Task<QttDeclarationResponse> ConfirmQttDeclarationAsync(
         Guid userId,
         Guid businessId,
         Guid declarationId,
         ConfirmQttDeclarationRequest request,
-        CancellationToken cancellationToken = default) =>
-        _qttDeclarationService.ConfirmAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        return await _qttDeclarationService.ConfirmAsync(
             userId,
             businessId,
             declarationId,
             request,
             cancellationToken);
+    }
 
-    public Task<QttCalculationResponse> CalculateQttAsync(
+    public async Task<QttCalculationResponse> CalculateQttAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -155,7 +211,9 @@ public class TaxBookService : ITaxBookService
         if (year is < 2000 or > 9998)
             throw new BadRequestException("Năm quyết toán không hợp lệ.");
 
-        return _qttCalculationService.CalculateAsync(
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
+        return await _qttCalculationService.CalculateAsync(
             userId,
             businessId,
             year,
@@ -176,7 +234,7 @@ public class TaxBookService : ITaxBookService
         return _qttCalculationEngine.Calculate(preview);
     }
 
-    public Task<QttPreviewResponse> GetQttPreviewAsync(
+    public async Task<QttPreviewResponse> GetQttPreviewAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -185,7 +243,9 @@ public class TaxBookService : ITaxBookService
         if (year is < 2000 or > 9998)
             throw new BadRequestException("Năm quyết toán không hợp lệ.");
 
-        return _annualTaxAggregate.PreviewAsync(
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
+        return await _annualTaxAggregate.PreviewAsync(
             userId,
             businessId,
             year,
@@ -243,7 +303,7 @@ public class TaxBookService : ITaxBookService
             cancellationToken);
     }
 
-    public Task<S2cBookProjection> GetS2cPreviewAsync(
+    public async Task<S2cBookProjection> GetS2cPreviewAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -253,7 +313,9 @@ public class TaxBookService : ITaxBookService
         if (quarter is < 1 or > 4)
             throw new BadRequestException("Quý phải từ 1 đến 4.");
 
-        return _s2cProjector.ProjectQuarterAsync(
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
+        return await _s2cProjector.ProjectQuarterAsync(
             userId,
             businessId,
             year,
@@ -310,7 +372,7 @@ public class TaxBookService : ITaxBookService
             cancellationToken);
     }
 
-    public Task<OwnerRevenueProjection> GetS2bPreviewAsync(
+    public async Task<OwnerRevenueProjection> GetS2bPreviewAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -320,10 +382,12 @@ public class TaxBookService : ITaxBookService
         if (quarter is < 1 or > 4)
             throw new BadRequestException("Quý phải từ 1 đến 4.");
 
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
         var (fromInclusive, toExclusive) =
             BangkokBusinessTime.GetQuarterNaiveUtc(year, quarter);
 
-        return _ownerRevenueProjector.ProjectBusinessAsync(
+        return await _ownerRevenueProjector.ProjectBusinessAsync(
             userId,
             businessId,
             fromInclusive,
@@ -388,7 +452,7 @@ public class TaxBookService : ITaxBookService
             cancellationToken);
     }
 
-    public Task<S2eBookProjection> GetS2ePreviewAsync(
+    public async Task<S2eBookProjection> GetS2ePreviewAsync(
         Guid userId,
         Guid businessId,
         int year,
@@ -398,9 +462,11 @@ public class TaxBookService : ITaxBookService
         if (quarter is < 1 or > 4)
             throw new BadRequestException("Quý phải từ 1 đến 4.");
 
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+
         var (fromInclusive, toExclusive) =
             BangkokBusinessTime.GetQuarterNaiveUtc(year, quarter);
-        return _s2eProjector.ProjectAsync(
+        return await _s2eProjector.ProjectAsync(
             userId,
             businessId,
             fromInclusive,
@@ -453,6 +519,9 @@ public class TaxBookService : ITaxBookService
         int quarter,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        await EnsureInventoryTrackingEligibleAsync(businessId, cancellationToken);
+
         var book = await GetS2dPreviewAsync(
             userId,
             businessId,
@@ -486,6 +555,9 @@ public class TaxBookService : ITaxBookService
         int quarter,
         CancellationToken cancellationToken = default)
     {
+        await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
+        await EnsureInventoryTrackingEligibleAsync(businessId, cancellationToken);
+
         var business = await _businessProfiles.GetByIdAsync(businessId);
         if (business == null || business.OwnerId != userId)
         {

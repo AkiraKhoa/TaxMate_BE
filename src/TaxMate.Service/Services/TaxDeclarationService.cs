@@ -18,16 +18,19 @@ public class TaxDeclarationService : ITaxDeclarationService
     private readonly ITaxDeclarationRepository _taxDeclarationRepository;
     private readonly ITaxDeclarationDocumentGenerator _documentGenerator;
     private readonly ITknDeclarationDocumentGenerator _tknDocumentGenerator;
+    private readonly IOwnerRevenueProjector? _ownerRevenue;
     
     public TaxDeclarationService(ITaxPeriodRepository taxPeriodRepository,
         ITaxDeclarationRepository taxDeclarationRepository,
         ITaxDeclarationDocumentGenerator documentGenerator,
-        ITknDeclarationDocumentGenerator tknDocumentGenerator)
+        ITknDeclarationDocumentGenerator tknDocumentGenerator,
+        IOwnerRevenueProjector? ownerRevenue = null)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxDeclarationRepository = taxDeclarationRepository;
         _documentGenerator = documentGenerator;
         _tknDocumentGenerator = tknDocumentGenerator;
+        _ownerRevenue = ownerRevenue;
     }
     
     public async Task<TaxDeclarationResponse> CreateAsync(
@@ -854,6 +857,67 @@ public class TaxDeclarationService : ITaxDeclarationService
                 _ => "Year"
             };
 
+            List<Form01TknCnkd2026LineSnapshot> sectionALines;
+            decimal annualRevenue;
+
+            if (calculation is not null && calculation.Lines.Count > 0)
+            {
+                annualRevenue = calculation.AnnualRevenueAtCalculation > 0m
+                    ? calculation.AnnualRevenueAtCalculation
+                    : calculation.TotalRevenue;
+
+                sectionALines = calculation.Lines.Select(x => new Form01TknCnkd2026LineSnapshot(
+                    x.SectionCode ?? "I",
+                    "08",
+                    x.BusinessActivityCode ?? "HD1",
+                    x.BusinessActivityName ?? "Kinh doanh",
+                    business.Id,
+                    business.BusinessLocationCode,
+                    x.TotalRevenue,
+                    x.VatNonTaxableRevenue,
+                    x.ZeroRatedVatRevenue,
+                    x.VatTaxAmount,
+                    x.PersonalIncomeTaxableRevenue,
+                    x.PersonalIncomeTaxDeductibleRevenue,
+                    x.PersonalIncomeTaxAmount,
+                    x.DisplayOrder)).ToList();
+            }
+            else if (_ownerRevenue is not null)
+            {
+                var projection = await _ownerRevenue.ProjectAsync(
+                    userId,
+                    taxPeriod.BusinessId,
+                    taxPeriod.PeriodStartDate,
+                    taxPeriod.PeriodEndDate,
+                    cancellationToken);
+
+                annualRevenue = projection.TotalRevenue;
+                var order = 1;
+                sectionALines = projection.Groups
+                    .OrderBy(x => x.BusinessCategoryCode)
+                    .Select(g => new Form01TknCnkd2026LineSnapshot(
+                        "I",
+                        "08",
+                        g.BusinessCategoryCode,
+                        g.BusinessCategoryName,
+                        business.Id,
+                        business.BusinessLocationCode,
+                        g.TotalRevenue,
+                        g.TotalRevenue,
+                        0m,
+                        0m,
+                        0m,
+                        0m,
+                        0m,
+                        order++
+                    )).ToList();
+            }
+            else
+            {
+                annualRevenue = taxPeriod.TotalRevenue;
+                sectionALines = [];
+            }
+
             var tknSnapshot = new Form01TknCnkd2026Snapshot
             {
                 DeclarationId = Guid.Empty,
@@ -868,27 +932,13 @@ public class TaxDeclarationService : ITaxDeclarationService
                 WindowEnd = taxPeriod.PeriodEndDate,
                 DueDate = taxPeriod.DueDate,
                 IsNewBusinessAtOrBelowOneBillion = selector != "Year",
-                TaxpayerName = business.BusinessName,
+                TaxpayerName = business.Owner?.FullName ?? business.BusinessName,
                 TaxCode = business.Owner?.TaxCode ?? "0123456789",
                 TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
-                AnnualRevenueAtGeneration = taxPeriod.TotalRevenue,
+                AnnualRevenueAtGeneration = annualRevenue,
                 ApplicableThreshold = 100000000m,
                 CalculationRuleVersion = "2026.01",
-                SectionALines = calculation?.Lines.Select(x => new Form01TknCnkd2026LineSnapshot(
-                    x.SectionCode ?? "I",
-                    x.IndicatorCode ?? "[09]",
-                    x.BusinessActivityCode ?? "HD1",
-                    x.BusinessActivityName ?? "Kinh doanh",
-                    business.Id,
-                    business.BusinessLocationCode,
-                    x.TotalRevenue,
-                    x.VatNonTaxableRevenue,
-                    x.ZeroRatedVatRevenue,
-                    x.VatTaxAmount,
-                    x.PersonalIncomeTaxableRevenue,
-                    x.PersonalIncomeTaxDeductibleRevenue,
-                    x.PersonalIncomeTaxAmount,
-                    x.DisplayOrder)).ToList() ?? []
+                SectionALines = sectionALines
             };
 
             var file = await _tknDocumentGenerator.GenerateAsync(

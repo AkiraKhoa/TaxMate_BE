@@ -1,8 +1,15 @@
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
+using Moq;
 using TaxMate.Infrastructure.Documents.Tax;
+using TaxMate.Model.Common;
 using TaxMate.Model.Documents.Tax;
+using TaxMate.Model.Entities;
+using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Interfaces;
+using TaxMate.Service.Interfaces.Documents;
+using TaxMate.Service.Services;
 
 namespace TaxMate.Service.Tests;
 
@@ -83,6 +90,106 @@ public class OpenXmlTknDeclarationDocumentGeneratorTests
         Assert.Contains("15/01/2026", docxText);
         Assert.Contains("842.970.000", docxText);
         Assert.Contains("31 tháng 12 năm 2026", docxText);
+    }
+
+    [Fact]
+    public async Task ExportPreviewAsync_WhenTknPeriodIsOpenAndUncalculated_ProjectsRevenueIntoDocxTable()
+    {
+        var userId = Guid.NewGuid();
+        var businessId = Guid.NewGuid();
+        var taxPeriodId = Guid.NewGuid();
+        var startDate = new DateTime(2026, 1, 1);
+        var endDate = new DateTime(2026, 12, 31);
+
+        var taxPeriod = new TaxPeriod
+        {
+            Id = taxPeriodId,
+            BusinessId = businessId,
+            Year = 2026,
+            PeriodType = TaxPeriodTypes.Tkn,
+            FilingWindow = TknFilingWindows.Annual,
+            Status = TaxPeriodStatuses.Open,
+            PeriodStartDate = startDate,
+            PeriodEndDate = endDate,
+            DueDate = new DateTime(2027, 1, 31),
+            TotalRevenue = 0m
+        };
+
+        var business = new BusinessProfile
+        {
+            Id = businessId,
+            OwnerId = userId,
+            BusinessName = "Bếp nhà An",
+            Address = "123 Lê Lợi, Quận 1, TP.HCM",
+            BusinessLocationCode = "LOC-01",
+            Owner = new User
+            {
+                Id = userId,
+                FullName = "Nguyễn Minh An",
+                TaxCode = "012345678901"
+            }
+        };
+
+        var taxPeriodRepo = new Mock<ITaxPeriodRepository>();
+        taxPeriodRepo.Setup(x => x.GetByIdAsync(taxPeriodId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(taxPeriod);
+        taxPeriodRepo.Setup(x => x.BusinessBelongsToUserAsync(businessId, userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        taxPeriodRepo.Setup(x => x.GetBusinessWithCategoryAsync(businessId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(business);
+        taxPeriodRepo.Setup(x => x.GetBusinessesWithCategoriesByOwnerAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([business]);
+
+        var taxDeclarationRepo = new Mock<ITaxDeclarationRepository>();
+        taxDeclarationRepo.Setup(x => x.GetCurrentByTaxPeriodAsync(taxPeriodId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TaxDeclaration?)null);
+        taxDeclarationRepo.Setup(x => x.GetCurrentCalculationWithLinesAsync(taxPeriodId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TaxCalculation?)null);
+
+        var ownerRevenue = new Mock<IOwnerRevenueProjector>();
+        ownerRevenue.Setup(x => x.ProjectAsync(userId, businessId, startDate, endDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(
+                OwnerId: userId,
+                StartNaiveUtc: startDate,
+                EndExclusiveNaiveUtc: endDate.AddDays(1),
+                CompletedTransactionRevenue: 842_970_000m,
+                ManualBusinessRevenue: 24_000_000m,
+                Blockers: [])
+            {
+                Groups =
+                [
+                    new OwnerRevenueGroup(
+                        BusinessCategoryId: Guid.NewGuid(),
+                        BusinessCategoryCode: "ACT01",
+                        BusinessCategoryName: "Dịch vụ ăn uống",
+                        VatRate: 3m,
+                        CompletedTransactionRevenue: 842_970_000m,
+                        ManualBusinessRevenue: 24_000_000m)
+                ]
+            });
+
+        var docGenerator = new Mock<ITaxDeclarationDocumentGenerator>();
+        var tknGenerator = new OpenXmlTknDeclarationDocumentGenerator();
+
+        var service = new TaxDeclarationService(
+            taxPeriodRepo.Object,
+            taxDeclarationRepo.Object,
+            docGenerator.Object,
+            tknGenerator,
+            ownerRevenue.Object);
+
+        var exported = await service.ExportPreviewAsync(userId, taxPeriodId);
+
+        Assert.NotNull(exported);
+        Assert.Equal("01-TKN-CNKD_XEM-TRUOC_2026.docx", exported.FileName);
+        Assert.NotEmpty(exported.Content);
+
+        var docxText = ExtractAllText(exported.Content);
+
+        Assert.DoesNotContain("{{", docxText);
+        Assert.Contains("Nguyễn Minh An", docxText);
+        Assert.Contains("012345678901", docxText);
+        Assert.Contains("866.970.000", docxText);
     }
 
     private static string ExtractAllText(byte[] docxBytes)

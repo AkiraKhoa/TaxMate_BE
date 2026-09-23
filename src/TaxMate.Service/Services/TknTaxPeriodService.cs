@@ -192,9 +192,17 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
         context.Period.UpdatedAt = now;
         await _calculations.AddAsync(calculation);
         await _periods.SaveChangesAsync(cancellationToken);
+        var lineDtos = projection.Groups
+            .OrderBy(x => x.BusinessCategoryCode)
+            .Select(g => new TknTaxCalculationLineResponse(
+                g.BusinessCategoryId,
+                g.BusinessCategoryCode,
+                g.BusinessCategoryName,
+                g.TotalRevenue))
+            .ToList();
         return new TknTaxCalculationResponse(context.Period.Id, calculation.Id,
             version, total, policy.AnnualRevenueThreshold,
-            TaxFormCodes.Form01TknCnkd, now);
+            TaxFormCodes.Form01TknCnkd, now, lineDtos);
     }
 
     public async Task<TknTaxCalculationResponse> GetCalculationPreviewAsync(Guid userId,
@@ -206,6 +214,14 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
         var policy = await GetPolicyAsync(context.Period, cancellationToken);
         var now = UtcNow();
         var total = projection.TotalRevenue;
+        var lineDtos = projection.Groups
+            .OrderBy(x => x.BusinessCategoryCode)
+            .Select(g => new TknTaxCalculationLineResponse(
+                g.BusinessCategoryId,
+                g.BusinessCategoryCode,
+                g.BusinessCategoryName,
+                g.TotalRevenue))
+            .ToList();
         return new TknTaxCalculationResponse(
             context.Period.Id,
             Guid.Empty,
@@ -213,7 +229,8 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
             total,
             policy.AnnualRevenueThreshold,
             TaxFormCodes.Form01TknCnkd,
-            now);
+            now,
+            lineDtos);
     }
 
     public async Task<TknQttNextStepResponse> GetQttNextStepAsync(
