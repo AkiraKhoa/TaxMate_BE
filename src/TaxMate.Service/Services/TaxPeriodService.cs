@@ -370,7 +370,7 @@ public class TaxPeriodService : ITaxPeriodService
 
         RejectTknPeriod(taxPeriod);
 
-        if (taxPeriod.Status != TaxPeriodStatuses.Closed)
+        if (taxPeriod.Status != TaxPeriodStatuses.Closed && taxPeriod.Status != TaxPeriodStatuses.Calculated)
         {
             throw new BadRequestException(
                 $"Tax period must be in Closed status. Current status: {taxPeriod.Status}.");
@@ -490,17 +490,9 @@ public class TaxPeriodService : ITaxPeriodService
             throw new BadRequestException(
                 "Không có doanh thu kinh doanh trong cửa sổ tính thuế.");
 
-        var previousRevenue = calculationStart <= annualProjection.StartNaiveUtc
-            ? 0m
-            : (await _ownerRevenue.ProjectAsync(
-                anchorBusiness.OwnerId,
-                taxPeriod.BusinessId,
-                annualProjection.StartNaiveUtc,
-                calculationStart,
-                cancellationToken)).TotalRevenue;
         var remainingDeduction = taxMethod ==
                 PersonalIncomeTaxMethods.RevenueBased
-            ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
+            ? annualRevenueThreshold
             : 0m;
 
         // Phân bổ deduction cho PIT rate cao trước (phương án có lợi hơn).
@@ -986,17 +978,8 @@ public class TaxPeriodService : ITaxPeriodService
             };
         }
 
-        var previousRevenue = calculationStart <= annualProjection.StartNaiveUtc
-            ? 0m
-            : (await _ownerRevenue.ProjectAsync(
-                anchorBusiness.OwnerId,
-                taxPeriod.BusinessId,
-                annualProjection.StartNaiveUtc,
-                calculationStart,
-                cancellationToken)).TotalRevenue;
-
         var remainingDeduction = taxMethod == PersonalIncomeTaxMethods.RevenueBased
-            ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
+            ? annualRevenueThreshold
             : 0m;
 
         var pitDeductionByBusiness = new Dictionary<Guid, decimal>();
@@ -1107,15 +1090,7 @@ public class TaxPeriodService : ITaxPeriodService
         decimal threshold,
         int methodEffectiveYear)
     {
-        if (!period.Quarter.HasValue || methodEffectiveYear != period.Year)
-            return period.PeriodStartDate;
-
-        var crossingQuarter = ResolveFirstCrossingQuarter(annual, threshold);
-        if (!crossingQuarter.HasValue)
-            return period.PeriodStartDate;
-        return crossingQuarter.Value == period.Quarter.Value
-            ? annual.StartNaiveUtc
-            : period.PeriodStartDate;
+        return period.PeriodStartDate;
     }
 
     private static int? ResolveFirstCrossingQuarter(
