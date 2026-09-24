@@ -201,6 +201,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<DateTime?>("InventoryInitializedAt")
+                        .HasColumnType("timestamp without time zone");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -471,6 +474,11 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<string>("VoucherNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.HasKey("ExpenseId");
 
                     b.HasIndex("BusinessId");
@@ -482,6 +490,9 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("SupplierId");
 
                     b.HasIndex("BusinessId", "ExpenseDate");
+
+                    b.HasIndex("BusinessId", "VoucherNumber")
+                        .IsUnique();
 
                     b.ToTable("Expenses");
                 });
@@ -510,6 +521,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("S2cGroupCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -520,7 +535,10 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("BusinessId", "CategoryName")
                         .IsUnique();
 
-                    b.ToTable("ExpenseCategories");
+                    b.ToTable("ExpenseCategories", t =>
+                        {
+                            t.HasCheckConstraint("CK_ExpenseCategories_S2cGroupCode", "\"S2cGroupCode\" IS NULL OR \"S2cGroupCode\" IN ('Labor', 'PurchasedServices', 'OtherDirect')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Income", b =>
@@ -528,6 +546,10 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("IncomeId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AccountingType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
@@ -572,6 +594,9 @@ namespace TaxMate.Model.Migrations
                     b.Property<DateTime?>("ReceivedDate")
                         .HasColumnType("timestamp without time zone");
 
+                    b.Property<Guid?>("TransactionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -583,9 +608,16 @@ namespace TaxMate.Model.Migrations
 
                     b.HasIndex("IncomeDate");
 
+                    b.HasIndex("TransactionId")
+                        .IsUnique()
+                        .HasFilter("\"TransactionId\" IS NOT NULL");
+
                     b.HasIndex("BusinessId", "IncomeDate");
 
-                    b.ToTable("Incomes");
+                    b.ToTable("Incomes", t =>
+                        {
+                            t.HasCheckConstraint("CK_Incomes_AccountingType", "\"AccountingType\" IS NULL OR \"AccountingType\" IN ('BusinessRevenue', 'NonRevenueCashIn')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
@@ -650,8 +682,8 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("character varying(200)");
 
                     b.Property<decimal>("StockQuantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -680,6 +712,9 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("ExpenseId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IngredientId")
                         .HasColumnType("uuid");
@@ -717,6 +752,8 @@ namespace TaxMate.Model.Migrations
 
                     b.HasIndex("BusinessId");
 
+                    b.HasIndex("ExpenseId");
+
                     b.HasIndex("IngredientId");
 
                     b.HasIndex("InvoiceNumber");
@@ -728,6 +765,98 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("BusinessId", "PurchaseDate");
 
                     b.ToTable("IngredientPurchases");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.InventoryMovement", b =>
+                {
+                    b.Property<Guid>("InventoryMovementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("DocumentNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("IngredientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MovementType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("TotalValue")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("InventoryMovementId");
+
+                    b.HasIndex("IngredientId")
+                        .IsUnique()
+                        .HasFilter("\"MovementType\" = 'OpeningBalance' AND \"IngredientId\" IS NOT NULL");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique()
+                        .HasFilter("\"MovementType\" = 'OpeningBalance' AND \"ProductId\" IS NOT NULL");
+
+                    b.HasIndex("BusinessId", "OccurredAt");
+
+                    b.HasIndex("IngredientId", "OccurredAt")
+                        .HasFilter("\"IngredientId\" IS NOT NULL");
+
+                    b.HasIndex("MovementType", "ReferenceId");
+
+                    b.HasIndex("ProductId", "OccurredAt")
+                        .HasFilter("\"ProductId\" IS NOT NULL");
+
+                    b.HasIndex("MovementType", "ReferenceId", "IngredientId")
+                        .IsUnique()
+                        .HasFilter("\"ReferenceId\" IS NOT NULL AND \"IngredientId\" IS NOT NULL");
+
+                    b.HasIndex("MovementType", "ReferenceId", "ProductId")
+                        .IsUnique()
+                        .HasFilter("\"ReferenceId\" IS NOT NULL AND \"ProductId\" IS NOT NULL");
+
+                    b.ToTable("InventoryMovements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InventoryMovements_ExactlyOneItem", "(\"ProductId\" IS NOT NULL AND \"IngredientId\" IS NULL) OR (\"ProductId\" IS NULL AND \"IngredientId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_InventoryMovements_QuantityPositive", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_InventoryMovements_ReferenceShape", "(\"MovementType\" IN ('PurchaseIn', 'OrderOut') AND \"ReferenceId\" IS NOT NULL) OR (\"MovementType\" IN ('OpeningBalance', 'AdjustmentIn', 'AdjustmentOut') AND \"ReferenceId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_InventoryMovements_TotalValueNonNegative", "\"TotalValue\" IS NULL OR \"TotalValue\" >= 0");
+
+                            t.HasCheckConstraint("CK_InventoryMovements_Type", "\"MovementType\" IN ('OpeningBalance', 'PurchaseIn', 'OrderOut', 'AdjustmentIn', 'AdjustmentOut')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Invoice", b =>
@@ -927,6 +1056,61 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("LegalDocuments");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.MoneyMovement", b =>
+                {
+                    b.Property<Guid>("MoneyMovementId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("DocumentNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("MovementDate")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("MovementType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid>("PaymentAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ReferenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("MoneyMovementId");
+
+                    b.HasIndex("MovementType", "ReferenceId")
+                        .IsUnique();
+
+                    b.HasIndex("PaymentAccountId", "MovementDate");
+
+                    b.ToTable("MoneyMovements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MoneyMovements_AmountPositive", "\"Amount\" > 0");
+
+                            t.HasCheckConstraint("CK_MoneyMovements_Type", "\"MovementType\" IN ('PaymentIn', 'ManualIncomeIn', 'ExpenseOut')");
+                        });
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -980,48 +1164,6 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("Notifications");
                 });
 
-            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid>("OwnerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("Quarter")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("SentAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<decimal>("TotalRevenue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<DateTime>("WindowEnd")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<DateTime>("WindowStart")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OwnerId", "Year")
-                        .IsUnique();
-
-                    b.ToTable("RevenueThresholdAlerts");
-                });
-
             modelBuilder.Entity("TaxMate.Model.Entities.Payment", b =>
                 {
                     b.Property<Guid>("PaymentId")
@@ -1070,22 +1212,23 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("AccountName")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
                     b.Property<string>("AccountNumber")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<string>("BankName")
+                    b.Property<string>("AccountType")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("BankName")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
                     b.Property<string>("BankShortName")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
@@ -1111,6 +1254,16 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<decimal?>("InitialBalance")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)");
+
+                    b.Property<DateOnly?>("InitialBalanceDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
 
@@ -1125,9 +1278,30 @@ namespace TaxMate.Model.Migrations
 
                     b.HasIndex("BusinessId");
 
+                    b.HasIndex("SePayBankAccountXid")
+                        .IsUnique()
+                        .HasFilter("\"SePayBankAccountXid\" IS NOT NULL");
+
                     b.HasIndex("BusinessId", "IsDefault");
 
-                    b.ToTable("PaymentAccounts");
+                    b.HasIndex("BusinessId", "AccountType", "IsActive");
+
+                    b.HasIndex(new[] { "BusinessId" }, "IX_PaymentAccounts_OneActiveDefaultBank")
+                        .IsUnique()
+                        .HasFilter("\"AccountType\" = 'Bank' AND \"IsDefault\" = TRUE AND \"IsActive\" = TRUE");
+
+                    b.HasIndex(new[] { "BusinessId" }, "IX_PaymentAccounts_OneCashAccount")
+                        .IsUnique()
+                        .HasFilter("\"AccountType\" = 'Cash'");
+
+                    b.ToTable("PaymentAccounts", t =>
+                        {
+                            t.HasCheckConstraint("CK_PaymentAccounts_AccountType", "\"AccountType\" IN ('Cash', 'Bank')");
+
+                            t.HasCheckConstraint("CK_PaymentAccounts_BankFields", "\"AccountType\" <> 'Bank' OR (\"BankShortName\" IS NOT NULL AND \"BankName\" IS NOT NULL AND \"AccountNumber\" IS NOT NULL AND \"AccountName\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_PaymentAccounts_InitialBalancePair", "(\"InitialBalance\" IS NULL AND \"InitialBalanceDate\" IS NULL) OR (\"InitialBalance\" IS NOT NULL AND \"InitialBalanceDate\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.PlanFeature", b =>
@@ -1458,8 +1632,8 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("character varying(50)");
 
                     b.Property<decimal?>("StockQuantity")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)");
+                        .HasPrecision(18, 6)
+                        .HasColumnType("numeric(18,6)");
 
                     b.Property<string>("Unit")
                         .HasMaxLength(50)
@@ -1567,6 +1741,76 @@ namespace TaxMate.Model.Migrations
                     b.HasIndex("ProductId", "ApplyDate");
 
                     b.ToTable("ProductPrices");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Quarter")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("ThresholdAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("ThresholdCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("TotalRevenue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("WindowEnd")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("WindowStart")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "Status");
+
+                    b.HasIndex("OwnerId", "Year", "ThresholdCode")
+                        .IsUnique();
+
+                    b.ToTable("RevenueThresholdAlerts", t =>
+                        {
+                            t.HasCheckConstraint("CK_RevenueThresholdAlerts_Amount", "\"ThresholdAmount\" > 0");
+
+                            t.HasCheckConstraint("CK_RevenueThresholdAlerts_Code", "\"ThresholdCode\" IN ('Crossed1B', 'Crossed3B', 'Crossed50B')");
+
+                            t.HasCheckConstraint("CK_RevenueThresholdAlerts_Resolution", "(\"Status\" = 'Resolved' AND \"ResolvedAt\" IS NOT NULL) OR (\"Status\" <> 'Resolved' AND \"ResolvedAt\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_RevenueThresholdAlerts_Status", "\"Status\" IN ('PendingReview', 'Acknowledged', 'Resolved')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.SubscriptionPlan", b =>
@@ -1688,61 +1932,6 @@ namespace TaxMate.Model.Migrations
                     b.ToTable("Suppliers");
                 });
 
-            modelBuilder.Entity("TaxMate.Model.Entities.TaxThresholdSetting", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<DateOnly>("EffectiveFrom")
-                        .HasColumnType("date");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<Guid?>("UpdatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Type", "EffectiveFrom")
-                        .IsUnique();
-
-                    b.ToTable("TaxThresholdSettings");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("20260000-0000-4000-a000-000000000011"),
-                            Amount = 1000000000m,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            EffectiveFrom = new DateOnly(2026, 1, 1),
-                            Type = "AnnualRevenueTax",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("20260000-0000-4000-a000-000000000012"),
-                            Amount = 1000000000m,
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            EffectiveFrom = new DateOnly(2026, 1, 1),
-                            Type = "EInvoiceRequirement",
-                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        });
-                });
-
             modelBuilder.Entity("TaxMate.Model.Entities.TaxCalculation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1753,6 +1942,10 @@ namespace TaxMate.Model.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<decimal>("ApplicablePersonalIncomeTaxRate")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)");
+
                     b.Property<decimal>("ApplicableRevenueThreshold")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1762,6 +1955,9 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<Guid?>("CalculatedByUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("CalculationDataJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("CalculationRuleVersion")
                         .HasMaxLength(100)
@@ -1787,14 +1983,34 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("TaxMethod")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int?>("TaxMethodEffectiveYear")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("TaxPeriodId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("TotalDeductibleExpenses")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("TotalExemptionAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("TotalPersonalIncomeTaxAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalPitOverpaid")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalPitPaid")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -1807,6 +2023,10 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<decimal>("TotalTaxPayableAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("TotalTaxableIncome")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
@@ -1826,12 +2046,17 @@ namespace TaxMate.Model.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TaxPeriodId", "IsCurrent");
+                    b.HasIndex("TaxPeriodId", "RecommendedFormCode")
+                        .IsUnique()
+                        .HasFilter("\"IsCurrent\" = TRUE");
 
-                    b.HasIndex("TaxPeriodId", "Version")
+                    b.HasIndex("TaxPeriodId", "RecommendedFormCode", "Version")
                         .IsUnique();
 
-                    b.ToTable("TaxCalculations", (string)null);
+                    b.ToTable("TaxCalculations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TaxCalculations_TaxMethod", "\"TaxMethod\" IN ('RevenueBased', 'IncomeBased', 'NotApplicable')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.TaxCalculationLine", b =>
@@ -1967,6 +2192,9 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("FormDataJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime>("GeneratedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -2084,9 +2312,11 @@ namespace TaxMate.Model.Migrations
 
                     b.HasIndex("TaxCalculationId");
 
-                    b.HasIndex("TaxPeriodId", "IsCurrent");
+                    b.HasIndex("TaxPeriodId", "FormCode")
+                        .IsUnique()
+                        .HasFilter("\"IsCurrent\" = TRUE");
 
-                    b.HasIndex("TaxPeriodId", "Version")
+                    b.HasIndex("TaxPeriodId", "FormCode", "Version")
                         .IsUnique();
 
                     b.ToTable("TaxDeclarations", (string)null);
@@ -2319,6 +2549,11 @@ namespace TaxMate.Model.Migrations
                     b.Property<Guid>("TaxPeriodId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("TaxType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<string>("TransactionReference")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
@@ -2332,7 +2567,12 @@ namespace TaxMate.Model.Migrations
 
                     b.HasIndex("TaxPeriodId");
 
-                    b.ToTable("TaxPayments");
+                    b.HasIndex("TaxType", "Status", "PaymentDate");
+
+                    b.ToTable("TaxPayments", t =>
+                        {
+                            t.HasCheckConstraint("CK_TaxPayments_TaxType", "\"TaxType\" IN ('VAT', 'PIT', 'Unknown')");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.TaxPeriod", b =>
@@ -2342,9 +2582,6 @@ namespace TaxMate.Model.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<Guid>("BusinessId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("BusinessProfileId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("CalculatedAt")
@@ -2362,6 +2599,23 @@ namespace TaxMate.Model.Migrations
                     b.Property<decimal>("EstimatedTax")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("EvidenceReviewedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("EvidenceReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FilingWindow")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TknQttBridgeChoice")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("TknQttBridgeChoiceAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<int?>("Month")
                         .HasColumnType("integer");
@@ -2427,20 +2681,111 @@ namespace TaxMate.Model.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BusinessProfileId");
-
                     b.HasIndex("DueDate");
+
+                    b.HasIndex("EvidenceReviewedByUserId");
 
                     b.HasIndex("Status");
 
                     b.HasIndex("BusinessId", "Status");
 
-                    b.HasIndex("BusinessId", "Year", "Month", "Quarter");
+                    b.HasIndex("BusinessId", "Year")
+                        .IsUnique()
+                        .HasFilter("\"PeriodType\" = 'Yearly'");
 
-                    b.HasIndex("BusinessId", "PeriodType", "Year", "Month", "Quarter")
+                    b.HasIndex("BusinessId", "Year", "Month")
+                        .IsUnique()
+                        .HasFilter("\"PeriodType\" = 'Monthly'");
+
+                    b.HasIndex("BusinessId", "Year", "FilingWindow")
+                        .IsUnique()
+                        .HasFilter("\"PeriodType\" = 'Tkn'");
+
+                    b.HasIndex("BusinessId", "Year", "Quarter")
+                        .IsUnique()
+                        .HasFilter("\"PeriodType\" = 'Quarterly'");
+
+                    b.ToTable("TaxPeriods", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_TaxPeriods_EvidenceReviewPair", "(\"EvidenceReviewedAt\" IS NULL AND \"EvidenceReviewedByUserId\" IS NULL) OR (\"EvidenceReviewedAt\" IS NOT NULL AND \"EvidenceReviewedByUserId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_TaxPeriods_PeriodShape", "(\"PeriodType\" = 'Monthly' AND \"Month\" BETWEEN 1 AND 12 AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Quarterly' AND \"Month\" IS NULL AND \"Quarter\" BETWEEN 1 AND 4 AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Yearly' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IS NULL) OR (\"PeriodType\" = 'Tkn' AND \"Month\" IS NULL AND \"Quarter\" IS NULL AND \"FilingWindow\" IN ('FirstHalf', 'SecondHalf', 'Annual'))");
+
+                            t.HasCheckConstraint("CK_TaxPeriods_TknQttBridgeChoice", "(\"TknQttBridgeChoice\" IS NULL AND \"TknQttBridgeChoiceAt\" IS NULL) OR (\"PeriodType\" = 'Tkn' AND \"TknQttBridgeChoice\" IN ('Later', 'Refund', 'Offset') AND \"TknQttBridgeChoiceAt\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.TaxThresholdSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Type", "EffectiveFrom")
                         .IsUnique();
 
-                    b.ToTable("TaxPeriods", (string)null);
+                    b.ToTable("TaxThresholdSettings");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000011"),
+                            Amount = 1000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "AnnualRevenueTax",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000012"),
+                            Amount = 1000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "EInvoiceRequirement",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000013"),
+                            Amount = 3000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "IncomeBasedRequirement",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("20260000-0000-4000-a000-000000000014"),
+                            Amount = 50000000000m,
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Type = "SupportedRevenueCeiling",
+                            UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Transaction", b =>
@@ -2451,6 +2796,9 @@ namespace TaxMate.Model.Migrations
 
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -2530,6 +2878,8 @@ namespace TaxMate.Model.Migrations
                         .IsUnique();
 
                     b.HasIndex("TransactionDate");
+
+                    b.HasIndex("BusinessId", "CompletedAt");
 
                     b.HasIndex("TransactionDate", "Status");
 
@@ -2623,8 +2973,19 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("CommencementPeriod")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int?>("CommencementTaxYear")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DeclaredRevenueBracket")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -2651,6 +3012,10 @@ namespace TaxMate.Model.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<string>("PersonalIncomeTaxMethod")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
@@ -2663,6 +3028,12 @@ namespace TaxMate.Model.Migrations
                     b.Property<string>("TaxCode")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("TaxMethodEffectiveYear")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("TaxProfileConfirmedAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp without time zone");
@@ -2684,7 +3055,20 @@ namespace TaxMate.Model.Migrations
                         .IsUnique()
                         .HasFilter("\"TaxCode\" IS NOT NULL");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", t =>
+                        {
+                            t.HasCheckConstraint("CK_Users_CommencementPair", "(\"CommencementPeriod\" IS NULL AND \"CommencementTaxYear\" IS NULL) OR (\"CommencementPeriod\" IS NOT NULL AND \"CommencementTaxYear\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_Users_CommencementPeriod", "\"CommencementPeriod\" IS NULL OR \"CommencementPeriod\" IN ('BeforeTaxYear', 'FirstHalfOfTaxYear', 'SecondHalfOfTaxYear')");
+
+                            t.HasCheckConstraint("CK_Users_DeclaredRevenueBracket", "\"DeclaredRevenueBracket\" IS NULL OR \"DeclaredRevenueBracket\" IN ('AtOrBelow1B', 'Over1BTo3B', 'Over3BTo50B')");
+
+                            t.HasCheckConstraint("CK_Users_PersonalIncomeTaxMethod", "\"PersonalIncomeTaxMethod\" IS NULL OR \"PersonalIncomeTaxMethod\" IN ('RevenueBased', 'IncomeBased')");
+
+                            t.HasCheckConstraint("CK_Users_TaxMethodPair", "(\"PersonalIncomeTaxMethod\" IS NULL AND \"TaxMethodEffectiveYear\" IS NULL) OR (\"PersonalIncomeTaxMethod\" IS NOT NULL AND \"TaxMethodEffectiveYear\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_Users_TaxProfileCompatibility", "(\"DeclaredRevenueBracket\" IS NULL AND \"PersonalIncomeTaxMethod\" IS NULL AND \"TaxMethodEffectiveYear\" IS NULL AND \"CommencementPeriod\" IS NULL AND \"CommencementTaxYear\" IS NULL AND \"TaxProfileConfirmedAt\" IS NULL) OR (\"DeclaredRevenueBracket\" = 'AtOrBelow1B' AND \"PersonalIncomeTaxMethod\" IS NULL) OR (\"DeclaredRevenueBracket\" = 'Over1BTo3B' AND \"PersonalIncomeTaxMethod\" IN ('RevenueBased', 'IncomeBased') AND \"CommencementPeriod\" IS NULL) OR (\"DeclaredRevenueBracket\" = 'Over3BTo50B' AND \"PersonalIncomeTaxMethod\" = 'IncomeBased' AND \"CommencementPeriod\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.UserDevice", b =>
@@ -2917,9 +3301,16 @@ namespace TaxMate.Model.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("TaxMate.Model.Entities.Transaction", "Transaction")
+                        .WithOne("GeneratedIncome")
+                        .HasForeignKey("TaxMate.Model.Entities.Income", "TransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Business");
 
                     b.Navigation("IncomeCategory");
+
+                    b.Navigation("Transaction");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.IncomeCategory", b =>
@@ -2951,6 +3342,11 @@ namespace TaxMate.Model.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("TaxMate.Model.Entities.Expense", "Expense")
+                        .WithMany("IngredientPurchases")
+                        .HasForeignKey("ExpenseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("TaxMate.Model.Entities.Ingredient", "Ingredient")
                         .WithMany("IngredientPurchases")
                         .HasForeignKey("IngredientId")
@@ -2964,9 +3360,36 @@ namespace TaxMate.Model.Migrations
 
                     b.Navigation("Business");
 
+                    b.Navigation("Expense");
+
                     b.Navigation("Ingredient");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.InventoryMovement", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
+                        .WithMany("InventoryMovements")
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaxMate.Model.Entities.Ingredient", "Ingredient")
+                        .WithMany("InventoryMovements")
+                        .HasForeignKey("IngredientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("TaxMate.Model.Entities.Product", "Product")
+                        .WithMany("InventoryMovements")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Business");
+
+                    b.Navigation("Ingredient");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Invoice", b =>
@@ -2999,6 +3422,17 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.MoneyMovement", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.PaymentAccount", "PaymentAccount")
+                        .WithMany("MoneyMovements")
+                        .HasForeignKey("PaymentAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PaymentAccount");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.Notification", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.User", "User")
@@ -3010,23 +3444,12 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
-                {
-                    b.HasOne("TaxMate.Model.Entities.User", "Owner")
-                        .WithMany("RevenueThresholdAlerts")
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Owner");
-                });
-
             modelBuilder.Entity("TaxMate.Model.Entities.Payment", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.PaymentAccount", "PaymentAccount")
                         .WithMany("Payments")
                         .HasForeignKey("PaymentAccountId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("TaxMate.Model.Entities.Transaction", "Transaction")
                         .WithMany("Payments")
@@ -3044,7 +3467,7 @@ namespace TaxMate.Model.Migrations
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
                         .WithMany("PaymentAccounts")
                         .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Business");
@@ -3125,6 +3548,17 @@ namespace TaxMate.Model.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("TaxMate.Model.Entities.RevenueThresholdAlert", b =>
+                {
+                    b.HasOne("TaxMate.Model.Entities.User", "Owner")
+                        .WithMany("RevenueThresholdAlerts")
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Supplier", b =>
@@ -3227,16 +3661,19 @@ namespace TaxMate.Model.Migrations
             modelBuilder.Entity("TaxMate.Model.Entities.TaxPeriod", b =>
                 {
                     b.HasOne("TaxMate.Model.Entities.BusinessProfile", "Business")
-                        .WithMany()
+                        .WithMany("TaxPeriods")
                         .HasForeignKey("BusinessId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("TaxMate.Model.Entities.BusinessProfile", null)
-                        .WithMany("TaxPeriods")
-                        .HasForeignKey("BusinessProfileId");
+                    b.HasOne("TaxMate.Model.Entities.User", "EvidenceReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("EvidenceReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Business");
+
+                    b.Navigation("EvidenceReviewedByUser");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Transaction", b =>
@@ -3324,6 +3761,8 @@ namespace TaxMate.Model.Migrations
 
                     b.Navigation("Ingredients");
 
+                    b.Navigation("InventoryMovements");
+
                     b.Navigation("Invoices");
 
                     b.Navigation("PaymentAccounts");
@@ -3345,6 +3784,11 @@ namespace TaxMate.Model.Migrations
                     b.Navigation("References");
                 });
 
+            modelBuilder.Entity("TaxMate.Model.Entities.Expense", b =>
+                {
+                    b.Navigation("IngredientPurchases");
+                });
+
             modelBuilder.Entity("TaxMate.Model.Entities.ExpenseCategory", b =>
                 {
                     b.Navigation("Expenses");
@@ -3359,6 +3803,8 @@ namespace TaxMate.Model.Migrations
                 {
                     b.Navigation("IngredientPurchases");
 
+                    b.Navigation("InventoryMovements");
+
                     b.Navigation("ProductIngredients");
                 });
 
@@ -3369,11 +3815,15 @@ namespace TaxMate.Model.Migrations
 
             modelBuilder.Entity("TaxMate.Model.Entities.PaymentAccount", b =>
                 {
+                    b.Navigation("MoneyMovements");
+
                     b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("TaxMate.Model.Entities.Product", b =>
                 {
+                    b.Navigation("InventoryMovements");
+
                     b.Navigation("InvoiceDetails");
 
                     b.Navigation("ProductIngredients");
@@ -3425,6 +3875,8 @@ namespace TaxMate.Model.Migrations
 
             modelBuilder.Entity("TaxMate.Model.Entities.Transaction", b =>
                 {
+                    b.Navigation("GeneratedIncome");
+
                     b.Navigation("Payments");
 
                     b.Navigation("TransactionItems");

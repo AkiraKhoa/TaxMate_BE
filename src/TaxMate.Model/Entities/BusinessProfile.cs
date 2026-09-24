@@ -28,6 +28,12 @@ public class BusinessProfile : BaseEntity
 
     public bool IsStockTrackingEnabled { get; set; } = true;
 
+    /// <summary>
+    /// UTC instant stored without timezone metadata after the opening inventory
+    /// cutover is durably confirmed, including an all-zero opening inventory.
+    /// </summary>
+    public DateTime? InventoryInitializedAt { get; set; }
+
     [MaxLength(100)]
     public string? SePayCompanyXid { get; set; }
 
@@ -86,6 +92,9 @@ public class BusinessProfile : BaseEntity
 
     public ICollection<IngredientPurchase> IngredientPurchases { get; set; }
         = new List<IngredientPurchase>();
+
+    public ICollection<InventoryMovement> InventoryMovements { get; set; }
+        = new List<InventoryMovement>();
 
     public EInvoiceConfig? EInvoiceConfig { get; set; }
 }

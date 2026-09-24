@@ -20,6 +20,14 @@ public class TaxPeriod : BaseEntity
 
     public int? Quarter { get; set; }
 
+    [MaxLength(20)]
+    public string? FilingWindow { get; set; }
+
+    [MaxLength(20)]
+    public string? TknQttBridgeChoice { get; set; }
+
+    public DateTime? TknQttBridgeChoiceAt { get; set; }
+
     public DateTime PeriodStartDate { get; set; }
 
     public DateTime PeriodEndDate { get; set; }
@@ -64,7 +72,13 @@ public class TaxPeriod : BaseEntity
 
     public DateTime? PaidDate { get; set; }
 
+    public DateTime? EvidenceReviewedAt { get; set; }
+
+    public Guid? EvidenceReviewedByUserId { get; set; }
+
     public BusinessProfile Business { get; set; } = null!;
+
+    public User? EvidenceReviewedByUser { get; set; }
 
     public ICollection<TaxCalculation> TaxCalculations { get; set; }
         = new List<TaxCalculation>();

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PayOS;
 using TaxMate.Service.Interfaces;
@@ -26,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<IPaymentWebhookService, PaymentWebhookService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<ITaxPeriodService, TaxPeriodService>();
+        services.AddScoped<ITknTaxPeriodService, TknTaxPeriodService>();
+        services.AddScoped<IOwnerTaxProfileService, OwnerTaxProfileService>();
         services.AddScoped<ITaxDeclarationService, TaxDeclarationService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<IBusinessProfileService, BusinessProfileService>();
@@ -61,10 +62,30 @@ public static class DependencyInjection
         services.AddScoped<ITaxBookService, TaxBookService>();
         services.AddScoped<IRevenueThresholdAlertService, RevenueThresholdAlertService>();
         services.AddScoped<ITaxPolicyService, TaxPolicyService>();
-        
+        services.AddScoped<ITaxPeriodMutationGuard, TaxPeriodMutationGuard>();
+        services.AddScoped<IOwnerRevenueProjector, OwnerRevenueProjector>();
+        services.AddScoped<IInventoryMovementCoordinatorValidator, InventoryMovementCoordinatorValidator>();
+        services.AddScoped<IInventoryMovementService, InventoryMovementService>();
+        services.AddScoped<IInventoryInitializationService, InventoryInitializationService>();
+        services.AddScoped<IInventoryAdjustmentService, InventoryAdjustmentService>();
+        services.AddScoped<IInventoryPurchaseService, InventoryPurchaseService>();
+        services.AddScoped<InventoryValuationService>();
+        services.AddScoped<IInventoryValuationService>(provider =>
+            provider.GetRequiredService<InventoryValuationService>());
+        services.AddScoped<IInventoryQuarterFinalizer>(provider =>
+            provider.GetRequiredService<InventoryValuationService>());
+        services.AddScoped<IS2dBookProjector, S2dBookProjector>();
+        services.AddScoped<IS2cBookProjector, S2cBookProjector>();
+        services.AddScoped<IAnnualTaxAggregateService, AnnualTaxAggregateService>();
+        services.AddScoped<IQttCalculationEngine, QttCalculationEngine>();
+        services.AddScoped<IQttCalculationService, QttCalculationService>();
+        services.AddScoped<IQttDeclarationService, QttDeclarationService>();
+        services.AddScoped<IMoneyMovementService, MoneyMovementService>();
+        services.AddScoped<IS2eBookProjector, S2eBookProjector>();
 
         services.AddScoped<IBusinessCategoryService, BusinessCategoryService>();
         services.AddScoped<IS2aHkdExportService, S2aHkdExportService>();
+        services.AddScoped<ITaxFilingScheduleService, TaxFilingScheduleService>();
         services.Configure<TaxSettings>(
             configuration.GetSection(TaxSettings.SectionName));
         return services;

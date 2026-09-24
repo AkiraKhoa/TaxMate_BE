@@ -1,7 +1,10 @@
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
+using TaxMate.Model.DTO.Inventory;
+using TaxMate.Model.DTO.MoneyMovement;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
 using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 
@@ -26,6 +29,10 @@ public class OrderService : IOrderService
     private readonly IRevenueThresholdAlertService _revenueThresholdAlerts;
     private readonly IIncomeRepository _incomes;
     private readonly IIncomeCategoryRepository _incomeCategories;
+    private readonly IInventoryMovementService _inventoryMovements;
+    private readonly IMoneyMovementService _moneyMovements;
+    private readonly TimeProvider _timeProvider;
+    private readonly ITaxPeriodMutationGuard _taxPeriodGuard;
 
     public OrderService(
         IUnitOfWork unitOfWork,
@@ -44,7 +51,11 @@ public class OrderService : IOrderService
         IIngredientRepository ingredients,
         IRevenueThresholdAlertService revenueThresholdAlerts,
         IIncomeRepository incomes,
-        IIncomeCategoryRepository incomeCategories)
+        IIncomeCategoryRepository incomeCategories,
+        IInventoryMovementService inventoryMovements,
+        IMoneyMovementService moneyMovements,
+        ITaxPeriodMutationGuard taxPeriodGuard,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _transactions = transactions;
@@ -63,6 +74,10 @@ public class OrderService : IOrderService
         _revenueThresholdAlerts = revenueThresholdAlerts;
         _incomes = incomes;
         _incomeCategories = incomeCategories;
+        _inventoryMovements = inventoryMovements;
+        _moneyMovements = moneyMovements;
+        _taxPeriodGuard = taxPeriodGuard;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<Guid> CreateOrderAsync(Guid businessId, CreateOrderRequest request)
@@ -79,10 +94,10 @@ public class OrderService : IOrderService
             TransactionId = Guid.NewGuid(),
             BusinessId = businessId,
             TransactionCode = code,
-            TransactionDate = DateTime.UtcNow,
+            TransactionDate = UtcNow,
             Status = "Draft",
             Note = request.Note,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = UtcNow
         };
 
         await _transactions.AddAsync(order);
@@ -179,10 +194,15 @@ public class OrderService : IOrderService
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null)
     {
-        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount);
-        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount);
+        var count = await _transactions.CountByBusinessIdAsync(businessId, status, paymentMethod, minAmount, maxAmount, startDate, endDate, search, excludeEmptyDrafts, hasInvoice);
+        var transactions = await _transactions.GetByBusinessIdAsync(businessId, page, pageSize, status, paymentMethod, minAmount, maxAmount, startDate, endDate, search, excludeEmptyDrafts, hasInvoice);
 
         var items = transactions.Select(x => new OrderSummaryResponse
         {
@@ -216,7 +236,7 @@ public class OrderService : IOrderService
             throw new NotFoundException("Product not found or does not belong to this business.");
 
         var prices = await _productPrices.FindAsync(x => x.ProductId == request.ProductId);
-        var now = DateTime.UtcNow;
+        var now = UtcNow;
         var unitPrice = prices
             .Where(p => p.ApplyDate <= now)
             .OrderByDescending(p => p.ApplyDate)
@@ -276,7 +296,7 @@ public class OrderService : IOrderService
                 Note = request.Note,
                 UnitCost = roundedUnitCost,
                 CostAmount = Math.Round(roundedUnitCost * request.Quantity, 2, MidpointRounding.AwayFromZero),
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = UtcNow
             };
             await _transactionItems.AddAsync(item);
             // KHÔNG gọi order.TransactionItems.Add(item) ở đây vì EF Core Navigation Fixup
@@ -422,6 +442,10 @@ public class OrderService : IOrderService
             throw new BadRequestException("Cannot checkout an order containing a non-positive item quantity.");
         }
 
+        var businessProfile = await _businessProfiles.GetByIdAsync(order.BusinessId)
+            ?? throw new NotFoundException("Business profile not found.");
+        await NormalizeAndValidatePaymentsAsync(order.BusinessId, request.Payments);
+
         var totalPaidAmount = request.Payments.Sum(x => x.Amount);
         if (Math.Round(totalPaidAmount, 2) < Math.Round(order.TotalAmount, 2))
         {
@@ -431,7 +455,8 @@ public class OrderService : IOrderService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            var paidAt = DateTime.UtcNow;
+            var paidAt = UtcNow;
+            await _taxPeriodGuard.EnsureCanCreateAsync(businessProfile.OwnerId, order.BusinessId, paidAt);
 
             // Kiểm tra xem BankTransfer có dùng tài khoản SePay (có webhook tự động) không.
             // Nếu tài khoản là static VietQR (không có SePayBankAccountXid), đơn sẽ được Complete ngay.
@@ -466,7 +491,7 @@ public class OrderService : IOrderService
             }
             else
             {
-                await CompleteOrderAsync(order, TransactionStatus.Draft);
+                await CompleteOrderAsync(order, TransactionStatus.Draft, paidAt);
             }
 
             foreach (var paymentEntry in request.Payments)
@@ -485,6 +510,10 @@ public class OrderService : IOrderService
 
                 await _payments.AddAsync(payment);
                 order.Payments.Add(payment);
+                if (payment.PaidAt.HasValue)
+                {
+                    await SyncPaymentMovementAsync(businessProfile.OwnerId, order, payment);
+                }
             }
 
             if (order.Status == TransactionStatus.Completed)
@@ -567,7 +596,9 @@ public class OrderService : IOrderService
 
             if (order.Status == TransactionStatus.Completed)
             {
-                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+                await TryNotifyRevenueThresholdAsync(
+                    order.BusinessId,
+                    order.CompletedAt ?? UtcNow);
             }
 
             return await _invoiceService.GetInvoiceDetailAsync(invoiceNumber);
@@ -742,9 +773,11 @@ public class OrderService : IOrderService
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment);
-
-            var paidAt = DateTime.UtcNow;
+            var businessProfile = await _businessProfiles.GetByIdAsync(order.BusinessId)
+                ?? throw new NotFoundException("Business profile not found.");
+            var paidAt = UtcNow;
+            await _taxPeriodGuard.EnsureCanCreateAsync(businessProfile.OwnerId, order.BusinessId, paidAt);
+            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment, paidAt);
 
             foreach (var payment in order.Payments)
             {
@@ -752,6 +785,8 @@ public class OrderService : IOrderService
                 {
                     payment.PaidAt = paidAt;
                 }
+
+                await SyncPaymentMovementAsync(businessProfile.OwnerId, order, payment);
             }
 
             var primaryPaymentMethod = order.Payments.FirstOrDefault()?.PaymentMethod ?? "Transfer";
@@ -831,7 +866,9 @@ public class OrderService : IOrderService
 
             if (order.Status == TransactionStatus.Completed)
             {
-                await TryNotifyRevenueThresholdAsync(order.BusinessId);
+                await TryNotifyRevenueThresholdAsync(
+                    order.BusinessId,
+                    order.CompletedAt ?? UtcNow);
             }
 
             return await _invoiceService.GetInvoiceDetailAsync(order.InvoiceId!);
@@ -843,7 +880,7 @@ public class OrderService : IOrderService
         }
     }
 
-    private async Task CompleteOrderAsync(Transaction order, string expectedStatus)
+    private async Task CompleteOrderAsync(Transaction order, string expectedStatus, DateTime paidAt)
     {
         var transitioned = await _transactions.TryTransitionStatusAsync(
             order.TransactionId,
@@ -855,17 +892,14 @@ public class OrderService : IOrderService
         }
 
         order.Status = TransactionStatus.Completed;
+        order.CompletedAt = DateTime.SpecifyKind(paidAt, DateTimeKind.Unspecified);
         await DeductInventoryForCompletedOrderAsync(order);
     }
 
+    private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
+
     private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
     {
-        var business = await _businessProfiles.GetByIdAsync(order.BusinessId);
-        if (business == null || !business.IsStockTrackingEnabled)
-        {
-            return;
-        }
-
         var soldQuantitiesByProduct = order.TransactionItems
             .Where(x => x.ProductId.HasValue && x.Quantity > 0)
             .GroupBy(x => x.ProductId!.Value)
@@ -887,9 +921,37 @@ public class OrderService : IOrderService
             {
                 var delta = bomItem.Quantity * soldQuantity;
                 ingredientDeltas[bomItem.IngredientId] =
-                    ingredientDeltas.GetValueOrDefault(bomItem.IngredientId) + delta;
+                ingredientDeltas.GetValueOrDefault(bomItem.IngredientId) + delta;
             }
         }
+
+        var movementLines = productDeltas
+            .OrderBy(x => x.Key)
+            .Select(x => new InventoryMovementLineInput
+            {
+                ProductId = x.Key,
+                Quantity = x.Value
+            })
+            .Concat(ingredientDeltas
+                .OrderBy(x => x.Key)
+                .Select(x => new InventoryMovementLineInput
+                {
+                    IngredientId = x.Key,
+                    Quantity = x.Value
+                }))
+            .ToArray();
+
+        await _inventoryMovements.StageReplaceSourceAsync(
+            new ReplaceInventorySourceMovementsCommand
+            {
+                BusinessId = order.BusinessId,
+                MovementType = InventoryMovementTypes.OrderOut,
+                ReferenceId = order.TransactionId,
+                OccurredAt = order.CompletedAt!.Value,
+                DocumentNumber = order.TransactionCode,
+                Description = $"Xuất kho theo đơn hàng {order.TransactionCode}",
+                Lines = movementLines
+            });
 
         foreach (var (productId, quantity) in productDeltas.OrderBy(x => x.Key))
         {
@@ -902,15 +964,25 @@ public class OrderService : IOrderService
         }
     }
 
-    private async Task TryNotifyRevenueThresholdAsync(Guid businessId)
+    private async Task TryNotifyRevenueThresholdAsync(
+        Guid businessId,
+        DateTime revenueDate)
     {
         try
         {
-            await _revenueThresholdAlerts.CheckAfterSaleAsync(businessId);
+            var business = await _businessProfiles.GetByIdAsync(businessId);
+            if (business is null)
+                return;
+            var year = BangkokBusinessTime.GetBangkokCalendarYear(
+                BangkokBusinessTime.NormalizeNaiveUtc(revenueDate));
+            await _revenueThresholdAlerts.EvaluateAsync(
+                business.OwnerId,
+                businessId,
+                year);
         }
         catch
         {
-            // Threshold email must never fail checkout / payment confirm.
+            // Reconciled again when the tax-profile/dashboard is loaded.
         }
     }
 
@@ -968,10 +1040,12 @@ public class OrderService : IOrderService
         {
             IncomeId = Guid.NewGuid(),
             BusinessId = order.BusinessId,
+            TransactionId = order.TransactionId,
             IncomeCategoryId = category.IncomeCategoryId,
             IncomeTitle = $"Thu tiền đơn {order.TransactionCode}",
             Amount = order.TotalAmount,
             IncomeDate = paidAt,
+            AccountingType = IncomeAccountingTypes.BusinessRevenue,
             ReceivedDate = paidAt,
             PaymentMethod = paymentMethod,
             Note = $"Tự động tạo từ đơn hàng POS {order.TransactionCode}",
@@ -980,5 +1054,63 @@ public class OrderService : IOrderService
         };
 
         await _incomes.AddAsync(income);
+    }
+
+    private async Task NormalizeAndValidatePaymentsAsync(
+        Guid businessId,
+        IReadOnlyCollection<PaymentEntry> payments)
+    {
+        if (payments.Count == 0)
+            throw new BadRequestException("At least one payment is required.");
+
+        PaymentAccount? cashAccount = null;
+        foreach (var payment in payments)
+        {
+            if (payment.Amount <= 0m)
+                throw new BadRequestException("Payment amount must be greater than zero.");
+
+            if (string.Equals(payment.PaymentMethod, PaymentMethods.Cash, StringComparison.OrdinalIgnoreCase))
+            {
+                cashAccount ??= await _paymentAccounts.GetCashByBusinessIdAsync(businessId)
+                    ?? throw new ConflictException("Cash account has not been initialized for this business.");
+                if (!cashAccount.IsActive)
+                    throw new ConflictException("Cash account is inactive.");
+                payment.PaymentMethod = PaymentMethods.Cash;
+                payment.PaymentAccountId = cashAccount.PaymentAccountId;
+                continue;
+            }
+
+            if (!string.Equals(payment.PaymentMethod, PaymentMethods.Transfer, StringComparison.OrdinalIgnoreCase))
+                throw new BadRequestException("Payment method must be Cash or Transfer.");
+            if (!payment.PaymentAccountId.HasValue)
+                throw new BadRequestException("Transfer payment requires a bank account.");
+
+            var bank = await _paymentAccounts.GetByIdAsync(payment.PaymentAccountId.Value);
+            if (bank is null || bank.BusinessId != businessId)
+                throw new NotFoundException("Payment account not found for this business.");
+            if (!bank.IsActive || bank.AccountType != PaymentAccountTypes.Bank)
+                throw new BadRequestException("Transfer payment requires an active bank account.");
+            payment.PaymentMethod = PaymentMethods.Transfer;
+        }
+    }
+
+    private Task SyncPaymentMovementAsync(
+        Guid ownerId,
+        Transaction order,
+        Payment payment)
+    {
+        return _moneyMovements.SyncAsync(new MoneyMovementWriteRequest
+        {
+            OwnerId = ownerId,
+            BusinessId = order.BusinessId,
+            PaymentAccountId = payment.PaymentAccountId!.Value,
+            PaymentMethod = payment.PaymentMethod,
+            MovementType = MoneyMovementTypes.PaymentIn,
+            Amount = payment.Amount,
+            MovementDate = payment.PaidAt!.Value,
+            DocumentNumber = order.TransactionCode,
+            Description = $"Thu tiền đơn {order.TransactionCode}",
+            ReferenceId = payment.PaymentId
+        });
     }
 }

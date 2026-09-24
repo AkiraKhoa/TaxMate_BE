@@ -12,6 +12,8 @@ public class IngredientPurchase : BaseEntity
 
     public Guid BusinessId { get; set; }
 
+    public Guid? ExpenseId { get; set; }
+
     [Precision(18,3)]
     public decimal Quantity { get; set; }
 
@@ -35,4 +37,6 @@ public class IngredientPurchase : BaseEntity
     public Ingredient Ingredient { get; set; } = null!;
 
     public BusinessProfile Business { get; set; } = null!;
+
+    public Expense? Expense { get; set; }
 }

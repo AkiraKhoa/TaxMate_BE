@@ -5,6 +5,7 @@ using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
 using TaxMate.Service.Options;
 using TaxMate.Model.Common;
+using TaxMate.Service.Common;
 namespace TaxMate.Service.Services;
 
 public class ReportService : IReportService
@@ -12,15 +13,24 @@ public class ReportService : IReportService
     private readonly IReportRepository _reportRepository;
     private readonly IGenericRepository<TaxMate.Model.Entities.BusinessProfile> _businessProfiles;
     private readonly ITaxPolicyService _taxPolicyService;
+    private readonly IOwnerRevenueProjector _ownerRevenue;
+    private readonly IUserRepository _users;
+    private readonly IGenericRepository<TaxMate.Model.Entities.BusinessCategory> _categories;
 
     public ReportService(
         IReportRepository reportRepository,
         IGenericRepository<TaxMate.Model.Entities.BusinessProfile> businessProfiles,
-        ITaxPolicyService taxPolicyService)
+        ITaxPolicyService taxPolicyService,
+        IOwnerRevenueProjector ownerRevenue,
+        IUserRepository users,
+        IGenericRepository<TaxMate.Model.Entities.BusinessCategory> categories)
     {
         _reportRepository = reportRepository;
         _businessProfiles = businessProfiles;
         _taxPolicyService = taxPolicyService;
+        _ownerRevenue = ownerRevenue;
+        _users = users;
+        _categories = categories;
     }
 
     public async Task<SalesDashboardResponse> GetSalesDashboardAsync(
@@ -261,32 +271,23 @@ public class ReportService : IReportService
 
     var ownerId = business.OwnerId;
 
-    var accumulatedRevenue =
-        await _reportRepository.GetAccumulatedRevenueByOwnerAsync(
-            ownerId,
-            year);
-
-    var quarters =
-        await _reportRepository.GetQuarterRevenuesByOwnerAsync(
-            ownerId,
-            year);
-
-    var yearStart = new DateTime(
-        year,
-        1,
-        1,
-        0,
-        0,
-        0,
-        DateTimeKind.Utc);
-
-    var yearEnd = yearStart.AddYears(1);
-
-    var profileRevenues =
-        await _reportRepository.GetOwnerRevenueByProfileAsync(
-            ownerId,
-            yearStart,
-            yearEnd);
+    var annual = await _ownerRevenue.ProjectCalendarYearAsync(ownerId, businessId, year);
+    var accumulatedRevenue = annual.TotalRevenue;
+    var quarters = new List<TaxQuarterRevenueResponse>();
+    for (var quarter = 1; quarter <= 4; quarter++)
+    {
+        var start = annual.StartNaiveUtc.AddMonths((quarter - 1) * 3);
+        var end = annual.StartNaiveUtc.AddMonths(quarter * 3);
+        var projection = await _ownerRevenue.ProjectAsync(ownerId, businessId, start, end);
+        quarters.Add(new TaxQuarterRevenueResponse { Quarter = quarter, Revenue = projection.TotalRevenue });
+    }
+    var profiles = await _businessProfiles.FindAsync(x => x.OwnerId == ownerId);
+    var profileRevenues = new List<OwnerProfileRevenueRow>();
+    foreach (var profile in profiles.OrderBy(x => x.BusinessName))
+    {
+        var projection = await _ownerRevenue.ProjectBusinessAsync(ownerId, profile.Id, annual.StartNaiveUtc, annual.EndExclusiveNaiveUtc);
+        profileRevenues.Add(new OwnerProfileRevenueRow { BusinessId = profile.Id, BusinessName = profile.BusinessName, Revenue = projection.TotalRevenue });
+    }
 
     var policyDate = GetPolicyDateForYear(year);
     var policy = await _taxPolicyService.GetEffectiveAsync(policyDate);
@@ -565,71 +566,46 @@ public class ReportService : IReportService
             "Business category is required before tax estimation.");
     }
 
-    // Doanh thu năm của TOÀN OWNER tính đến ngày dashboard.
-    var annualRevenue =
-        await _reportRepository.GetOwnerSalesRevenueAsync(
-            taxContext.OwnerId,
-            yearStart,
-            tomorrowStart);
-
-    // Doanh thu của toàn Owner trước tháng hiện tại.
-    var previousAnnualRevenue =
-        await _reportRepository.GetOwnerSalesRevenueAsync(
-            taxContext.OwnerId,
-            yearStart,
-            monthStart);
-
-    var taxPolicy = await _taxPolicyService.GetEffectiveAsync(asOfDate);
-    var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
-
-    var isTaxable =
-        annualRevenue >
-        annualRevenueThreshold;
-
+    // Tax estimates use the same business revenue sources and local dates as the books.
+    var taxYearStart = BangkokBusinessTime.GetCalendarYearNaiveUtc(asOfDate.Year).Item1;
+    var taxMonthStart = monthStart.AddHours(-7);
+    var taxEnd = tomorrowStart.AddHours(-7);
+    var annual = await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxYearStart, taxEnd);
+    var previousRevenue = taxMonthStart == taxYearStart ? 0m
+        : (await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxYearStart, taxMonthStart)).TotalRevenue;
+    var ownerMonth = await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxMonthStart, taxEnd);
+    var businessMonth = await _ownerRevenue.ProjectBusinessAsync(taxContext.OwnerId, businessId, taxMonthStart, taxEnd);
+    var owner = await _users.GetByIdAsync(taxContext.OwnerId)
+        ?? throw new NotFoundException("Owner not found.");
+    var policy = await _taxPolicyService.GetEffectiveAsync(asOfDate);
+    var carriedMethod = owner.TaxMethodEffectiveYear < asOfDate.Year &&
+        owner.PersonalIncomeTaxMethod is PersonalIncomeTaxMethods.RevenueBased or PersonalIncomeTaxMethods.IncomeBased;
+    var isTaxable = annual.TotalRevenue > policy.AnnualRevenueThreshold || carriedMethod;
     decimal vatAmount = 0m;
     decimal pitAmount = 0m;
-
     if (isTaxable)
     {
-        var alreadyConsumedDeduction =
-            Math.Min(
-                previousAnnualRevenue,
-                annualRevenueThreshold);
-
-        var remainingDeduction =
-            Math.Max(
-                0m,
-                annualRevenueThreshold -
-                alreadyConsumedDeduction);
-
-        var pitDeductibleRevenue =
-            Math.Min(
-                currentMonth.Revenue,
-                remainingDeduction);
-
-        var pitRevenue =
-            Math.Max(
-                0m,
-                currentMonth.Revenue -
-                pitDeductibleRevenue);
-
-        vatAmount =
-            decimal.Round(
-                currentMonth.Revenue *
-                taxContext.VatRate /
-                100m,
-                2,
-                MidpointRounding.AwayFromZero);
-
-        pitAmount =
-            decimal.Round(
-                pitRevenue *
-                taxContext.PitRate /
-                100m,
-                2,
-                MidpointRounding.AwayFromZero);
+        var categories = (await _categories.GetAllAsync()).ToDictionary(x => x.BusinessCategoryId);
+        var remaining = owner.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.RevenueBased
+            ? Math.Max(0m, policy.AnnualRevenueThreshold - previousRevenue) : 0m;
+        var deductions = new Dictionary<Guid, decimal>();
+        foreach (var group in ownerMonth.Groups.OrderByDescending(x => categories[x.BusinessCategoryId].PitRate).ThenBy(x => x.BusinessCategoryId))
+        {
+            var deduction = Math.Min(group.TotalRevenue, remaining);
+            deductions[group.BusinessCategoryId] = deduction;
+            remaining -= deduction;
+        }
+        foreach (var group in businessMonth.Groups)
+        {
+            var total = ownerMonth.Groups.Where(x => x.BusinessCategoryId == group.BusinessCategoryId).Sum(x => x.TotalRevenue);
+            // Share the category's one owner-level deduction across its locations.
+            var deduction = total > 0m ? deductions.GetValueOrDefault(group.BusinessCategoryId) * group.TotalRevenue / total : 0m;
+            vatAmount += group.TotalRevenue * group.VatRate / 100m;
+            pitAmount += Math.Max(0m, group.TotalRevenue - deduction) * categories[group.BusinessCategoryId].PitRate / 100m;
+        }
+        vatAmount = decimal.Round(vatAmount, 2, MidpointRounding.AwayFromZero);
+        pitAmount = decimal.Round(pitAmount, 2, MidpointRounding.AwayFromZero);
     }
-
 
     // =========================================================
     // REVENUE TREND

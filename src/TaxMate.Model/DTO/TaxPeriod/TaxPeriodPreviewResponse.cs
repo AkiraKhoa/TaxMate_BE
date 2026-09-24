@@ -1,4 +1,4 @@
-﻿namespace TaxMate.Model.DTO.TaxPeriod;
+namespace TaxMate.Model.DTO.TaxPeriod;
 
 public class TaxPeriodPreviewResponse
 {
@@ -35,6 +35,8 @@ public class TaxPeriodPreviewResponse
     public bool CanClose { get; set; }
 
     public List<TaxPeriodWarningResponse> Warnings { get; set; } = [];
+
+    public List<TaxPeriodBusinessBreakdown> BusinessBreakdowns { get; set; } = [];
 }
 
 public class TaxPeriodWarningResponse

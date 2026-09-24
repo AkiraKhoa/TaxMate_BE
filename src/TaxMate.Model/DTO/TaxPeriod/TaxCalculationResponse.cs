@@ -8,6 +8,12 @@ public class TaxCalculationResponse
 
     public int Version { get; set; }
 
+    public string TaxMethod { get; set; } = null!;
+
+    public int? TaxMethodEffectiveYear { get; set; }
+
+    public string? CalculationRuleVersion { get; set; }
+
     public decimal TotalRevenue { get; set; }
 
     public decimal TotalTaxableRevenue { get; set; }

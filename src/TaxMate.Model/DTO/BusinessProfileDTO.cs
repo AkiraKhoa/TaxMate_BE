@@ -1,3 +1,5 @@
+using TaxMate.Model.DTO.Inventory;
+
 namespace TaxMate.Model.DTO;
 
 public class CreateBusinessProfileRequest
@@ -26,6 +28,12 @@ public class UpdateBusinessProfileRequest
 public class ToggleStockTrackingRequest
 {
     public bool IsStockTrackingEnabled { get; set; }
+
+    /// <summary>
+    /// Required when switching from OFF to ON. The backend derives adjustment
+    /// deltas from these physical counts before enabling inventory UX.
+    /// </summary>
+    public ReconcileInventoryRequest? Reconciliation { get; set; }
 }
 
 public class BusinessProfileResponse

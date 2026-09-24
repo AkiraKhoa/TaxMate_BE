@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations.Schema;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -11,6 +12,13 @@ public class TaxCalculation : BaseEntity
     public Guid TaxPeriodId { get; set; }
 
     public int Version { get; set; } = 1;
+
+    [Required]
+    [MaxLength(30)]
+    public string TaxMethod { get; set; }
+        = PersonalIncomeTaxMethods.RevenueBased;
+
+    public int? TaxMethodEffectiveYear { get; set; }
 
     [Required]
     [MaxLength(30)]
@@ -51,6 +59,24 @@ public class TaxCalculation : BaseEntity
     
     [Precision(18, 2)]
     public decimal RemainingPitDeduction { get; set; }
+
+    [Precision(18, 2)]
+    public decimal TotalDeductibleExpenses { get; set; }
+
+    [Precision(18, 2)]
+    public decimal TotalTaxableIncome { get; set; }
+
+    [Precision(9, 4)]
+    public decimal ApplicablePersonalIncomeTaxRate { get; set; }
+
+    [Precision(18, 2)]
+    public decimal TotalPitPaid { get; set; }
+
+    [Precision(18, 2)]
+    public decimal TotalPitOverpaid { get; set; }
+
+    [Column(TypeName = "jsonb")]
+    public string? CalculationDataJson { get; set; }
 
     public DateTime CalculatedAt { get; set; }
 

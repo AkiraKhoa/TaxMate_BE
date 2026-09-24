@@ -47,28 +47,27 @@ namespace TaxMate.Model.Migrations
                 column: "Year",
                 unique: true);
 
-            migrationBuilder.InsertData(
-                table: "TaxPolicySettings",
-                columns:
-                [
-                    "Id",
-                    "Year",
-                    "AnnualRevenueThreshold",
-                    "EInvoiceRevenueThreshold",
-                    "UpdatedByUserId",
-                    "CreatedAt",
-                    "UpdatedAt"
-                ],
-                values:
-                [
-                    new Guid("20260000-0000-4000-a000-000000000001"),
+            // Raw SQL keeps this historical seed independent from the final
+            // model, where TaxPolicySettings is replaced by the effective-dated
+            // TaxThresholdSettings table in the next migration.
+            migrationBuilder.Sql("""
+                INSERT INTO "TaxPolicySettings"
+                (
+                    "Id", "Year", "AnnualRevenueThreshold",
+                    "EInvoiceRevenueThreshold", "UpdatedByUserId",
+                    "CreatedAt", "UpdatedAt"
+                )
+                VALUES
+                (
+                    '20260000-0000-4000-a000-000000000001',
                     2026,
-                    1_000_000_000m,
-                    1_000_000_000m,
-                    null,
-                    new DateTime(2026, 8, 20, 0, 0, 0),
-                    new DateTime(2026, 8, 20, 0, 0, 0)
-                ]);
+                    1000000000,
+                    1000000000,
+                    NULL,
+                    TIMESTAMP '2026-08-20 00:00:00',
+                    TIMESTAMP '2026-08-20 00:00:00'
+                );
+                """);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)

@@ -2,6 +2,7 @@
 
 public static class TaxTypes
 {
+    public const string Unknown = "Unknown";
     public const string Vat = "VAT";
     public const string PersonalIncomeTax = "PIT";
     public const string SpecialConsumptionTax = "SPECIAL_CONSUMPTION";

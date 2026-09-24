@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.DTO.TaxPeriod;
+using TaxMate.Model.DTO.TaxPeriod;
 
 namespace TaxMate.Service.Interfaces;
 
@@ -31,4 +31,13 @@ public interface ITaxPeriodService
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);
 
+    Task<TaxCalculationResponse> GetCalculationPreviewAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CancelDraftsAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
 }

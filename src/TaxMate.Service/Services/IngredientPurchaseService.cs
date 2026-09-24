@@ -31,6 +31,7 @@ public class IngredientPurchaseService : IIngredientPurchaseService
 
     public async Task<IngredientPurchaseResponse> CreateAsync(Guid ownerId, Guid businessId, CreateIngredientPurchaseRequest request)
     {
+        ThrowLegacyMutationBlocked();
         await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         var ingredient = await _ingredients.GetByIdAsync(request.IngredientId);
@@ -99,6 +100,7 @@ public class IngredientPurchaseService : IIngredientPurchaseService
 
     public async Task<IngredientPurchaseResponse> UpdateAsync(Guid ownerId, Guid id, UpdateIngredientPurchaseRequest request)
     {
+        ThrowLegacyMutationBlocked();
         var entity = await _purchases.GetByIdWithDetailsAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
@@ -144,6 +146,7 @@ public class IngredientPurchaseService : IIngredientPurchaseService
 
     public async Task DeleteAsync(Guid ownerId, Guid id)
     {
+        ThrowLegacyMutationBlocked();
         var entity = await _purchases.GetByIdAsync(id);
         if (entity is null)
             throw new NotFoundException($"Ingredient purchase with id '{id}' not found.");
@@ -182,6 +185,7 @@ public class IngredientPurchaseService : IIngredientPurchaseService
 
     public async Task<IEnumerable<IngredientPurchaseResponse>> CreateBatchAsync(Guid ownerId, Guid businessId, CreateBatchIngredientPurchaseRequest request)
     {
+        ThrowLegacyMutationBlocked();
         await EnsureBusinessOwnerAsync(businessId, ownerId);
 
         string? supplierName = request.SupplierName;
@@ -274,11 +278,19 @@ public class IngredientPurchaseService : IIngredientPurchaseService
             throw new UnauthorizedAccessException("Bạn không sở hữu cửa hàng này.");
     }
 
+    private static void ThrowLegacyMutationBlocked()
+    {
+        throw new ConflictException(
+            "Endpoint IngredientPurchase cũ không còn cho phép ghi từng dòng vì có thể làm lệch Expense và sổ kho. " +
+            "Hãy dùng API /api/inventory-purchases để tạo, sửa hoặc xóa toàn bộ phiếu trong một transaction.");
+    }
+
     private static IngredientPurchaseResponse MapToResponse(IngredientPurchase entity)
     {
         return new IngredientPurchaseResponse
         {
             Id = entity.Id,
+            ExpenseId = entity.ExpenseId,
             BusinessId = entity.BusinessId,
             BusinessName = entity.Business?.BusinessName ?? string.Empty,
             IngredientId = entity.IngredientId,

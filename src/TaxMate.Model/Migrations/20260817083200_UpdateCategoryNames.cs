@@ -11,19 +11,16 @@ namespace TaxMate.Model.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "IsDeleted",
-                table: "Products",
-                type: "boolean",
-                nullable: false,
-                defaultValue: false);
+            // Both columns are already part of InitialMigrate in the current
+            // baseline. IF NOT EXISTS keeps this historical migration safe for
+            // older databases created from an earlier baseline that lacked them.
+            migrationBuilder.Sql("""
+                ALTER TABLE "Products"
+                    ADD COLUMN IF NOT EXISTS "IsDeleted" boolean NOT NULL DEFAULT FALSE;
 
-            migrationBuilder.AddColumn<bool>(
-                name: "IsStockTrackingEnabled",
-                table: "BusinessProfiles",
-                type: "boolean",
-                nullable: false,
-                defaultValue: false);
+                ALTER TABLE "BusinessProfiles"
+                    ADD COLUMN IF NOT EXISTS "IsStockTrackingEnabled" boolean NOT NULL DEFAULT FALSE;
+                """);
 
             migrationBuilder.UpdateData(
                 table: "BusinessCategories",
@@ -43,13 +40,8 @@ namespace TaxMate.Model.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "IsDeleted",
-                table: "Products");
-
-            migrationBuilder.DropColumn(
-                name: "IsStockTrackingEnabled",
-                table: "BusinessProfiles");
+            // Do not drop these columns: the current InitialMigrate owns them.
+            // A rollback to that baseline must preserve its schema.
 
             migrationBuilder.UpdateData(
                 table: "BusinessCategories",

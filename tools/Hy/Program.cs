@@ -764,25 +764,41 @@ static async Task SeedTaxPeriodsAndCalcAsync(
     AppDbContext db, Guid businessId,
     BusinessCategory category, int year, DateTime now)
 {
+    var (yearStart, yearEndExclusive) = GetTaxPeriodUtcBoundaries(
+        TaxPeriodTypes.Yearly,
+        year,
+        month: null,
+        quarter: null);
+
     var quarterDefs = new[]
     {
-        new { Q = 1, S = new DateTime(year,1,1,0,0,0,DateTimeKind.Utc),
-                      E = new DateTime(year,3,31,23,59,59,DateTimeKind.Utc),
-                      D = new DateTime(year,4,30,0,0,0,DateTimeKind.Utc),
+        new { Q = 1, D = new DateTime(year,4,30,0,0,0,DateTimeKind.Utc),
                       St = "Calculated" },
-        new { Q = 2, S = new DateTime(year,4,1,0,0,0,DateTimeKind.Utc),
-                      E = new DateTime(year,6,30,23,59,59,DateTimeKind.Utc),
-                      D = new DateTime(year,7,30,0,0,0,DateTimeKind.Utc),
+        new { Q = 2, D = new DateTime(year,7,30,0,0,0,DateTimeKind.Utc),
                       St = "Calculated" },
-        new { Q = 3, S = new DateTime(year,7,1,0,0,0,DateTimeKind.Utc),
-                      E = new DateTime(year,9,30,23,59,59,DateTimeKind.Utc),
-                      D = new DateTime(year,10,30,0,0,0,DateTimeKind.Utc),
+        new { Q = 3, D = new DateTime(year,10,30,0,0,0,DateTimeKind.Utc),
                       St = "Open" },
-        new { Q = 4, S = new DateTime(year,10,1,0,0,0,DateTimeKind.Utc),
-                      E = new DateTime(year,12,31,23,59,59,DateTimeKind.Utc),
-                      D = new DateTime(year+1,1,30,0,0,0,DateTimeKind.Utc),
+        new { Q = 4, D = new DateTime(year+1,1,30,0,0,0,DateTimeKind.Utc),
                       St = "Open" },
-    };
+    }
+    .Select(definition =>
+    {
+        var boundaries = GetTaxPeriodUtcBoundaries(
+            TaxPeriodTypes.Quarterly,
+            year,
+            month: null,
+            quarter: definition.Q);
+
+        return new
+        {
+            definition.Q,
+            S = boundaries.Start,
+            E = boundaries.EndExclusive,
+            definition.D,
+            definition.St
+        };
+    })
+    .ToArray();
 
     foreach (var qd in quarterDefs)
     {
@@ -790,7 +806,7 @@ static async Task SeedTaxPeriodsAndCalcAsync(
             .Where(t => t.BusinessId == businessId
                 && t.TransactionType == TransactionTypes.Sale
                 && t.Status == "Completed"
-                && t.TransactionDate >= qd.S && t.TransactionDate <= qd.E)
+                && t.TransactionDate >= qd.S && t.TransactionDate < qd.E)
             .SumAsync(t => (decimal?)t.TotalAmount) ?? 0m;
 
         var period = new TaxPeriod
@@ -806,12 +822,12 @@ static async Task SeedTaxPeriodsAndCalcAsync(
             OtherRevenue = 0,
             TotalRevenue = salesRevenue,
             TaxableRevenue = salesRevenue,
-            ClosedAt = qd.St != "Open" ? qd.E.AddDays(1) : null,
+            ClosedAt = qd.St != "Open" ? qd.E : null,
             CalculatedAt = qd.St is "Calculated" or "Submitted" or "Paid"
-                ? qd.E.AddDays(2) : null,
+                ? qd.E.AddDays(1) : null,
             SubmittedAt = qd.St is "Submitted" or "Paid"
-                ? qd.E.AddDays(3) : null,
-            PaidDate = qd.St == "Paid" ? qd.E.AddDays(4) : null,
+                ? qd.E.AddDays(2) : null,
+            PaidDate = qd.St == "Paid" ? qd.E.AddDays(3) : null,
             CreatedAt = now, UpdatedAt = now
         };
         db.TaxPeriods.Add(period);
@@ -831,7 +847,7 @@ static async Task SeedTaxPeriodsAndCalcAsync(
             .Where(t => t.BusinessId == businessId
                 && t.TransactionType == TransactionTypes.Sale
                 && t.Status == "Completed"
-                && t.TransactionDate >= new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                && t.TransactionDate >= yearStart
                 && t.TransactionDate < qd.S)
             .SumAsync(t => (decimal?)t.TotalAmount) ?? 0m;
 
@@ -850,14 +866,12 @@ static async Task SeedTaxPeriodsAndCalcAsync(
         var totalTax = vatTaxAmount + pitTaxAmount;
 
         // Annual revenue for form recommendation
-        var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var nextYear = yearStart.AddYears(1);
         var annualRevenue = await db.Transactions.AsNoTracking()
             .Where(t => t.BusinessId == businessId
                 && t.TransactionType == TransactionTypes.Sale
                 && t.Status == "Completed"
                 && t.TransactionDate >= yearStart
-                && t.TransactionDate < nextYear)
+                && t.TransactionDate < yearEndExclusive)
             .SumAsync(t => (decimal?)t.TotalAmount) ?? 0m;
 
         var formCode = annualRevenue > 1_000_000_000m
@@ -923,6 +937,52 @@ static async Task SeedTaxPeriodsAndCalcAsync(
     }
 }
 
+static (DateTime Start, DateTime EndExclusive) GetTaxPeriodUtcBoundaries(
+    string periodType,
+    int year,
+    int? month,
+    int? quarter)
+{
+    DateTime localStart;
+    DateTime localEndExclusive;
+
+    switch (periodType)
+    {
+        case TaxPeriodTypes.Monthly when month is >= 1 and <= 12 && quarter is null:
+            localStart = new DateTime(
+                year, month.Value, 1, 0, 0, 0, DateTimeKind.Unspecified);
+            localEndExclusive = localStart.AddMonths(1);
+            break;
+
+        case TaxPeriodTypes.Quarterly when month is null && quarter is >= 1 and <= 4:
+            localStart = new DateTime(
+                year,
+                ((quarter.Value - 1) * 3) + 1,
+                1,
+                0,
+                0,
+                0,
+                DateTimeKind.Unspecified);
+            localEndExclusive = localStart.AddMonths(3);
+            break;
+
+        case TaxPeriodTypes.Yearly when month is null && quarter is null:
+            localStart = new DateTime(
+                year, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+            localEndExclusive = localStart.AddYears(1);
+            break;
+
+        default:
+            throw new ArgumentOutOfRangeException(
+                nameof(periodType),
+                "Unsupported tax-period identity shape.");
+    }
+
+    return (
+        localStart.AddHours(-7),
+        localEndExclusive.AddHours(-7));
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  SUMMARY
 // ════════════════════════════════════════════════════════════════════
@@ -975,8 +1035,11 @@ static async Task PrintBizSummary(AppDbContext db, string name, Guid bizId)
 static async Task<decimal> GetYearRevenue(
     AppDbContext db, Guid bizId, int year)
 {
-    var start = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-    var end = start.AddYears(1);
+    var (start, end) = GetTaxPeriodUtcBoundaries(
+        TaxPeriodTypes.Yearly,
+        year,
+        month: null,
+        quarter: null);
     return await db.Transactions.AsNoTracking()
         .Where(t => t.BusinessId == bizId
             && t.TransactionType == TransactionTypes.Sale

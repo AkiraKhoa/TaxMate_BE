@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations.Schema;
 using TaxMate.Model.Common;
 
 namespace TaxMate.Model.Entities;
@@ -107,6 +108,9 @@ public class TaxDeclaration : BaseEntity
     public decimal RemainingPitDeduction { get; set; }
 
     public bool IsCurrent { get; set; } = true;
+
+    [Column(TypeName = "jsonb")]
+    public string? FormDataJson { get; set; }
 
     public TaxPeriod TaxPeriod { get; set; } = null!;
 

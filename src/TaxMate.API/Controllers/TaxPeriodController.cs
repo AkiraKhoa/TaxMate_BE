@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using TaxMate.Model.DTO;
 using TaxMate.Model.DTO.TaxPeriod;
@@ -85,6 +85,24 @@ public class TaxPeriodController : ControllerBase
                 "Tax period preview retrieved successfully.",
                 HttpContext.TraceIdentifier));
     }
+
+    [HttpGet("{taxPeriodId:guid}/calculation-preview")]
+    public async Task<IActionResult> GetCalculationPreview(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken)
+    {
+        var result =
+            await _taxPeriodService.GetCalculationPreviewAsync(
+                GetUserId(),
+                taxPeriodId,
+                cancellationToken);
+
+        return Ok(
+            ApiResponse<TaxCalculationResponse>.Ok(
+                result,
+                "Tax calculation preview retrieved successfully.",
+                HttpContext.TraceIdentifier));
+    }
     
     [HttpPost("{taxPeriodId:guid}/close")]
     public async Task<IActionResult> Close(
@@ -121,6 +139,25 @@ public class TaxPeriodController : ControllerBase
             ApiResponse<TaxCalculationResponse>.Ok(
                 result,
                 "Tax calculated successfully.",
+                HttpContext.TraceIdentifier));
+    }
+
+    /// <summary>Hủy toàn bộ đơn hàng nháp trong kỳ thuế của tất cả cơ sở.</summary>
+    /// <param name="taxPeriodId">ID kỳ thuế.</param>
+    [HttpPost("{taxPeriodId:guid}/cancel-drafts")]
+    public async Task<IActionResult> CancelDrafts(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken)
+    {
+        var count = await _taxPeriodService.CancelDraftsAsync(
+            GetUserId(),
+            taxPeriodId,
+            cancellationToken);
+
+        return Ok(
+            ApiResponse<int>.Ok(
+                count,
+                $"Đã hủy thành công {count} đơn hàng nháp trong kỳ.",
                 HttpContext.TraceIdentifier));
     }
 }

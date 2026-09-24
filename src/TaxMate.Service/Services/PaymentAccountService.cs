@@ -1,11 +1,13 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
 using TaxMate.Service.Exceptions;
 using TaxMate.Service.Interfaces;
-
 
 namespace TaxMate.Service.Services;
 
@@ -16,10 +18,11 @@ public class PaymentAccountService : IPaymentAccountService
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly ISePayService _sePayService;
     private readonly ITransactionRepository _transactions;
-    private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+    private readonly ITaxPeriodMutationGuard _mutationGuard;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<PaymentAccountService> _logger;
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Threading.SemaphoreSlim> _locks = new();
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> Locks = new();
 
     public PaymentAccountService(
         IUnitOfWork unitOfWork,
@@ -27,7 +30,8 @@ public class PaymentAccountService : IPaymentAccountService
         IGenericRepository<BusinessProfile> businessProfiles,
         ISePayService sePayService,
         ITransactionRepository transactions,
-        Microsoft.Extensions.Configuration.IConfiguration configuration,
+        ITaxPeriodMutationGuard mutationGuard,
+        IConfiguration configuration,
         ILogger<PaymentAccountService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -35,129 +39,208 @@ public class PaymentAccountService : IPaymentAccountService
         _businessProfiles = businessProfiles;
         _sePayService = sePayService;
         _transactions = transactions;
+        _mutationGuard = mutationGuard;
         _configuration = configuration;
         _logger = logger;
     }
 
-
-
-
-    public async Task<Guid> CreateAsync(Guid businessId, CreatePaymentAccountRequest request)
+    public async Task<Guid> CreateAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId,
+        CreatePaymentAccountRequest request)
     {
-        var business = await _businessProfiles.GetByIdAsync(businessId);
-        if (business == null)
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
+        ValidateBankFields(
+            request.BankShortName,
+            request.BankName,
+            request.AccountNumber,
+            request.AccountName);
+        ValidateInitialBalancePair(
+            request.InitialBalance,
+            request.InitialBalanceDate);
+
+        var normalizedAccountNumber = NormalizeAccountNumber(request.AccountNumber);
+        var sem = Locks.GetOrAdd(businessId, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+
+        try
         {
-            throw new NotFoundException("Business profile not found.");
+            await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                var duplicate = await _paymentAccounts.GetBankByAccountNumberAsync(
+                    businessId,
+                    normalizedAccountNumber);
+                if (duplicate is not null)
+                {
+                    throw new ConflictException(
+                        "A bank account with this account number already exists.");
+                }
+
+                if (request.InitialBalanceDate.HasValue)
+                {
+                    await _mutationGuard.EnsureCanCreateAsync(
+                        authenticatedOwnerId,
+                        businessId,
+                        ToAccountingInstant(request.InitialBalanceDate.Value));
+                }
+
+                var currentDefault = await _paymentAccounts.GetDefaultByBusinessIdAsync(
+                    businessId);
+                var isDefault = request.IsDefault || currentDefault is null;
+                if (isDefault)
+                {
+                    await _paymentAccounts.UnsetAllDefaultAsync(businessId);
+                }
+
+                var now = DateTime.UtcNow;
+                var account = new PaymentAccount
+                {
+                    PaymentAccountId = Guid.NewGuid(),
+                    BusinessId = businessId,
+                    AccountType = PaymentAccountTypes.Bank,
+                    BankShortName = NormalizeBankCode(request.BankShortName),
+                    BankName = NormalizeRequiredText(request.BankName),
+                    AccountNumber = normalizedAccountNumber,
+                    AccountName = NormalizeAccountName(request.AccountName),
+                    InitialBalance = request.InitialBalance,
+                    InitialBalanceDate = request.InitialBalanceDate,
+                    IsActive = true,
+                    IsDefault = isDefault,
+                    Description = NormalizeOptionalText(request.Description),
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+
+                await _paymentAccounts.AddAsync(account);
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+                return account.PaymentAccountId;
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    public async Task<IEnumerable<PaymentAccountResponse>> GetByBusinessIdAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId,
+        bool includeInactive = false)
+    {
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
+        var accounts = await _paymentAccounts.GetAllByBusinessIdAsync(
+            businessId,
+            includeInactive);
+        return accounts
+            .Where(x => x.AccountType == PaymentAccountTypes.Bank)
+            .Select(MapResponse)
+            .ToList();
+    }
+
+    public async Task<IEnumerable<PaymentAccountResponse>> GetAllMoneyAccountsByBusinessIdAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId,
+        bool includeInactive = false)
+    {
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
+        var accounts = await _paymentAccounts.GetAllByBusinessIdAsync(
+            businessId,
+            includeInactive);
+        return accounts.Select(MapResponse).ToList();
+    }
+
+    public async Task<PaymentAccountResponse> GetCashByBusinessIdAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId)
+    {
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
+        var cash = await _paymentAccounts.GetCashByBusinessIdAsync(businessId);
+        if (cash is null)
+        {
+            throw new NotFoundException("Cash account not found.");
         }
 
-        var count = await _paymentAccounts.CountAsync(x => x.BusinessId == businessId);
-        var isDefault = request.IsDefault || count == 0;
+        return MapResponse(cash);
+    }
+
+    public async Task<PaymentAccountResponse> GetByIdAsync(
+        Guid authenticatedOwnerId,
+        Guid id)
+    {
+        var account = await GetOwnedAccountAsync(authenticatedOwnerId, id);
+        return MapResponse(account);
+    }
+
+    public async Task UpdateAsync(
+        Guid authenticatedOwnerId,
+        Guid id,
+        UpdatePaymentAccountRequest request)
+    {
+        var account = await GetOwnedAccountAsync(authenticatedOwnerId, id);
+        if (account.AccountType == PaymentAccountTypes.Cash)
+        {
+            throw new ConflictException(
+                "The Cash account is managed by the system. Only its initial balance can be updated.");
+        }
+
+        ValidateBankFields(
+            request.BankShortName,
+            request.BankName,
+            request.AccountNumber,
+            request.AccountName);
+        var normalizedAccountNumber = NormalizeAccountNumber(request.AccountNumber);
+        if (!string.IsNullOrWhiteSpace(account.SePayBankAccountXid) &&
+            !string.Equals(
+                account.AccountNumber,
+                normalizedAccountNumber,
+                StringComparison.Ordinal))
+        {
+            throw new ConflictException(
+                "A SePay-linked account number cannot be changed. Disconnect it first.");
+        }
 
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            if (isDefault)
+            var duplicate = await _paymentAccounts.GetBankByAccountNumberAsync(
+                account.BusinessId,
+                normalizedAccountNumber);
+            if (duplicate is not null && duplicate.PaymentAccountId != account.PaymentAccountId)
             {
-                await _paymentAccounts.UnsetAllDefaultAsync(businessId);
+                throw new ConflictException(
+                    "A bank account with this account number already exists.");
             }
 
-            var account = new PaymentAccount
-            {
-                PaymentAccountId = Guid.NewGuid(),
-                BusinessId = businessId,
-                BankShortName = request.BankShortName,
-                BankName = request.BankName,
-                AccountNumber = request.AccountNumber,
-                AccountName = request.AccountName.ToUpper(),
-                IsDefault = isDefault,
-                Description = request.Description,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _paymentAccounts.AddAsync(account);
-            await _unitOfWork.SaveChangesAsync();
-            await _unitOfWork.CommitTransactionAsync();
-
-            return account.PaymentAccountId;
-        }
-        catch
-        {
-            await _unitOfWork.RollbackTransactionAsync();
-            throw;
-        }
-    }
-
-    public async Task<IEnumerable<PaymentAccountResponse>> GetByBusinessIdAsync(Guid businessId)
-    {
-        var accounts = await _paymentAccounts.GetAllByBusinessIdAsync(businessId);
-        return accounts.Select(x => new PaymentAccountResponse
-        {
-            PaymentAccountId = x.PaymentAccountId,
-            BusinessId = x.BusinessId,
-            BankShortName = x.BankShortName,
-            BankName = x.BankName,
-            AccountNumber = x.AccountNumber,
-            AccountName = x.AccountName,
-            IsDefault = x.IsDefault,
-            Description = x.Description,
-            CassoConnectedAccountId = x.CassoConnectedAccountId,
-            SePayBankAccountXid = x.SePayBankAccountXid,
-            CreatedAt = x.CreatedAt
-        });
-
-    }
-
-    public async Task<PaymentAccountResponse> GetByIdAsync(Guid id)
-    {
-        var x = await _paymentAccounts.GetByIdAsync(id);
-        if (x == null)
-        {
-            throw new NotFoundException("Payment account not found.");
-        }
-
-        return new PaymentAccountResponse
-        {
-            PaymentAccountId = x.PaymentAccountId,
-            BusinessId = x.BusinessId,
-            BankShortName = x.BankShortName,
-            BankName = x.BankName,
-            AccountNumber = x.AccountNumber,
-            AccountName = x.AccountName,
-            IsDefault = x.IsDefault,
-            Description = x.Description,
-            CassoConnectedAccountId = x.CassoConnectedAccountId,
-            SePayBankAccountXid = x.SePayBankAccountXid,
-            CreatedAt = x.CreatedAt
-        };
-    }
-
-    public async Task UpdateAsync(Guid id, UpdatePaymentAccountRequest request)
-    {
-        var account = await _paymentAccounts.GetByIdAsync(id);
-        if (account == null)
-        {
-            throw new NotFoundException("Payment account not found.");
-        }
-
-        await _unitOfWork.BeginTransactionAsync();
-        try
-        {
             if (request.IsDefault && !account.IsDefault)
             {
+                if (!account.IsActive)
+                {
+                    throw new ConflictException(
+                        "An inactive bank account cannot be the default account.");
+                }
+
                 await _paymentAccounts.UnsetAllDefaultAsync(account.BusinessId);
-            }
-
-            account.BankShortName = request.BankShortName;
-            account.BankName = request.BankName;
-            account.AccountNumber = request.AccountNumber;
-            account.AccountName = request.AccountName.ToUpper();
-            account.Description = request.Description;
-
-            if (request.IsDefault)
-            {
                 account.IsDefault = true;
             }
 
+            account.BankShortName = NormalizeBankCode(request.BankShortName);
+            account.BankName = NormalizeRequiredText(request.BankName);
+            account.AccountNumber = normalizedAccountNumber;
+            account.AccountName = NormalizeAccountName(request.AccountName);
+            account.Description = NormalizeOptionalText(request.Description);
+            if (!account.IsActive)
+            {
+                account.IsDefault = false;
+            }
+            account.UpdatedAt = DateTime.UtcNow;
+
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
         }
@@ -168,43 +251,35 @@ public class PaymentAccountService : IPaymentAccountService
         }
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task UpdateInitialBalanceAsync(
+        Guid authenticatedOwnerId,
+        Guid id,
+        UpdatePaymentAccountInitialBalanceRequest request)
     {
-        var account = await _paymentAccounts.GetByIdAsync(id);
-        if (account == null)
+        ValidateInitialBalancePair(
+            request.InitialBalance,
+            request.InitialBalanceDate);
+
+        var account = await GetOwnedAccountAsync(authenticatedOwnerId, id);
+        if (account.InitialBalance == request.InitialBalance &&
+            account.InitialBalanceDate == request.InitialBalanceDate)
         {
-            // Tài khoản đã bị xóa trước bởi luồng song song (ví dụ Webhook).
-            // Trả về thành công để đảm bảo tính an toàn/idempotent.
             return;
         }
 
         await _unitOfWork.BeginTransactionAsync();
         try
         {
-            var businessId = account.BusinessId;
-            var wasDefault = account.IsDefault;
+            await EnsureInitialBalancePeriodIsOpenAsync(
+                authenticatedOwnerId,
+                account,
+                request.InitialBalanceDate);
 
-            _paymentAccounts.Remove(account);
+            account.InitialBalance = request.InitialBalance;
+            account.InitialBalanceDate = request.InitialBalanceDate;
+            account.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();
-
-            if (wasDefault)
-            {
-                var remaining = await _paymentAccounts.GetAllByBusinessIdAsync(businessId);
-                var first = remaining.FirstOrDefault();
-                if (first != null)
-                {
-                    first.IsDefault = true;
-                    await _unitOfWork.SaveChangesAsync();
-                }
-            }
-
             await _unitOfWork.CommitTransactionAsync();
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        {
-            // Tranh chấp đồng thời: tài khoản đã bị xóa trước đó.
-            // Bỏ qua lỗi vì mục tiêu cuối cùng (xóa tài khoản) đã đạt được.
-            await _unitOfWork.RollbackTransactionAsync();
         }
         catch
         {
@@ -213,22 +288,101 @@ public class PaymentAccountService : IPaymentAccountService
         }
     }
 
-
-    public async Task SetDefaultAsync(Guid businessId, Guid paymentAccountId)
+    public async Task DeactivateAsync(Guid authenticatedOwnerId, Guid id)
     {
+        var account = await GetOwnedAccountAsync(authenticatedOwnerId, id);
+        if (account.AccountType == PaymentAccountTypes.Cash)
+        {
+            throw new ConflictException("The system Cash account cannot be deactivated.");
+        }
+
+        if (!account.IsActive && !HasAnyIntegrationIdentifier(account))
+        {
+            return;
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var wasDefault = account.IsDefault;
+            DeactivateAndClearAllIntegrations(account);
+            if (wasDefault)
+            {
+                await PromoteNextDefaultBankAsync(
+                    account.BusinessId,
+                    [account.PaymentAccountId]);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    public async Task ActivateAsync(Guid authenticatedOwnerId, Guid id)
+    {
+        var account = await GetOwnedAccountAsync(authenticatedOwnerId, id);
+        if (account.AccountType == PaymentAccountTypes.Cash)
+        {
+            throw new ConflictException("The system Cash account is always active.");
+        }
+
+        if (account.IsActive)
+        {
+            return;
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            account.IsActive = true;
+            account.UpdatedAt = DateTime.UtcNow;
+            account.IsDefault = await _paymentAccounts.GetDefaultByBusinessIdAsync(
+                account.BusinessId) is null;
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    public async Task SetDefaultAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId,
+        Guid paymentAccountId)
+    {
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
         var account = await _paymentAccounts.GetByIdAsync(paymentAccountId);
-        if (account == null || account.BusinessId != businessId)
+        if (account is null || account.BusinessId != businessId)
         {
             throw new NotFoundException("Payment account not found.");
         }
 
-        if (account.IsDefault) return;
+        if (account.AccountType != PaymentAccountTypes.Bank || !account.IsActive)
+        {
+            throw new ConflictException(
+                "Only an active bank account can be the default bank account.");
+        }
+
+        if (account.IsDefault)
+        {
+            return;
+        }
 
         await _unitOfWork.BeginTransactionAsync();
         try
         {
             await _paymentAccounts.UnsetAllDefaultAsync(businessId);
             account.IsDefault = true;
+            account.UpdatedAt = DateTime.UtcNow;
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
         }
@@ -239,57 +393,435 @@ public class PaymentAccountService : IPaymentAccountService
         }
     }
 
-
-
-    public async Task CreateOrUpdateFromSePayAsync(string companyXid, string bankAccountXid, string bankName, string bankCode, string accountNumber, string accountName)
+    public async Task<Guid> EnsureCashAccountAsync(Guid businessId)
     {
-        var business = await _businessProfiles.FirstOrDefaultAsync(x => x.SePayCompanyXid == companyXid);
-        if (business == null)
+        var business = await _businessProfiles.GetByIdAsync(businessId);
+        if (business is null)
         {
-            throw new Exception($"Business profile not found for SePay Company XID: {companyXid}");
+            throw new NotFoundException("Business profile not found.");
         }
 
-        var sem = _locks.GetOrAdd(business.Id, _ => new System.Threading.SemaphoreSlim(1, 1));
+        var sem = Locks.GetOrAdd(businessId, _ => new SemaphoreSlim(1, 1));
         await sem.WaitAsync();
-
         try
         {
-            var existingAccount = await _paymentAccounts.FirstOrDefaultAsync(
-                x => x.BusinessId == business.Id && x.AccountNumber == accountNumber);
+            var existing = await _paymentAccounts.GetCashByBusinessIdAsync(businessId);
+            if (existing is not null)
+            {
+                if (!existing.IsActive || existing.IsDefault)
+                {
+                    existing.IsActive = true;
+                    existing.IsDefault = false;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    await _unitOfWork.SaveChangesAsync();
+                }
 
+                return existing.PaymentAccountId;
+            }
+
+            var now = DateTime.UtcNow;
+            var account = new PaymentAccount
+            {
+                PaymentAccountId = Guid.NewGuid(),
+                BusinessId = businessId,
+                AccountType = PaymentAccountTypes.Cash,
+                IsActive = true,
+                IsDefault = false,
+                Description = "Tiền mặt",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            await _paymentAccounts.AddAsync(account);
+            await _unitOfWork.SaveChangesAsync();
+            return account.PaymentAccountId;
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    public async Task CreateOrUpdateFromSePayAsync(
+        string companyXid,
+        string bankAccountXid,
+        string bankName,
+        string bankCode,
+        string accountNumber,
+        string accountName)
+    {
+        var business = await _businessProfiles.FirstOrDefaultAsync(
+            x => x.SePayCompanyXid == companyXid);
+        if (business is null)
+        {
+            throw new NotFoundException(
+                $"Business profile not found for SePay Company XID: {companyXid}");
+        }
+
+        await UpsertSePayBankAccountAsync(
+            business,
+            bankAccountXid,
+            bankName,
+            bankCode,
+            accountNumber,
+            accountName);
+    }
+
+    public async Task CreateOrUpdateFromLinkTokenAsync(
+        string linkTokenXid,
+        string bankAccountXid,
+        string bankName,
+        string accountNumber,
+        string accountName)
+    {
+        if (string.IsNullOrWhiteSpace(linkTokenXid))
+        {
+            throw new ArgumentException("linkTokenXid is required.");
+        }
+
+        var business = await _businessProfiles.FirstOrDefaultAsync(
+            x => x.LastSePayLinkTokenXid == linkTokenXid);
+        if (business is null)
+        {
+            throw new NotFoundException(
+                $"Business profile not found for LinkToken XID: {linkTokenXid}");
+        }
+
+        await UpsertSePayBankAccountAsync(
+            business,
+            bankAccountXid,
+            bankName,
+            bankName,
+            accountNumber,
+            accountName);
+    }
+
+    public async Task<string> GetSePayConnectUrlAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId,
+        bool isMobileApp = true)
+    {
+        await EnsureBusinessOwnerAsync(businessId, authenticatedOwnerId);
+        return await _sePayService.GetSePayConnectUrlAsync(
+            businessId,
+            isMobileApp);
+    }
+
+    public async Task<(int Synced, int Total)> SyncSePayAccountsAsync(
+        Guid authenticatedOwnerId,
+        Guid businessId)
+    {
+        var business = await EnsureBusinessOwnerAsync(
+            businessId,
+            authenticatedOwnerId);
+        if (string.IsNullOrWhiteSpace(business.SePayCompanyXid))
+        {
+            throw new ArgumentException("Business has no SePay company linked yet.");
+        }
+
+        await NormalizeAndDeactivateDuplicateBanksAsync(businessId);
+
+        var sePayAccounts = await _sePayService.GetLinkedBankAccountsAsync(
+            business.SePayCompanyXid);
+        var remoteXids = sePayAccounts
+            .Select(x => x.Xid)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.Ordinal);
+
+        await DeactivateMissingSePayAccountsAsync(businessId, remoteXids);
+
+        var savedCount = 0;
+        foreach (var account in sePayAccounts)
+        {
+            try
+            {
+                await UpsertSePayBankAccountAsync(
+                    business,
+                    account.Xid,
+                    account.BrandName,
+                    account.BrandName,
+                    account.AccountNumber,
+                    account.AccountHolderName);
+                savedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "[SePay Sync] Failed to save a bank account.");
+            }
+        }
+
+        return (savedCount, sePayAccounts.Count);
+    }
+
+    public async Task CreateMockPaymentAsync(
+        Guid authenticatedOwnerId,
+        Guid transactionId,
+        Guid paymentAccountId)
+    {
+        var transaction = await _transactions.GetByIdAsync(transactionId);
+        if (transaction is null)
+        {
+            throw new NotFoundException("Transaction not found.");
+        }
+
+        await EnsureBusinessOwnerAsync(transaction.BusinessId, authenticatedOwnerId);
+        if (transaction.Status != TransactionStatus.AwaitingPayment)
+        {
+            throw new InvalidOperationException("Transaction is not awaiting payment.");
+        }
+
+        var paymentAccount = await _paymentAccounts.GetByIdAsync(paymentAccountId);
+        if (paymentAccount is null ||
+            paymentAccount.BusinessId != transaction.BusinessId ||
+            paymentAccount.AccountType != PaymentAccountTypes.Bank ||
+            !paymentAccount.IsActive)
+        {
+            throw new NotFoundException("Payment account not found.");
+        }
+
+        if (string.IsNullOrWhiteSpace(paymentAccount.SePayBankAccountXid))
+        {
+            throw new ArgumentException(
+                "Payment account has no SePayBankAccountXid associated.");
+        }
+
+        await _sePayService.CreateMockTransactionAsync(
+            paymentAccount.SePayBankAccountXid,
+            transaction.TotalAmount,
+            transaction.TransactionCode);
+
+        _logger.LogInformation(
+            "[SePay Sandbox Mock] Triggered mock transaction. Amount={Amount}, Code={Code}",
+            transaction.TotalAmount,
+            transaction.TransactionCode);
+    }
+
+    public async Task<string> GetSePayDisconnectUrlAsync(
+        Guid authenticatedOwnerId,
+        Guid paymentAccountId)
+    {
+        var callbackUrl = GetRequiredHttpsUrl("SePay:BankHub:CallbackUrl");
+        var webhookUrl = GetRequiredHttpsUrl("SePay:BankHub:WebhookUrl");
+        var webhookSecret = GetRequiredConfiguration("SePay:BankHub:SecretKey");
+        var account = await GetOwnedAccountAsync(
+            authenticatedOwnerId,
+            paymentAccountId);
+        if (account.AccountType != PaymentAccountTypes.Bank ||
+            string.IsNullOrWhiteSpace(account.SePayBankAccountXid))
+        {
+            throw new ArgumentException("Payment account is not connected via SePay.");
+        }
+
+        var business = await _businessProfiles.GetByIdAsync(account.BusinessId)
+            ?? throw new NotFoundException("Business profile not found.");
+        var sePayAccountDetail = await _sePayService.GetBankAccountDetailAsync(
+            account.SePayBankAccountXid);
+        var companyXid = sePayAccountDetail?.CompanyXid ?? business.SePayCompanyXid;
+        if (string.IsNullOrWhiteSpace(companyXid))
+        {
+            throw new ArgumentException("Business has no SePay company linked.");
+        }
+
+        var (url, linkTokenXid) = await _sePayService.GenerateHostedLinkUrlAsync(
+            companyXid,
+            callbackUrl,
+            "UNLINK_BANK_ACCOUNT",
+            account.SePayBankAccountXid);
+
+        if (!string.IsNullOrWhiteSpace(linkTokenXid))
+        {
+            business.LastSePayLinkTokenXid = linkTokenXid;
+            _businessProfiles.Update(business);
+            await _unitOfWork.SaveChangesAsync();
+            _logger.LogInformation(
+                "[SePay Unlink] Saved unlink correlation for BusinessId={BusinessId}",
+                business.Id);
+        }
+
+        await _sePayService.RegisterWebhookAsync(webhookUrl, webhookSecret);
+        return url;
+    }
+
+    public async Task DeleteBySePayBankAccountXidAsync(string bankAccountXid)
+    {
+        if (string.IsNullOrWhiteSpace(bankAccountXid))
+        {
+            return;
+        }
+
+        var account = await _paymentAccounts.FirstOrDefaultAsync(
+            x => x.SePayBankAccountXid == bankAccountXid &&
+                 x.AccountType == PaymentAccountTypes.Bank);
+        if (account is null)
+        {
+            _logger.LogWarning(
+                "[SePay Unlink Webhook] Linked bank account was not found in DB.");
+            return;
+        }
+
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var wasDefault = account.IsDefault;
+            DeactivateAndClearSePay(account);
+            if (wasDefault)
+            {
+                await PromoteNextDefaultBankAsync(
+                    account.BusinessId,
+                    [account.PaymentAccountId]);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+            _logger.LogInformation(
+                "[SePay Unlink Webhook] Deactivated bank account while preserving history.");
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    public async Task<(int Recovered, int Total)> RecoverAllFromSePayAsync(
+        Guid authenticatedOwnerId)
+    {
+        var businesses = (await _businessProfiles.FindAsync(
+                x => x.OwnerId == authenticatedOwnerId &&
+                     x.SePayCompanyXid != null))
+            .Where(x => !string.IsNullOrWhiteSpace(x.SePayCompanyXid))
+            .ToList();
+        if (businesses.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        var recovered = 0;
+        var total = 0;
+        foreach (var business in businesses)
+        {
+            var remoteAccounts = await _sePayService.GetLinkedBankAccountsAsync(
+                business.SePayCompanyXid);
+            total += remoteAccounts.Count;
+            foreach (var account in remoteAccounts)
+            {
+                try
+                {
+                    await UpsertSePayBankAccountAsync(
+                        business,
+                        account.Xid,
+                        account.BrandName,
+                        account.BrandName,
+                        account.AccountNumber,
+                        account.AccountHolderName);
+                    recovered++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "[SePay Recover] Failed to recover an account for owned business {BusinessId}",
+                        business.Id);
+                }
+            }
+        }
+
+        return (recovered, total);
+    }
+
+    private async Task UpsertSePayBankAccountAsync(
+        BusinessProfile business,
+        string bankAccountXid,
+        string bankName,
+        string bankCode,
+        string accountNumber,
+        string accountName)
+    {
+        ValidateBankFields(bankCode, bankName, accountNumber, accountName);
+        var normalizedNumber = NormalizeAccountNumber(accountNumber);
+        var sem = Locks.GetOrAdd(business.Id, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync();
+        try
+        {
             await _unitOfWork.BeginTransactionAsync();
             try
             {
-                if (existingAccount != null)
+                var normalizedXid = NormalizeRequiredText(bankAccountXid);
+                var existingByXid = await _paymentAccounts.GetBankBySePayXidAsync(
+                    normalizedXid);
+                var existingByNumber = await _paymentAccounts.GetBankByAccountNumberAsync(
+                    business.Id,
+                    normalizedNumber);
+                PaymentAccount? existing;
+                if (existingByXid is not null)
                 {
-                    existingAccount.BankShortName = bankCode;
-                    existingAccount.BankName = bankName;
-                    existingAccount.AccountName = accountName.ToUpper();
-                    existingAccount.SePayBankAccountXid = bankAccountXid;
+                    if (existingByXid.BusinessId != business.Id ||
+                        !string.Equals(
+                            NormalizeAccountNumber(existingByXid.AccountNumber!),
+                            normalizedNumber,
+                            StringComparison.Ordinal) ||
+                        (existingByNumber is not null &&
+                         existingByNumber.PaymentAccountId != existingByXid.PaymentAccountId))
+                    {
+                        throw new ConflictException(
+                            "SePay bank account identity conflicts with an existing payment account.");
+                    }
+
+                    existing = existingByXid;
+                }
+                else if (existingByNumber is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(existingByNumber.SePayBankAccountXid))
+                    {
+                        throw new ConflictException(
+                            "This account number is already linked to a different SePay bank account.");
+                    }
+
+                    // Account-number fallback is intentionally limited to
+                    // unlinked legacy rows created before SePay XID identity.
+                    existing = existingByNumber;
                 }
                 else
                 {
-                    var count = await _paymentAccounts.CountAsync(x => x.BusinessId == business.Id);
-                    var isDefault = count == 0;
+                    existing = null;
+                }
 
-                    if (isDefault)
-                    {
-                        await _paymentAccounts.UnsetAllDefaultAsync(business.Id);
-                    }
+                var currentDefault = await _paymentAccounts.GetDefaultByBusinessIdAsync(
+                    business.Id);
 
+                if (existing is not null)
+                {
+                    existing.AccountType = PaymentAccountTypes.Bank;
+                    existing.BankShortName = NormalizeBankCode(bankCode);
+                    existing.BankName = NormalizeRequiredText(bankName);
+                    existing.AccountNumber = normalizedNumber;
+                    existing.AccountName = NormalizeAccountName(accountName);
+                    existing.SePayBankAccountXid = normalizedXid;
+                    existing.IsActive = true;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    existing.IsDefault = currentDefault is null ||
+                                         currentDefault.PaymentAccountId == existing.PaymentAccountId;
+                }
+                else
+                {
+                    var now = DateTime.UtcNow;
                     var newAccount = new PaymentAccount
                     {
                         PaymentAccountId = Guid.NewGuid(),
                         BusinessId = business.Id,
-                        BankShortName = bankCode,
-                        BankName = bankName,
-                        AccountNumber = accountNumber,
-                        AccountName = accountName.ToUpper(),
-                        IsDefault = isDefault,
-                        SePayBankAccountXid = bankAccountXid,
-                        CreatedAt = DateTime.UtcNow
+                        AccountType = PaymentAccountTypes.Bank,
+                        BankShortName = NormalizeBankCode(bankCode),
+                        BankName = NormalizeRequiredText(bankName),
+                        AccountNumber = normalizedNumber,
+                        AccountName = NormalizeAccountName(accountName),
+                        IsActive = true,
+                        IsDefault = currentDefault is null,
+                        SePayBankAccountXid = normalizedXid,
+                        CreatedAt = now,
+                        UpdatedAt = now
                     };
-
                     await _paymentAccounts.AddAsync(newAccount);
                 }
 
@@ -308,293 +840,286 @@ public class PaymentAccountService : IPaymentAccountService
         }
     }
 
-
-    /// <summary>
-    /// X\u1eed l\u00fd s\u1ef1 ki\u1ec7n BANK_ACCOUNT_LINKED t\u1eeb Bank Hub webhook.
-    /// Payload kh\u00f4ng c\u00f3 company_xid tr\u1ef1c ti\u1ebfp \u2014 d\u00f9ng linkTokenXid \u0111\u1ec3 tra business.
-    /// </summary>
-    public async Task CreateOrUpdateFromLinkTokenAsync(
-        string linkTokenXid,
-        string bankAccountXid,
-        string bankName,
-        string accountNumber,
-        string accountName)
+    private async Task NormalizeAndDeactivateDuplicateBanksAsync(Guid businessId)
     {
-        if (string.IsNullOrEmpty(linkTokenXid))
-            throw new ArgumentException("linkTokenXid is required.");
-
-        // Tra business theo LinkTokenXid \u0111\u01b0\u1ee3c l\u01b0u l\u00fac t\u1ea1o link token
-        var business = await _businessProfiles.FirstOrDefaultAsync(x => x.LastSePayLinkTokenXid == linkTokenXid);
-        if (business == null)
-        {
-            throw new Exception($"Business profile not found for LinkToken XID: {linkTokenXid}");
-        }
-
-        // Bank Hub kh\u00f4ng tr\u1ea3 v\u1ec1 bankCode ri\u00eang \u2014 d\u00f9ng bankName l\u00e0m bankShortName t\u1ea1m
-        await CreateOrUpdateFromSePayAsync(
-            business.SePayCompanyXid ?? "",
-            bankAccountXid,
-            bankName,
-            bankName, // bankCode = bankName t\u1ea1m th\u1eddi (Bank Hub ch\u1ec9 tr\u1ea3 brand_name)
-            accountNumber,
-            accountName
-        );
-    }
-
-    /// <summary>
-    /// Đồng bộ tài khoản ngân hàng từ SePay Bank Hub về DB.
-    /// </summary>
-    public async Task<(int Synced, int Total)> SyncSePayAccountsAsync(Guid businessId)
-    {
-        var business = await _businessProfiles.GetByIdAsync(businessId);
-        if (business == null)
-            throw new NotFoundException("Business profile not found.");
-
-        if (string.IsNullOrEmpty(business.SePayCompanyXid))
-            throw new ArgumentException("Business has no SePay company linked yet.");
-
-        // Tự động quét và dọn dẹp các dòng trùng lặp AccountNumber của business này trong database (nếu có)
-        var allAccounts = await _paymentAccounts.GetAllByBusinessIdAsync(businessId);
-        var duplicates = allAccounts
-
-            .GroupBy(x => x.AccountNumber)
-            .Where(g => g.Count() > 1)
+        var accounts = (await _paymentAccounts.GetAllByBusinessIdAsync(
+                businessId,
+                includeInactive: true))
+            .Where(x => x.AccountType == PaymentAccountTypes.Bank)
             .ToList();
 
-        if (duplicates.Any())
+        await _unitOfWork.BeginTransactionAsync();
+        try
         {
-            await _unitOfWork.BeginTransactionAsync();
-            try
+            foreach (var account in accounts)
             {
-                foreach (var group in duplicates)
+                account.BankShortName = NormalizeBankCode(account.BankShortName!);
+                account.BankName = NormalizeRequiredText(account.BankName!);
+                account.AccountNumber = NormalizeAccountNumber(account.AccountNumber!);
+                account.AccountName = NormalizeAccountName(account.AccountName!);
+            }
+
+            var duplicateGroups = accounts
+                .GroupBy(x => x.AccountNumber!, StringComparer.Ordinal)
+                .Where(x => x.Count() > 1);
+
+            foreach (var group in duplicateGroups)
+            {
+                var keep = group
+                    .OrderByDescending(x => x.IsActive)
+                    .ThenByDescending(x => x.IsDefault)
+                    .ThenBy(x => x.CreatedAt)
+                    .First();
+                foreach (var duplicate in group.Where(
+                             x => x.PaymentAccountId != keep.PaymentAccountId))
                 {
-                    // Giữ lại account đầu tiên, xóa các account trùng lặp còn lại
-                    var accountsToRemove = group.Skip(1).ToList();
-                    foreach (var acc in accountsToRemove)
-                    {
-                        var entity = await _paymentAccounts.GetByIdAsync(acc.PaymentAccountId);
-                        if (entity != null)
-                        {
-                            _paymentAccounts.Remove(entity);
-                        }
-                    }
+                    DeactivateAndClearSePay(duplicate);
                 }
-                await _unitOfWork.SaveChangesAsync();
-                await _unitOfWork.CommitTransactionAsync();
-                _logger.LogInformation("[SePay Sync] Cleaned up duplicate bank accounts for business {BusinessId}", businessId);
             }
-            catch (Exception ex)
-            {
-                await _unitOfWork.RollbackTransactionAsync();
-                _logger.LogWarning(ex, "[SePay Sync] Failed to cleanup duplicate accounts for business {BusinessId}", businessId);
-            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
         }
-
-        // Chủ động gọi SePay API để lấy danh sách tài khoản đã liên kết
-        var sePayAccounts = await _sePayService.GetLinkedBankAccountsAsync(business.SePayCompanyXid);
-
-        int savedCount = 0;
-        foreach (var acc in sePayAccounts)
+        catch
         {
-            try
-            {
-                await CreateOrUpdateFromSePayAsync(
-                    companyXid: business.SePayCompanyXid,
-                    bankAccountXid: acc.Xid,
-                    bankName: acc.BrandName,
-                    bankCode: acc.BrandName,
-                    accountNumber: acc.AccountNumber,
-                    accountName: acc.AccountHolderName
-                );
-                savedCount++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[SePay Sync] Failed to save account {AccountNumber}", acc.AccountNumber);
-            }
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    private async Task DeactivateMissingSePayAccountsAsync(
+        Guid businessId,
+        IReadOnlySet<string> remoteXids)
+    {
+        var accounts = (await _paymentAccounts.GetAllByBusinessIdAsync(
+                businessId,
+                includeInactive: true))
+            .Where(x =>
+                x.AccountType == PaymentAccountTypes.Bank &&
+                !string.IsNullOrWhiteSpace(x.SePayBankAccountXid) &&
+                !remoteXids.Contains(x.SePayBankAccountXid))
+            .ToList();
+        if (accounts.Count == 0)
+        {
+            return;
         }
 
-        return (savedCount, sePayAccounts.Count);
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var removedDefault = false;
+            foreach (var account in accounts)
+            {
+                removedDefault |= account.IsDefault;
+                DeactivateAndClearSePay(account);
+            }
+
+            if (removedDefault)
+            {
+                await PromoteNextDefaultBankAsync(
+                    businessId,
+                    accounts.Select(x => x.PaymentAccountId).ToArray());
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
     }
 
-
-    /// <summary>
-    /// Giả lập một giao dịch chuyển tiền vào ngân hàng để kích hoạt webhook đối soát (Demo Sandbox).
-    /// </summary>
-    public async Task CreateMockPaymentAsync(Guid transactionId, Guid paymentAccountId)
+    private async Task EnsureInitialBalancePeriodIsOpenAsync(
+        Guid authenticatedOwnerId,
+        PaymentAccount account,
+        DateOnly? newDate)
     {
-        // 1. Tìm Transaction
-        var transaction = await _transactions.GetByIdAsync(transactionId);
-        if (transaction == null)
-            throw new NotFoundException("Transaction not found.");
-
-        if (transaction.Status != TransactionStatus.AwaitingPayment)
-            throw new InvalidOperationException("Transaction is not awaiting payment.");
-
-        // 2. Tìm PaymentAccount
-        var paymentAccount = await _paymentAccounts.GetByIdAsync(paymentAccountId);
-        if (paymentAccount == null)
-            throw new NotFoundException("Payment account not found.");
-
-        if (string.IsNullOrEmpty(paymentAccount.SePayBankAccountXid))
-            throw new ArgumentException("Payment account has no SePayBankAccountXid associated.");
-
-        // 3. Gọi SePay Sandbox giả lập giao dịch chuyển khoản
-        // Nội dung giao dịch chính là TransactionCode để IPN Webhook đối soát thành công
-        await _sePayService.CreateMockTransactionAsync(
-            paymentAccount.SePayBankAccountXid,
-            transaction.TotalAmount,
-            transaction.TransactionCode
-        );
-
-        _logger.LogInformation("[SePay Sandbox Mock] Triggered mock transaction. Amount={Amount}, Code={Code}, BankAccountXid={BankXid}",
-            transaction.TotalAmount, transaction.TransactionCode, paymentAccount.SePayBankAccountXid);
+        if (account.InitialBalanceDate.HasValue && newDate.HasValue)
+        {
+            await _mutationGuard.EnsureCanMutateAsync(
+                authenticatedOwnerId,
+                account.BusinessId,
+                ToAccountingInstant(account.InitialBalanceDate.Value),
+                ToAccountingInstant(newDate.Value));
+        }
+        else if (account.InitialBalanceDate.HasValue)
+        {
+            await _mutationGuard.EnsureCanDeleteAsync(
+                authenticatedOwnerId,
+                account.BusinessId,
+                ToAccountingInstant(account.InitialBalanceDate.Value));
+        }
+        else if (newDate.HasValue)
+        {
+            await _mutationGuard.EnsureCanCreateAsync(
+                authenticatedOwnerId,
+                account.BusinessId,
+                ToAccountingInstant(newDate.Value));
+        }
     }
 
-    /// <summary>
-    /// Tạo hosted link hủy kết nối SePay Bank Hub, lưu linkTokenXid vào DB và đăng ký webhook.
-    /// </summary>
-    public async Task<string> GetSePayDisconnectUrlAsync(Guid paymentAccountId, string scheme, string host)
+    private async Task<BusinessProfile> EnsureBusinessOwnerAsync(
+        Guid businessId,
+        Guid authenticatedOwnerId)
+    {
+        var business = await _businessProfiles.GetByIdAsync(businessId);
+        if (business is null || business.OwnerId != authenticatedOwnerId)
+        {
+            throw new NotFoundException("Business profile not found.");
+        }
+
+        return business;
+    }
+
+    private async Task<PaymentAccount> GetOwnedAccountAsync(
+        Guid authenticatedOwnerId,
+        Guid paymentAccountId)
     {
         var account = await _paymentAccounts.GetByIdAsync(paymentAccountId);
-        if (account == null)
+        if (account is null)
+        {
             throw new NotFoundException("Payment account not found.");
-
-        if (string.IsNullOrEmpty(account.SePayBankAccountXid))
-            throw new ArgumentException("Payment account is not connected via SePay.");
+        }
 
         var business = await _businessProfiles.GetByIdAsync(account.BusinessId);
-        if (business == null)
-            throw new NotFoundException("Business profile not found.");
-
-        // Tra cứu trực tiếp từ SePay Server để lấy chính xác CompanyXID đang sở hữu tài khoản ngân hàng này
-        var sePayAccountDetail = await _sePayService.GetBankAccountDetailAsync(account.SePayBankAccountXid);
-        var companyXid = sePayAccountDetail?.CompanyXid ?? business.SePayCompanyXid;
-        if (string.IsNullOrEmpty(companyXid))
-            throw new ArgumentException("Business has no SePay company linked.");
-
-        var redirectUri = $"{scheme}://{host}/api/PaymentAccount/sepay-callback";
-        if (host.Contains("localhost") || host.Contains("127.0.0.1"))
+        if (business is null || business.OwnerId != authenticatedOwnerId)
         {
-            redirectUri = "https://taxmate.vn/api/PaymentAccount/sepay-callback";
-        }
-        else if (scheme == "http")
-        {
-            redirectUri = $"https://{host}/api/PaymentAccount/sepay-callback";
+            throw new NotFoundException("Payment account not found.");
         }
 
-        // Tạo link token hủy liên kết và lấy cả URL lẫn linkTokenXid
-        var (url, linkTokenXid) = await _sePayService.GenerateHostedLinkUrlAsync(
-            companyXid, redirectUri, "UNLINK_BANK_ACCOUNT", account.SePayBankAccountXid);
-
-        // Lưu linkTokenXid vào BusinessProfile để sau này trace BANK_ACCOUNT_UNLINKED webhook
-        if (!string.IsNullOrEmpty(linkTokenXid))
-        {
-            business.LastSePayLinkTokenXid = linkTokenXid;
-            _businessProfiles.Update(business);
-            await _unitOfWork.SaveChangesAsync();
-            _logger.LogInformation("[SePay Unlink] Saved LinkTokenXid={Xid} for BusinessId={BusinessId}", linkTokenXid, business.Id);
-        }
-
-        // Đăng ký Webhook URL với SePay Bank Hub
-        var webhookBaseUrl = _configuration["SePay:BankHub:WebhookUrl"];
-        if (string.IsNullOrEmpty(webhookBaseUrl))
-        {
-            var webhookScheme = scheme;
-            if (webhookScheme == "http" && !host.Contains("localhost") && !host.Contains("127.0.0.1"))
-            {
-                webhookScheme = "https";
-            }
-            webhookBaseUrl = $"{webhookScheme}://{host}";
-        }
-        var webhookUrl = $"{webhookBaseUrl}/api/webhook/payment/bankhub";
-        var secretKey = _configuration["SePay:BankHub:SecretKey"] ?? "";
-
-
-        _ = _sePayService.RegisterWebhookAsync(webhookUrl, secretKey)
-            .ContinueWith(t => _logger.LogWarning(t.Exception, "[SePay] RegisterWebhook error"),
-                TaskContinuationOptions.OnlyOnFaulted);
-
-        return url;
+        return account;
     }
 
-    /// <summary>
-    /// Tìm và xóa tài khoản ngân hàng cục bộ dựa trên bankAccountXid của SePay Bank Hub.
-    /// Dùng khi xử lý webhook BANK_ACCOUNT_UNLINKED.
-    /// </summary>
-    public async Task DeleteBySePayBankAccountXidAsync(string bankAccountXid)
+    private async Task PromoteNextDefaultBankAsync(
+        Guid businessId,
+        IReadOnlyCollection<Guid> excludedPaymentAccountIds)
     {
-        if (string.IsNullOrEmpty(bankAccountXid))
-            return;
-
-        var account = await _paymentAccounts.FirstOrDefaultAsync(x => x.SePayBankAccountXid == bankAccountXid);
-        if (account != null)
+        var next = await _paymentAccounts.GetFirstActiveBankAsync(
+            businessId,
+            excludedPaymentAccountIds);
+        if (next is not null)
         {
-            await DeleteAsync(account.PaymentAccountId);
-            _logger.LogInformation("[SePay Unlink Webhook] Deleted payment account {AccountNumber} (Xid: {Xid}) from DB.",
-                account.AccountNumber, bankAccountXid);
-        }
-        else
-        {
-            _logger.LogWarning("[SePay Unlink Webhook] Webhook requested delete for account Xid {Xid} but it was not found in DB.",
-                bankAccountXid);
+            next.IsDefault = true;
+            next.UpdatedAt = DateTime.UtcNow;
         }
     }
 
-    /// <summary>
-    /// Khôi phục toàn bộ danh sách tài khoản ngân hàng từ SePay Sandbox Server về DB local.
-    /// Dành cho việc Test/Dev khi DB local đã bị xóa/reset nhưng SePay Sandbox vẫn giữ dữ liệu cũ.
-    /// </summary>
-    public async Task<(int Recovered, int Total)> RecoverAllFromSePayAsync()
+    private string GetRequiredHttpsUrl(string configurationKey)
     {
-        var allSePayAccounts = await _sePayService.GetLinkedBankAccountsAsync(companyXid: null);
-        if (!allSePayAccounts.Any())
+        var value = GetRequiredConfiguration(configurationKey);
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(uri.Host) ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Fragment))
         {
-            return (0, 0);
+            throw new InvalidOperationException(
+                $"Configuration '{configurationKey}' must be an absolute HTTPS URL without credentials or fragments.");
         }
 
-        var allBusinesses = (await _businessProfiles.GetAllAsync()).ToList();
-        if (!allBusinesses.Any())
+        return uri.AbsoluteUri;
+    }
+
+    private string GetRequiredConfiguration(string configurationKey)
+    {
+        var value = _configuration[configurationKey];
+        if (string.IsNullOrWhiteSpace(value))
         {
-            return (0, allSePayAccounts.Count);
+            throw new InvalidOperationException(
+                $"Required configuration '{configurationKey}' is missing.");
         }
 
-        int recoveredCount = 0;
-        foreach (var acc in allSePayAccounts)
+        return value.Trim();
+    }
+
+    private static PaymentAccountResponse MapResponse(PaymentAccount account)
+        => new()
         {
-            try
-            {
-                var targetBusiness = allBusinesses.FirstOrDefault(b => b.SePayCompanyXid == acc.CompanyXid)
-                                    ?? allBusinesses.FirstOrDefault(b => string.IsNullOrEmpty(b.SePayCompanyXid))
-                                    ?? allBusinesses.First();
+            PaymentAccountId = account.PaymentAccountId,
+            BusinessId = account.BusinessId,
+            AccountType = account.AccountType,
+            BankShortName = account.BankShortName,
+            BankName = account.BankName,
+            AccountNumber = account.AccountNumber,
+            AccountName = account.AccountName,
+            InitialBalance = account.InitialBalance,
+            InitialBalanceDate = account.InitialBalanceDate,
+            IsActive = account.IsActive,
+            IsDefault = account.IsDefault,
+            Description = account.Description,
+            CassoConnectedAccountId = account.CassoConnectedAccountId,
+            SePayBankAccountXid = account.SePayBankAccountXid,
+            CreatedAt = account.CreatedAt,
+            UpdatedAt = account.UpdatedAt
+        };
 
-                if (targetBusiness.SePayCompanyXid != acc.CompanyXid)
-                {
-                    targetBusiness.SePayCompanyXid = acc.CompanyXid;
-                    _businessProfiles.Update(targetBusiness);
-                    await _unitOfWork.SaveChangesAsync();
-                }
-
-                await CreateOrUpdateFromSePayAsync(
-                    companyXid: acc.CompanyXid,
-                    bankAccountXid: acc.Xid,
-                    bankName: acc.BrandName,
-                    bankCode: acc.BrandName,
-                    accountNumber: acc.AccountNumber,
-                    accountName: acc.AccountHolderName
-                );
-                recoveredCount++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[SePay Recover] Failed to recover account {AccountNumber} (Company: {CompanyXid})", acc.AccountNumber, acc.CompanyXid);
-            }
+    private static void ValidateBankFields(
+        string? bankShortName,
+        string? bankName,
+        string? accountNumber,
+        string? accountName)
+    {
+        if (string.IsNullOrWhiteSpace(bankShortName) ||
+            string.IsNullOrWhiteSpace(bankName) ||
+            string.IsNullOrWhiteSpace(accountNumber) ||
+            string.IsNullOrWhiteSpace(accountName))
+        {
+            throw new BadRequestException(
+                "Bank code, bank name, account number and account name are required for a Bank account.");
         }
+    }
 
-        return (recoveredCount, allSePayAccounts.Count);
+    private static void ValidateInitialBalancePair(
+        decimal? initialBalance,
+        DateOnly? initialBalanceDate)
+    {
+        if (initialBalance.HasValue != initialBalanceDate.HasValue)
+        {
+            throw new BadRequestException(
+                "InitialBalance and InitialBalanceDate must either both be provided or both be null.");
+        }
+    }
+
+    private static string NormalizeBankCode(string value)
+        => NormalizeRequiredText(value).ToUpperInvariant();
+
+    private static string NormalizeAccountName(string value)
+        => NormalizeRequiredText(value).ToUpperInvariant();
+
+    private static string NormalizeAccountNumber(string value)
+        => string.Concat(NormalizeRequiredText(value).Where(x => !char.IsWhiteSpace(x)));
+
+    private static string NormalizeRequiredText(string value)
+        => value.Trim();
+
+    private static string? NormalizeOptionalText(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static DateTime ToAccountingInstant(DateOnly date)
+        => BangkokBusinessTime.BangkokWallClockToNaiveUtc(
+            date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified));
+
+    private static bool HasAnyIntegrationIdentifier(PaymentAccount account)
+        => !string.IsNullOrWhiteSpace(account.SePayBankAccountXid) ||
+           !string.IsNullOrWhiteSpace(account.CassoConnectedAccountId) ||
+           !string.IsNullOrWhiteSpace(account.CassoAccessToken) ||
+           !string.IsNullOrWhiteSpace(account.CassoRefreshToken);
+
+    private static void DeactivateAndClearSePay(PaymentAccount account)
+    {
+        account.IsActive = false;
+        account.IsDefault = false;
+        account.SePayBankAccountXid = null;
+        account.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static void DeactivateAndClearAllIntegrations(PaymentAccount account)
+    {
+        DeactivateAndClearSePay(account);
+        account.CassoAccessToken = null;
+        account.CassoRefreshToken = null;
+        account.CassoConnectedAccountId = null;
     }
 }
-
-
-
-
