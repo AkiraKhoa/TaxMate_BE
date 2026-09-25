@@ -620,6 +620,13 @@ public class TaxBookService : ITaxBookService
             throw new NotFoundException("User not found.");
         }
 
+        if (user.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.IncomeBased ||
+            user.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.RevenueBased)
+        {
+            throw new ConflictException(
+                "Sổ doanh thu S1a chỉ áp dụng cho hộ kinh doanh thuộc diện không quá 1 tỷ đồng (AtOrBelow1B).");
+        }
+
         DateTime startDate;
         DateTime endDate;
         string periodLabel;

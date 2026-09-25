@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using TaxMate.Model.DTO.Reports;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Exceptions;
@@ -571,8 +571,6 @@ public class ReportService : IReportService
     var taxMonthStart = monthStart.AddHours(-7);
     var taxEnd = tomorrowStart.AddHours(-7);
     var annual = await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxYearStart, taxEnd);
-    var previousRevenue = taxMonthStart == taxYearStart ? 0m
-        : (await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxYearStart, taxMonthStart)).TotalRevenue;
     var ownerMonth = await _ownerRevenue.ProjectAsync(taxContext.OwnerId, businessId, taxMonthStart, taxEnd);
     var businessMonth = await _ownerRevenue.ProjectBusinessAsync(taxContext.OwnerId, businessId, taxMonthStart, taxEnd);
     var owner = await _users.GetByIdAsync(taxContext.OwnerId)
@@ -587,7 +585,7 @@ public class ReportService : IReportService
     {
         var categories = (await _categories.GetAllAsync()).ToDictionary(x => x.BusinessCategoryId);
         var remaining = owner.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.RevenueBased
-            ? Math.Max(0m, policy.AnnualRevenueThreshold - previousRevenue) : 0m;
+            ? policy.AnnualRevenueThreshold : 0m;
         var deductions = new Dictionary<Guid, decimal>();
         foreach (var group in ownerMonth.Groups.OrderByDescending(x => categories[x.BusinessCategoryId].PitRate).ThenBy(x => x.BusinessCategoryId))
         {
