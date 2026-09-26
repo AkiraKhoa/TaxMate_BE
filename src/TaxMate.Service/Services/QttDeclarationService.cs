@@ -148,6 +148,8 @@ public sealed class QttDeclarationService : IQttDeclarationService
                 }
             }
 
+            IReadOnlyList<QttPaymentSupportDocumentRow> paymentSupportRows = [];
+
             if (indicators is null && _annualTaxAggregate is not null && _qttCalculationEngine is not null)
             {
                 // Tier 3: Pure read-only live projection (identical to Web QTT preview)
@@ -160,6 +162,28 @@ public sealed class QttDeclarationService : IQttDeclarationService
                 indicators = calcPreview.Indicators;
                 inventoryTotals = calcPreview.InventoryTotals;
                 inventoryRows = aggregate.Inventory.Rows;
+
+                if (aggregate.PitPayments.Payments.Count > 0)
+                {
+                    var chapterCode = business.TaxAuthorityLevel switch
+                    {
+                        TaxAuthorityLevels.Province => StateBudgetCodes2026.HouseholdProvinceChapter,
+                        _ => StateBudgetCodes2026.HouseholdLocalChapter
+                    };
+
+                    paymentSupportRows = aggregate.PitPayments.Payments
+                        .Where(x => x.IncludedInIndicator15)
+                        .Select(x => new QttPaymentSupportDocumentRow(
+                            StateBudgetCodes2026.PitBusinessContent,
+                            x.Amount,
+                            chapterCode,
+                            StateBudgetCodes2026.PitBusinessSubsection,
+                            business.TaxAdministrationAreaCode,
+                            business.CollectingAuthority,
+                            business.ManagingTaxAuthority,
+                            x.PaymentDate))
+                        .ToList();
+                }
             }
 
             snapshot = new QttFormSnapshot
@@ -185,9 +209,25 @@ public sealed class QttDeclarationService : IQttDeclarationService
                 OffsetItems = [],
                 CreatedAt = now
             };
+
+            var file = await _documentGenerator.GenerateAsync(
+                new QttDocumentModel
+                {
+                    Snapshot = snapshot,
+                    ExportDate = DateTime.Now,
+                    PaymentSupportRows = paymentSupportRows
+                },
+                cancellationToken);
+
+            return new TaxDeclarationGeneratedFile
+            {
+                Content = file.Content,
+                FileName = $"02-CNKD-TNCN-QTT_XEM-TRUOC_{snapshot.TaxCode}_{year}.docx",
+                ContentType = file.ContentType
+            };
         }
 
-        var file = await _documentGenerator.GenerateAsync(
+        var defaultFile = await _documentGenerator.GenerateAsync(
             new QttDocumentModel
             {
                 Snapshot = snapshot,
@@ -198,9 +238,9 @@ public sealed class QttDeclarationService : IQttDeclarationService
 
         return new TaxDeclarationGeneratedFile
         {
-            Content = file.Content,
+            Content = defaultFile.Content,
             FileName = $"02-CNKD-TNCN-QTT_XEM-TRUOC_{snapshot.TaxCode}_{year}.docx",
-            ContentType = file.ContentType
+            ContentType = defaultFile.ContentType
         };
     }
 

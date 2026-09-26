@@ -160,4 +160,40 @@ public class TaxPeriodController : ControllerBase
                 $"Đã hủy thành công {count} đơn hàng nháp trong kỳ.",
                 HttpContext.TraceIdentifier));
     }
+
+    [HttpPost("{taxPeriodId:guid}/payments")]
+    public async Task<IActionResult> RecordPayment(
+        Guid taxPeriodId,
+        [FromBody] RecordTaxPeriodPaymentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _taxPeriodService.RecordPaymentAsync(
+            GetUserId(),
+            taxPeriodId,
+            request,
+            cancellationToken);
+
+        return Ok(
+            ApiResponse<TaxPeriodPaymentSummaryResponse>.Ok(
+                result,
+                "Đã ghi nhận nộp thuế thành công.",
+                HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("{taxPeriodId:guid}/payments")]
+    public async Task<IActionResult> GetPayments(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _taxPeriodService.GetPaymentsAsync(
+            GetUserId(),
+            taxPeriodId,
+            cancellationToken);
+
+        return Ok(
+            ApiResponse<TaxPeriodPaymentSummaryResponse>.Ok(
+                result,
+                "Lấy danh sách thanh toán thuế thành công.",
+                HttpContext.TraceIdentifier));
+    }
 }

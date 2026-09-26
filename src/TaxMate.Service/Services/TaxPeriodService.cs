@@ -22,6 +22,7 @@ public class TaxPeriodService : ITaxPeriodService
     private readonly IInventoryQuarterFinalizer _inventoryValuation;
     private readonly IOwnerRevenueProjector? _ownerRevenue;
     private readonly IGenericRepository<RevenueThresholdAlert>? _thresholdAlerts;
+    private readonly ITaxDeclarationRepository? _taxDeclarationRepository;
 
     public TaxPeriodService(
         ITaxPeriodRepository taxPeriodRepository,
@@ -33,7 +34,8 @@ public class TaxPeriodService : ITaxPeriodService
         IInventoryMovementRepository inventoryMovements,
         IInventoryQuarterFinalizer inventoryValuation,
         IOwnerRevenueProjector? ownerRevenue = null,
-        IGenericRepository<RevenueThresholdAlert>? thresholdAlerts = null)
+        IGenericRepository<RevenueThresholdAlert>? thresholdAlerts = null,
+        ITaxDeclarationRepository? taxDeclarationRepository = null)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxCalculationRepository = taxCalculationRepository;
@@ -45,6 +47,7 @@ public class TaxPeriodService : ITaxPeriodService
         _inventoryValuation = inventoryValuation;
         _ownerRevenue = ownerRevenue;
         _thresholdAlerts = thresholdAlerts;
+        _taxDeclarationRepository = taxDeclarationRepository;
     }
 
     public async Task<IReadOnlyList<TaxPeriodSummaryResponse>>
@@ -1167,5 +1170,231 @@ public class TaxPeriodService : ITaxPeriodService
         return await _taxPeriodRepository.CancelDraftTransactionsAsync(
             taxPeriodId,
             cancellationToken);
+    }
+
+    public async Task<TaxPeriodPaymentSummaryResponse> RecordPaymentAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        RecordTaxPeriodPaymentRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var identity = await _taxPeriodRepository.GetIdentityAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (identity is null)
+            throw new NotFoundException("Tax period not found.");
+
+        if (identity.OwnerId != userId)
+            throw new ForbiddenException("You do not have permission to access this business.");
+
+        var period = await _taxPeriodRepository.GetCanonicalByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (period is null)
+            throw new NotFoundException("Tax period not found.");
+
+        if (period.Status != TaxPeriodStatuses.Submitted &&
+            period.Status != TaxPeriodStatuses.PartiallyPaid &&
+            period.Status != TaxPeriodStatuses.Paid)
+        {
+            throw new BadRequestException(
+                $"Cannot record tax payment for period in status '{period.Status}'. Tax period must be Submitted first.");
+        }
+
+        var declaration = _taxDeclarationRepository != null
+            ? await _taxDeclarationRepository.GetCurrentByTaxPeriodAsync(period.Id, cancellationToken)
+            : null;
+
+        var existingPayments = await _taxPeriodRepository.GetPaymentsByPeriodIdAsync(period.Id, cancellationToken);
+        if (existingPayments.Count > 0)
+        {
+            await _taxPeriodRepository.RemoveTaxPaymentsAsync(existingPayments, cancellationToken);
+        }
+
+        var paymentsToCreate = new List<TaxPayment>();
+        var paymentDate = request.PaymentDate == default ? DateTime.UtcNow : request.PaymentDate;
+        var paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "Bank" : request.PaymentMethod.Trim();
+
+        if (request.Items != null && request.Items.Count > 0)
+        {
+            foreach (var item in request.Items)
+            {
+                if (item.Amount <= 0) continue;
+                var shortGuid = Guid.NewGuid().ToString("N")[..8];
+                var paymentCode = $"TPAY-{period.Year}{(period.Quarter.HasValue ? $"Q{period.Quarter}" : "")}-{item.TaxType}-{shortGuid}";
+                paymentsToCreate.Add(new TaxPayment
+                {
+                    Id = Guid.NewGuid(),
+                    TaxPeriodId = period.Id,
+                    TaxDeclarationId = declaration?.Id,
+                    TaxType = item.TaxType,
+                    PaymentCode = paymentCode,
+                    Amount = item.Amount,
+                    PaymentDate = paymentDate,
+                    PaymentMethod = paymentMethod,
+                    Status = TaxPaymentStatuses.Completed,
+                    TransactionReference = request.TransactionReference,
+                    StateBudgetChapterCode = item.StateBudgetChapterCode,
+                    StateBudgetSubsectionCode = item.StateBudgetSubsectionCode,
+                    AdministrativeAreaCode = item.AdministrativeAreaCode,
+                    ReceiptFileUrl = request.ReceiptFileUrl,
+                    Note = request.Note,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else if (declaration != null && declaration.Obligations.Count > 0)
+        {
+            foreach (var obligation in declaration.Obligations.Where(x => x.PayableAmount > 0))
+            {
+                var shortGuid = Guid.NewGuid().ToString("N")[..8];
+                var paymentCode = $"TPAY-{period.Year}{(period.Quarter.HasValue ? $"Q{period.Quarter}" : "")}-{obligation.TaxType}-{shortGuid}";
+                paymentsToCreate.Add(new TaxPayment
+                {
+                    Id = Guid.NewGuid(),
+                    TaxPeriodId = period.Id,
+                    TaxDeclarationId = declaration.Id,
+                    TaxType = obligation.TaxType,
+                    PaymentCode = paymentCode,
+                    Amount = obligation.PayableAmount,
+                    PaymentDate = paymentDate,
+                    PaymentMethod = paymentMethod,
+                    Status = TaxPaymentStatuses.Completed,
+                    TransactionReference = request.TransactionReference,
+                    StateBudgetChapterCode = obligation.StateBudgetChapterCode,
+                    StateBudgetSubsectionCode = obligation.StateBudgetSubsectionCode,
+                    AdministrativeAreaCode = obligation.AdministrativeAreaCode,
+                    ReceiptFileUrl = request.ReceiptFileUrl,
+                    Note = request.Note,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+        else
+        {
+            if (period.VatTaxAmount > 0)
+            {
+                var shortGuid = Guid.NewGuid().ToString("N")[..8];
+                var paymentCode = $"TPAY-{period.Year}{(period.Quarter.HasValue ? $"Q{period.Quarter}" : "")}-VAT-{shortGuid}";
+                paymentsToCreate.Add(new TaxPayment
+                {
+                    Id = Guid.NewGuid(),
+                    TaxPeriodId = period.Id,
+                    TaxType = TaxTypes.Vat,
+                    PaymentCode = paymentCode,
+                    Amount = period.VatTaxAmount,
+                    PaymentDate = paymentDate,
+                    PaymentMethod = paymentMethod,
+                    Status = TaxPaymentStatuses.Completed,
+                    TransactionReference = request.TransactionReference,
+                    ReceiptFileUrl = request.ReceiptFileUrl,
+                    Note = request.Note,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            if (period.PersonalIncomeTaxAmount > 0)
+            {
+                var shortGuid = Guid.NewGuid().ToString("N")[..8];
+                var paymentCode = $"TPAY-{period.Year}{(period.Quarter.HasValue ? $"Q{period.Quarter}" : "")}-PIT-{shortGuid}";
+                paymentsToCreate.Add(new TaxPayment
+                {
+                    Id = Guid.NewGuid(),
+                    TaxPeriodId = period.Id,
+                    TaxType = TaxTypes.PersonalIncomeTax,
+                    PaymentCode = paymentCode,
+                    Amount = period.PersonalIncomeTaxAmount,
+                    PaymentDate = paymentDate,
+                    PaymentMethod = paymentMethod,
+                    Status = TaxPaymentStatuses.Completed,
+                    TransactionReference = request.TransactionReference,
+                    ReceiptFileUrl = request.ReceiptFileUrl,
+                    Note = request.Note,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        if (paymentsToCreate.Count > 0)
+        {
+            await _taxPeriodRepository.AddTaxPaymentsAsync(paymentsToCreate, cancellationToken);
+        }
+
+        period.Status = TaxPeriodStatuses.Paid;
+        period.PaidDate = paymentDate;
+        period.TaxAmountDebt = 0m;
+        period.UpdatedAt = DateTime.UtcNow;
+
+        await _taxPeriodRepository.SaveChangesAsync(cancellationToken);
+
+        return new TaxPeriodPaymentSummaryResponse(
+            period.Id,
+            period.Status,
+            period.PaidDate,
+            paymentsToCreate.Sum(x => x.Amount),
+            paymentsToCreate.Select(x => new TaxPaymentDetailResponse(
+                x.Id,
+                x.TaxType,
+                x.PaymentCode,
+                x.Amount,
+                x.PaymentDate,
+                x.PaymentMethod,
+                x.Status,
+                x.TransactionReference,
+                x.StateBudgetChapterCode,
+                x.StateBudgetSubsectionCode,
+                x.AdministrativeAreaCode,
+                x.ReceiptFileUrl,
+                x.Note)).ToList()
+        );
+    }
+
+    public async Task<TaxPeriodPaymentSummaryResponse> GetPaymentsAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = await _taxPeriodRepository.GetIdentityAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (identity is null)
+            throw new NotFoundException("Tax period not found.");
+
+        if (identity.OwnerId != userId)
+            throw new ForbiddenException("You do not have permission to access this business.");
+
+        var period = await _taxPeriodRepository.GetCanonicalByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (period is null)
+            throw new NotFoundException("Tax period not found.");
+
+        var payments = await _taxPeriodRepository.GetPaymentsByPeriodIdAsync(period.Id, cancellationToken);
+
+        return new TaxPeriodPaymentSummaryResponse(
+            period.Id,
+            period.Status,
+            period.PaidDate,
+            payments.Sum(x => x.Amount),
+            payments.Select(x => new TaxPaymentDetailResponse(
+                x.Id,
+                x.TaxType,
+                x.PaymentCode,
+                x.Amount,
+                x.PaymentDate,
+                x.PaymentMethod,
+                x.Status,
+                x.TransactionReference,
+                x.StateBudgetChapterCode,
+                x.StateBudgetSubsectionCode,
+                x.AdministrativeAreaCode,
+                x.ReceiptFileUrl,
+                x.Note)).ToList()
+        );
     }
 }

@@ -40,4 +40,15 @@ public interface ITaxPeriodService
         Guid userId,
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);
+
+    Task<TaxPeriodPaymentSummaryResponse> RecordPaymentAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        RecordTaxPeriodPaymentRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxPeriodPaymentSummaryResponse> GetPaymentsAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
 }

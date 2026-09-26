@@ -1006,4 +1006,30 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
 
         return affectedRows;
     }
+
+    public async Task<IReadOnlyList<TaxPayment>> GetPaymentsByPeriodIdAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.TaxPayments
+            .Where(x => x.TaxPeriodId == taxPeriodId)
+            .OrderBy(x => x.PaymentDate)
+            .ThenBy(x => x.TaxType)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddTaxPaymentsAsync(
+        IEnumerable<TaxPayment> payments,
+        CancellationToken cancellationToken = default)
+    {
+        await _dbContext.TaxPayments.AddRangeAsync(payments, cancellationToken);
+    }
+
+    public Task RemoveTaxPaymentsAsync(
+        IEnumerable<TaxPayment> payments,
+        CancellationToken cancellationToken = default)
+    {
+        _dbContext.TaxPayments.RemoveRange(payments);
+        return Task.CompletedTask;
+    }
 }
