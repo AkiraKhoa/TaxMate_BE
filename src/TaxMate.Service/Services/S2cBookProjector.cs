@@ -56,7 +56,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
             quarter);
         var historyStart = movements.Count == 0
             ? periodStart
-            : movements.Min(x => BangkokBusinessTime.NormalizeNaiveUtc(x.OccurredAt));
+            : new[] { periodStart, movements.Min(x => BangkokBusinessTime.NormalizeNaiveUtc(x.OccurredAt)) }.Min();
         var expenseHistory = await _accountingSources.GetS2cExpensesAsync(
             businessId,
             historyStart,
@@ -128,7 +128,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                 .Where(x => !x.HasEvidence)
                 .Select(x => new S2cBookWarning(
                     "MissingExpenseEvidence",
-                    $"Khoản chi {x.VoucherNumber} chưa có ảnh hoặc tệp chứng từ.",
+                    $"Khoản chi {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) chưa có ảnh hoặc tệp chứng từ.",
                     x.ExpenseId,
                     true)))
             .Concat(expenses
@@ -137,7 +137,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                     string.IsNullOrWhiteSpace(x.S2cGroupCode))
                 .Select(x => new S2cBookWarning(
                     "ExpenseNotMappedToS2c",
-                    $"Khoản chi {x.VoucherNumber} chưa chọn nhóm S2c nên chưa được đưa vào chi phí dự kiến được trừ.",
+                    $"Khoản chi {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) chưa chọn nhóm S2c nên chưa được đưa vào chi phí dự kiến được trừ.",
                     x.ExpenseId,
                     true)))
             .Concat(expenseHistory
@@ -147,10 +147,31 @@ internal sealed class S2cBookProjector : IS2cBookProjector
                     inventoryPurchaseIdsUsedByS2d.Contains(x.ExpenseId))
                 .Select(x => new S2cBookWarning(
                     "MissingInventoryPurchaseEvidence",
-                    $"Phiếu nhập {x.VoucherNumber} đang được S2d dùng để tính giá xuất nhưng chưa có ảnh hoặc tệp chứng từ.",
+                    $"Phiếu nhập {x.VoucherNumber} ({x.ExpenseTitle} · {x.Amount:N0}đ) đang được S2d dùng để tính giá xuất nhưng chưa có ảnh hoặc tệp chứng từ.",
                     x.ExpenseId,
                     true)))
             .ToList();
+
+        var reviewLines = expenseHistory
+            .Where(x => expenses.Any(e => e.ExpenseId == x.ExpenseId) ||
+                        warnings.Any(w => w.SourceId == x.ExpenseId))
+            .Select(x =>
+            {
+                var issues = warnings.Where(w => w.SourceId == x.ExpenseId)
+                    .Select(w => w.Code).ToList();
+                if (excludedCashIds.Contains(x.ExpenseId))
+                    issues.Add("CashExpenseExcluded");
+                if (!x.IsInventoryPurchase && x.S2cGroupCode == S2cGroupCodes.Labor)
+                    issues.Add("LaborExpenseUnsupported");
+                var included = lines.FirstOrDefault(line => line.ExpenseId == x.ExpenseId);
+                return new S2cExpenseReviewLine(
+                    x.ExpenseId,
+                    x.IsInventoryPurchase ? "inventoryPurchase" : "expense",
+                    x.VoucherNumber, x.ExpenseDate, x.ExpenseTitle, x.Amount,
+                    x.IsInventoryPurchase ? null : included?.Amount ?? 0m,
+                    issues);
+            })
+            .OrderBy(x => x.ExpenseDate).ThenBy(x => x.VoucherNumber).ToList();
 
         return new S2cBookProjection
         {
@@ -172,6 +193,7 @@ internal sealed class S2cBookProjector : IS2cBookProjector
             EvidenceReviewedAt = taxPeriod?.EvidenceReviewedAt,
             EvidenceReviewedByUserId = taxPeriod?.EvidenceReviewedByUserId,
             Lines = lines,
+            ReviewLines = reviewLines,
             Warnings = warnings
         };
     }

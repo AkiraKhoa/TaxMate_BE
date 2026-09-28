@@ -19,6 +19,12 @@ public interface ITaxBookService
         Guid declarationId,
         CancellationToken cancellationToken = default);
 
+    Task<TaxDeclarationGeneratedFile> ExportQttPreviewAsync(
+        Guid userId,
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default);
+
     Task<QttPreviewResponse> GetQttPreviewAsync(
         Guid userId,
         Guid businessId,

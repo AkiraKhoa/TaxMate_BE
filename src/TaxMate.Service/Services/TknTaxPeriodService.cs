@@ -192,9 +192,45 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
         context.Period.UpdatedAt = now;
         await _calculations.AddAsync(calculation);
         await _periods.SaveChangesAsync(cancellationToken);
+        var lineDtos = projection.Groups
+            .OrderBy(x => x.BusinessCategoryCode)
+            .Select(g => new TknTaxCalculationLineResponse(
+                g.BusinessCategoryId,
+                g.BusinessCategoryCode,
+                g.BusinessCategoryName,
+                g.TotalRevenue))
+            .ToList();
         return new TknTaxCalculationResponse(context.Period.Id, calculation.Id,
             version, total, policy.AnnualRevenueThreshold,
-            TaxFormCodes.Form01TknCnkd, now);
+            TaxFormCodes.Form01TknCnkd, now, lineDtos);
+    }
+
+    public async Task<TknTaxCalculationResponse> GetCalculationPreviewAsync(Guid userId,
+        Guid taxPeriodId, CancellationToken cancellationToken = default)
+    {
+        var context = await LoadAsync(userId, taxPeriodId, cancellationToken);
+        var projection = await GetRevenueProjectionAsync(
+            userId, context.Period, cancellationToken);
+        var policy = await GetPolicyAsync(context.Period, cancellationToken);
+        var now = UtcNow();
+        var total = projection.TotalRevenue;
+        var lineDtos = projection.Groups
+            .OrderBy(x => x.BusinessCategoryCode)
+            .Select(g => new TknTaxCalculationLineResponse(
+                g.BusinessCategoryId,
+                g.BusinessCategoryCode,
+                g.BusinessCategoryName,
+                g.TotalRevenue))
+            .ToList();
+        return new TknTaxCalculationResponse(
+            context.Period.Id,
+            Guid.Empty,
+            0,
+            total,
+            policy.AnnualRevenueThreshold,
+            TaxFormCodes.Form01TknCnkd,
+            now,
+            lineDtos);
     }
 
     public async Task<TknQttNextStepResponse> GetQttNextStepAsync(
@@ -288,7 +324,7 @@ public sealed class TknTaxPeriodService : ITknTaxPeriodService
             throw new ConflictException(
                 current.RequiresPaymentSourceReview
                     ? "Khoản PIT đã nộp chưa truy được snapshot phương pháp nguồn; hãy rà soát trước khi tạo QTT."
-                    : "TKN này không đủ điều kiện tạo QTT xử lý PIT IncomeBased nộp thừa.");
+                    : "TKN này không đủ điều kiện tạo QTT xử lý thuế TNCN (Doanh thu - Chi phí) nộp thừa.");
         }
 
         if (choice == TknQttBridgeChoices.Refund &&

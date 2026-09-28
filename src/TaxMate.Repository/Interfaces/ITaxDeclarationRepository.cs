@@ -4,6 +4,7 @@ namespace TaxMate.Repository.Interfaces;
 
 public interface ITaxDeclarationRepository : IGenericRepository<TaxDeclaration>
 {
+    void AddObligation(TaxDeclarationObligation obligation);
     Task<TaxDeclaration?> GetByIdAsync(
         Guid declarationId,
         CancellationToken cancellationToken = default);

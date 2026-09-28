@@ -7,6 +7,7 @@ public interface ITknTaxPeriodService
     Task<TknTaxPeriodPreviewResponse> GetPreviewAsync(Guid userId, Guid taxPeriodId, CancellationToken cancellationToken = default);
     Task<CloseTknTaxPeriodResponse> CloseAsync(Guid userId, Guid taxPeriodId, CloseTknTaxPeriodRequest request, CancellationToken cancellationToken = default);
     Task<TknTaxCalculationResponse> CalculateAsync(Guid userId, Guid taxPeriodId, CancellationToken cancellationToken = default);
+    Task<TknTaxCalculationResponse> GetCalculationPreviewAsync(Guid userId, Guid taxPeriodId, CancellationToken cancellationToken = default);
 
     Task<TknQttNextStepResponse> GetQttNextStepAsync(
         Guid userId,

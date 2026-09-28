@@ -66,9 +66,18 @@ public class OrderController : ControllerBase
         [FromQuery] string? status = null,
         [FromQuery] string? paymentMethod = null,
         [FromQuery] decimal? minAmount = null,
-        [FromQuery] decimal? maxAmount = null)
+        [FromQuery] decimal? maxAmount = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] string? search = null,
+        [FromQuery] bool excludeEmptyDrafts = false,
+        [FromQuery] bool? hasInvoice = null)
     {
         int activePage = page ?? pageNumber;
+        if (activePage < 1 || pageSize < 1 || (startDate.HasValue && endDate.HasValue && startDate >= endDate))
+            return BadRequest("Invalid pagination or date range.");
+        startDate = startDate.HasValue ? DateTime.SpecifyKind(startDate.Value, DateTimeKind.Unspecified) : null;
+        endDate = endDate.HasValue ? DateTime.SpecifyKind(endDate.Value, DateTimeKind.Unspecified) : null;
         var result = await _orderService.GetOrdersByBusinessAsync(
             businessId,
             activePage,
@@ -76,7 +85,7 @@ public class OrderController : ControllerBase
             status,
             paymentMethod,
             minAmount,
-            maxAmount);
+            maxAmount, startDate, endDate, search, excludeEmptyDrafts, hasInvoice);
         return Ok(
             ApiResponse<PagedResult<OrderSummaryResponse>>.Ok(
                 result,

@@ -1,4 +1,4 @@
-﻿namespace TaxMate.Model.DTO.TaxPeriod;
+namespace TaxMate.Model.DTO.TaxPeriod;
 
 public class TaxPeriodDetailResponse
 {
@@ -63,4 +63,25 @@ public class TaxPeriodDetailResponse
     public DateTime? CalculatedAt { get; set; }
 
     public DateTime? SubmittedAt { get; set; }
+
+    public List<TaxPeriodBusinessBreakdown> BusinessBreakdowns { get; set; } = [];
+}
+
+public class TaxPeriodBusinessBreakdown
+{
+    public Guid BusinessId { get; set; }
+
+    public string BusinessName { get; set; } = string.Empty;
+
+    public int TransactionCount { get; set; }
+
+    public int PaidTransactionCount { get; set; }
+
+    public int UnpaidTransactionCount { get; set; }
+
+    public int MissingInvoiceCount { get; set; }
+
+    public int ExpenseCount { get; set; }
+
+    public decimal Revenue { get; set; }
 }

@@ -18,6 +18,7 @@ public class IncomeService : IIncomeService
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly IPaymentAccountService _paymentAccounts;
     private readonly IMoneyMovementService _moneyMovements;
+    private readonly IMoneyMovementRepository _moneyMovementRepo;
     private readonly ITaxPeriodMutationGuard _periodGuard;
     private readonly IRevenueThresholdAlertService _revenueThresholds;
     private readonly IMapper _mapper;
@@ -29,6 +30,7 @@ public class IncomeService : IIncomeService
         IGenericRepository<BusinessProfile> businessProfiles,
         IPaymentAccountService paymentAccounts,
         IMoneyMovementService moneyMovements,
+        IMoneyMovementRepository moneyMovementRepo,
         ITaxPeriodMutationGuard periodGuard,
         IRevenueThresholdAlertService revenueThresholds,
         IMapper mapper)
@@ -39,6 +41,7 @@ public class IncomeService : IIncomeService
         _businessProfiles = businessProfiles;
         _paymentAccounts = paymentAccounts;
         _moneyMovements = moneyMovements;
+        _moneyMovementRepo = moneyMovementRepo;
         _periodGuard = periodGuard;
         _revenueThresholds = revenueThresholds;
         _mapper = mapper;
@@ -106,7 +109,18 @@ public class IncomeService : IIncomeService
             await EnsureCategoryIsValidAsync(request.IncomeCategoryId, entity.BusinessId);
             var accountingType = ValidateAccountingType(request.AccountingType);
             await GuardUpdateDatesAsync(ownerId, entity.BusinessId, entity.IncomeDate, request.IncomeDate, entity.ReceivedDate, request.ReceivedDate);
-            var payment = await ResolvePaymentAsync(ownerId, entity.BusinessId, request.ReceivedDate, request.PaymentMethod, request.PaymentAccountId);
+
+            var paymentAccountId = request.PaymentAccountId;
+            if (!paymentAccountId.HasValue && string.Equals(request.PaymentMethod?.Trim(), PaymentMethods.Transfer, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingMovement = await _moneyMovementRepo.GetBySourceForWriteAsync(MoneyMovementTypes.ManualIncomeIn, entity.IncomeId);
+                if (existingMovement != null)
+                {
+                    paymentAccountId = existingMovement.PaymentAccountId;
+                }
+            }
+
+            var payment = await ResolvePaymentAsync(ownerId, entity.BusinessId, request.ReceivedDate, request.PaymentMethod, paymentAccountId);
 
             entity.IncomeCategoryId = request.IncomeCategoryId;
             entity.IncomeTitle = request.IncomeTitle.Trim();

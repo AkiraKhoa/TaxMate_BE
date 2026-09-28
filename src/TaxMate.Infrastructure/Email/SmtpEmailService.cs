@@ -107,9 +107,6 @@ public class SmtpEmailService : IEmailService
         CancellationToken cancellationToken = default)
     {
         var vi = CultureInfo.GetCultureInfo("vi-VN");
-        var currentPeriod = TaxPeriodWindow.FormatQuarterPeriod(currentYear, currentQuarter);
-        var windowLabel =
-            $"{windowStart:dd/MM/yyyy} – {windowEnd.AddTicks(-1):dd/MM/yyyy}";
         var frontendUrl = string.IsNullOrWhiteSpace(_appOptions.FrontendBaseUrl)
             ? "https://localhost:5173"
             : _appOptions.FrontendBaseUrl.TrimEnd('/');
@@ -142,15 +139,15 @@ public class SmtpEmailService : IEmailService
                           <p style="margin:0 0 12px;color:#222;font-size:16px;">Xin chào {WebUtility.HtmlEncode(fullName)},</p>
                           <p style="margin:0 0 16px;color:#333;font-size:14px;line-height:1.6;">
                             Tổng doanh thu của <strong>tất cả hồ sơ kinh doanh</strong> trong
-                            <strong>{currentPeriod}</strong> và 3 kỳ trước
-                            ({WebUtility.HtmlEncode(windowLabel)}) đã đạt hoặc vượt
+                            <strong>năm {currentYear}</strong>
+                            đã vượt
                             <strong>{FormatVnd(threshold, vi)}</strong>.
                           </p>
                           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #f0d0d0;border-radius:8px;overflow:hidden;">
                             <thead>
                               <tr>
                                 <th align="left" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Hồ sơ kinh doanh</th>
-                                <th align="right" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Doanh thu 4 kỳ</th>
+                                <th align="right" style="background:{BrandRed};color:#ffffff;padding:10px 14px;font-size:13px;">Doanh thu trong năm</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -163,12 +160,12 @@ public class SmtpEmailService : IEmailService
                           </table>
                           <div style="margin:20px 0 0;padding:14px 16px;background:#fff5f5;border-left:4px solid {BrandRed};border-radius:4px;">
                             <p style="margin:0;color:{BrandRedDark};font-size:14px;line-height:1.6;font-weight:bold;">
-                              Doanh thu đã đạt ngưỡng {FormatVnd(threshold, vi)}. Vui lòng kiểm tra nghĩa vụ kê khai và sổ S2A trên TaxMate.
+                              Doanh thu đã vượt ngưỡng {FormatVnd(threshold, vi)}. Vui lòng mở hồ sơ thuế trên TaxMate để xem cảnh báo và hướng xử lý phù hợp.
                             </p>
                           </div>
                           <p style="margin:22px 0 0;">
                             <a href="{frontendUrl}" style="display:inline-block;background:{BrandRed};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:bold;font-size:14px;">
-                              Xuất S2A-HKD trên TaxMate
+                              Xem hồ sơ thuế trên TaxMate
                             </a>
                           </p>
                         </td>
@@ -187,7 +184,7 @@ public class SmtpEmailService : IEmailService
 
         return SendHtmlAsync(
             toEmail,
-            $"Doanh thu 4 kỳ đã đạt {FormatVnd(threshold, vi)} - TaxMate",
+            $"Doanh thu trong năm đã đạt {FormatVnd(threshold, vi)} - TaxMate",
             html,
             cancellationToken);
     }

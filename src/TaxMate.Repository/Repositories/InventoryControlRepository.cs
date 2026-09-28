@@ -7,6 +7,8 @@ namespace TaxMate.Repository.Repositories;
 
 public sealed class InventoryControlRepository : IInventoryControlRepository
 {
+    public Task UseSerializableTransactionAsync(CancellationToken cancellationToken = default)
+        => _dbContext.Database.ExecuteSqlRawAsync("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", cancellationToken);
     private readonly AppDbContext _dbContext;
 
     public InventoryControlRepository(AppDbContext dbContext)

@@ -10,6 +10,8 @@ public sealed class QttCalculationPreviewResponse
     public string Outcome { get; init; } = null!;
     public DateTime DueDate { get; init; }
     public IReadOnlyList<QttPreviewIssue> Warnings { get; init; } = [];
+    public IReadOnlyList<QttPreviewIssue> HardBlockers { get; init; } = [];
+    public bool CanClose { get; init; }
 }
 
 public sealed record QttIndicators09To24(

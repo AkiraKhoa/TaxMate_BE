@@ -14,10 +14,25 @@ public sealed class QttPreviewResponse
     public IReadOnlyList<QttCrossBookCheck> CrossBookChecks { get; init; } = [];
     public IReadOnlyList<QttPreviewIssue> Warnings { get; init; } = [];
     public IReadOnlyList<QttPreviewIssue> HardBlockers { get; init; } = [];
+    public string TaxpayerName { get; init; } = string.Empty;
+    public string? TaxCode { get; init; }
+    public string? TaxpayerAddress { get; init; }
+    public IReadOnlyList<QttBusinessScope> Businesses { get; init; } = [];
+    public IReadOnlyList<QttQuarterReadiness> Quarters { get; init; } = [];
+    public IReadOnlyList<QttExpenseReviewRow> ExpenseReviewRows { get; init; } = [];
+    public IReadOnlyList<QttEvidenceReviewPeriod> EvidenceReviewPeriods { get; init; } = [];
     public bool CanClose =>
         HardBlockers.Count == 0 &&
         Warnings.All(x => x.Code != "EvidenceReviewRequired");
 }
+
+public sealed record QttBusinessScope(Guid BusinessId, string BusinessName);
+public sealed record QttQuarterReadiness(int Quarter, Guid? TaxPeriodId, Guid? BusinessId, bool Closed);
+public sealed record QttEvidenceReviewPeriod(Guid BusinessId, int Quarter, bool Required, bool Reviewed);
+public sealed record QttExpenseReviewRow(
+    Guid BusinessId, int Quarter, string SourceType, Guid SourceId,
+    DateTime DocumentDate, string DocumentNumber, string Description,
+    decimal Amount, decimal? IncludedAmount, IReadOnlyList<string> IssueCodes);
 
 public sealed record QttRevenueBreakdown(
     decimal Indicator09a,

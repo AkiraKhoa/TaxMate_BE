@@ -61,6 +61,8 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             year,
             cancellationToken);
         var s2cBooks = new List<S2cBookProjection>();
+        var reviewRows = new List<QttExpenseReviewRow>();
+        var reviewPeriods = new List<QttEvidenceReviewPeriod>();
         var inventoryBooks = new Dictionary<Guid, IReadOnlyList<S2dBook>>();
 
         foreach (var business in businesses)
@@ -73,12 +75,20 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
 
             for (var quarter = 1; quarter <= 4; quarter++)
             {
-                s2cBooks.Add(await _s2cProjector.ProjectQuarterAsync(
+                var costBook = await _s2cProjector.ProjectQuarterAsync(
                     authenticatedOwnerId,
                     business.Id,
                     year,
                     quarter,
-                    cancellationToken));
+                    cancellationToken);
+                s2cBooks.Add(costBook);
+                reviewPeriods.Add(new QttEvidenceReviewPeriod(
+                    business.Id, quarter,
+                    RequiresEvidenceReview(costBook), costBook.EvidenceReviewedAt.HasValue));
+                reviewRows.AddRange(costBook.ReviewLines.Select(x => new QttExpenseReviewRow(
+                    business.Id, quarter, x.SourceType, x.ExpenseId,
+                    x.ExpenseDate, x.VoucherNumber, x.ExpenseTitle,
+                    x.Amount, x.IncludedAmount, x.IssueCodes)));
                 quarterBooks.Add(_s2dProjector.ProjectQuarter(
                     business.Id,
                     movements,
@@ -109,6 +119,10 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             authenticatedOwnerId,
             year,
             cancellationToken) ?? ResolveConfiguredTaxMethod(owner, year);
+        var quarterStates = await _taxPeriods.GetOwnerQuarterlyFilingStatesAsync(
+            authenticatedOwnerId,
+            year,
+            cancellationToken);
 
         var s2cRevenue = s2cBooks.Sum(x => x.TotalRevenue);
         var deductibleMaterial = s2cBooks.Sum(x => x.MaterialCost);
@@ -140,7 +154,8 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             inventoryBooks,
             checks,
             taxMethodSnapshot,
-            paymentLines);
+            paymentLines,
+            quarterStates);
         if (s2b.TotalRevenue > FiftyBillion)
         {
             hardBlockers.Add(new QttPreviewIssue(
@@ -162,6 +177,20 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
         return new QttPreviewResponse
         {
             OwnerId = authenticatedOwnerId,
+            TaxpayerName = owner.FullName,
+            TaxCode = owner.TaxCode,
+            TaxpayerAddress = businesses.First(x => x.Id == businessId).Address,
+            Businesses = businesses.Select(x => new QttBusinessScope(x.Id, x.BusinessName)).ToList(),
+            Quarters = Enumerable.Range(1, 4).Select(quarter =>
+            {
+                var states = quarterStates.Where(x => x.Quarter == quarter).ToList();
+                var pending = states.FirstOrDefault(x => x.PeriodStatus == TaxPeriodStatuses.Open);
+                var target = pending ?? states.FirstOrDefault();
+                return new QttQuarterReadiness(quarter, target?.TaxPeriodId, target?.BusinessId,
+                    states.Count > 0 && pending is null);
+            }).ToList(),
+            ExpenseReviewRows = reviewRows,
+            EvidenceReviewPeriods = reviewPeriods,
             TaxYear = year,
             TaxMethodSnapshot = taxMethodSnapshot,
             TaxMethodEffectiveYear = owner.TaxMethodEffectiveYear,
@@ -253,9 +282,7 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
         warnings.AddRange(s2cBooks
             .Where(x =>
                 !x.EvidenceReviewedAt.HasValue &&
-                (x.Lines.Count > 0 ||
-                 x.MaterialCost != 0m ||
-                 x.Warnings.Any(y => y.CanOverride)))
+                RequiresEvidenceReview(x))
             .Select(x => new QttPreviewIssue(
                 "EvidenceReviewRequired",
                 $"Quý bắt đầu ngày {BangkokBusinessTime.NaiveUtcToBangkokWallClock(x.PeriodStart):dd/MM/yyyy} chưa được xác nhận rà soát chi phí.",
@@ -277,13 +304,18 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
         return warnings;
     }
 
+    private static bool RequiresEvidenceReview(S2cBookProjection book) =>
+        book.Lines.Count > 0 || book.ReviewLines.Count > 0 ||
+        book.MaterialCost != 0m || book.Warnings.Any(x => x.CanOverride);
+
     private static List<QttPreviewIssue> BuildHardBlockers(
         OwnerRevenueProjection s2b,
         IEnumerable<S2cBookProjection> s2cBooks,
         IReadOnlyDictionary<Guid, IReadOnlyList<S2dBook>> inventoryBooks,
         IEnumerable<QttCrossBookCheck> checks,
         string? taxMethodSnapshot,
-        IReadOnlyCollection<QttPitPaymentLine> payments)
+        IReadOnlyCollection<QttPitPaymentLine> payments,
+        IReadOnlyList<OwnerQuarterlyFilingState> quarterStates)
     {
         var blockers = s2b.Blockers.Select(x => new QttPreviewIssue(
             x.Code,
@@ -308,6 +340,36 @@ public sealed class AnnualTaxAggregateService : IAnnualTaxAggregateService
             .Select(x => new QttPreviewIssue(
                 x.Code,
                 $"{x.Label} đang lệch {Math.Abs(x.ExpectedAmount - x.ActualAmount):N0} đồng.")));
+
+        for (var quarter = 1; quarter <= 4; quarter++)
+        {
+            var states = quarterStates.Where(x => x.Quarter == quarter).ToList();
+            var openStates = states.Where(x => x.PeriodStatus == TaxPeriodStatuses.Open).ToList();
+            var isClosed = states.Count > 0 && openStates.Count == 0;
+            if (!isClosed)
+            {
+                if (openStates.Count > 0)
+                {
+                    foreach (var openState in openStates)
+                    {
+                        var bizName = !string.IsNullOrWhiteSpace(openState.BusinessName)
+                            ? openState.BusinessName
+                            : "Cơ sở kinh doanh";
+                        blockers.Add(new QttPreviewIssue(
+                            $"Quarter{quarter}NotClosed",
+                            $"Quý {quarter} — {bizName}",
+                            openState.BusinessId,
+                            openState.TaxPeriodId));
+                    }
+                }
+                else
+                {
+                    blockers.Add(new QttPreviewIssue(
+                        $"Quarter{quarter}NotClosed",
+                        $"Quý {quarter} chưa đóng kỳ kê khai thuế trước khi quyết toán năm."));
+                }
+            }
+        }
 
         if (taxMethodSnapshot != PersonalIncomeTaxMethods.IncomeBased &&
             payments.Any(x =>

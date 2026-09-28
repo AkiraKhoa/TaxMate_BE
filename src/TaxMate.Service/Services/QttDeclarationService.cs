@@ -19,17 +19,29 @@ public sealed class QttDeclarationService : IQttDeclarationService
     private readonly ITaxDeclarationRepository _declarations;
     private readonly IGenericRepository<PaymentAccount> _paymentAccounts;
     private readonly IQttDocumentGenerator _documentGenerator;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IAccountingTransactionLockRepository _transactionLock;
+    private readonly IAnnualTaxAggregateService? _annualTaxAggregate;
+    private readonly IQttCalculationEngine? _qttCalculationEngine;
 
     public QttDeclarationService(
         ITaxPeriodRepository taxPeriods,
         ITaxDeclarationRepository declarations,
         IGenericRepository<PaymentAccount> paymentAccounts,
-        IQttDocumentGenerator documentGenerator)
+        IQttDocumentGenerator documentGenerator,
+        IUnitOfWork unitOfWork,
+        IAccountingTransactionLockRepository transactionLock,
+        IAnnualTaxAggregateService? annualTaxAggregate = null,
+        IQttCalculationEngine? qttCalculationEngine = null)
     {
         _taxPeriods = taxPeriods;
         _declarations = declarations;
         _paymentAccounts = paymentAccounts;
         _documentGenerator = documentGenerator;
+        _unitOfWork = unitOfWork;
+        _transactionLock = transactionLock;
+        _annualTaxAggregate = annualTaxAggregate;
+        _qttCalculationEngine = qttCalculationEngine;
     }
 
     public async Task<TaxDeclarationGeneratedFile> ExportAsync(
@@ -41,7 +53,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId ||
             declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
@@ -73,6 +85,125 @@ public sealed class QttDeclarationService : IQttDeclarationService
             cancellationToken);
     }
 
+    public async Task<TaxDeclarationGeneratedFile> ExportPreviewAsync(
+        Guid userId,
+        Guid businessId,
+        int year,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        var business = await _taxPeriods.GetBusinessWithCategoryAsync(businessId, cancellationToken)
+            ?? throw new NotFoundException("Business profile not found.");
+
+        var period = await _taxPeriods.GetYearAsync(businessId, year, cancellationToken);
+        var existing = period is null
+            ? null
+            : await _declarations.GetCurrentByTaxPeriodAndFormAsync(
+                period.Id,
+                TaxFormCodes.Form02CnkdTncnQtt,
+                cancellationToken);
+
+        if (existing is not null &&
+            (existing.Status == TaxDeclarationStatuses.Generated ||
+             existing.Status == TaxDeclarationStatuses.Submitted))
+        {
+            return await ExportAsync(userId, businessId, existing.Id, cancellationToken);
+        }
+
+        QttFormSnapshot snapshot;
+        var now = DateTime.UtcNow;
+
+        if (existing is not null)
+        {
+            // Tier 1: Draft declaration exists in DB -> read its full QttFormSnapshot (preserves InventoryRows, RefundAccount, OffsetItems)
+            snapshot = ReadFormSnapshot(existing);
+        }
+        else
+        {
+            QttIndicators09To24? indicators = null;
+            QttInventoryTotals31To34? inventoryTotals = null;
+            IReadOnlyList<QttInventoryRow> inventoryRows = [];
+
+            if (period is not null)
+            {
+                // Tier 2: Current TaxCalculation exists in DB
+                var calculation = await _declarations.GetCurrentCalculationWithLinesAsync(
+                    period.Id,
+                    TaxFormCodes.Form02CnkdTncnQtt,
+                    cancellationToken);
+
+                if (calculation is not null &&
+                    calculation.RecommendedFormCode == TaxFormCodes.Form02CnkdTncnQtt &&
+                    !string.IsNullOrWhiteSpace(calculation.CalculationDataJson))
+                {
+                    var calcSnapshot = JsonSerializer.Deserialize<QttCalculationSnapshot>(
+                        calculation.CalculationDataJson,
+                        JsonOptions);
+                    if (calcSnapshot is not null)
+                    {
+                        indicators = calcSnapshot.Calculation.Indicators;
+                        inventoryTotals = calcSnapshot.Calculation.InventoryTotals;
+                        inventoryRows = calcSnapshot.Aggregate.Inventory.Rows;
+                    }
+                }
+            }
+
+            if (indicators is null && _annualTaxAggregate is not null && _qttCalculationEngine is not null)
+            {
+                // Tier 3: Pure read-only live projection (identical to Web QTT preview)
+                var aggregate = await _annualTaxAggregate.PreviewAsync(
+                    userId,
+                    businessId,
+                    year,
+                    cancellationToken);
+                var calcPreview = _qttCalculationEngine.Calculate(aggregate);
+                indicators = calcPreview.Indicators;
+                inventoryTotals = calcPreview.InventoryTotals;
+                inventoryRows = aggregate.Inventory.Rows;
+            }
+
+            snapshot = new QttFormSnapshot
+            {
+                SchemaVersion = "2026.01",
+                LegalVersion = "2026.01",
+                TemplateVersion = "2026.01",
+                DeclarationId = Guid.Empty,
+                DeclarationCode = $"02-QTT-PREVIEW-{year}",
+                DeclarationVersion = 1,
+                DraftRevision = 1,
+                CalculationId = Guid.Empty,
+                CalculationVersion = 1,
+                OwnerId = userId,
+                TaxYear = year,
+                TaxpayerName = business.Owner?.FullName ?? business.BusinessName,
+                TaxCode = business.Owner?.TaxCode ?? "0123456789",
+                TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
+                Indicators = indicators ?? new QttIndicators09To24(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                InventoryTotals = inventoryTotals ?? new QttInventoryTotals31To34(0, 0, 0, 0),
+                InventoryRows = inventoryRows,
+                RefundAccount = null,
+                OffsetItems = [],
+                CreatedAt = now
+            };
+        }
+
+        var file = await _documentGenerator.GenerateAsync(
+            new QttDocumentModel
+            {
+                Snapshot = snapshot,
+                ExportDate = DateTime.Now,
+                PaymentSupportRows = []
+            },
+            cancellationToken);
+
+        return new TaxDeclarationGeneratedFile
+        {
+            Content = file.Content,
+            FileName = $"02-CNKD-TNCN-QTT_XEM-TRUOC_{snapshot.TaxCode}_{year}.docx",
+            ContentType = file.ContentType
+        };
+    }
+
     public async Task<IReadOnlyList<QttOffsetObligationOption>> GetOffsetObligationsAsync(
         Guid userId,
         Guid businessId,
@@ -97,11 +228,39 @@ public sealed class QttDeclarationService : IQttDeclarationService
             x.PayableAmount)).ToList();
     }
 
+    public async Task<QttDeclarationResponse?> GetAsync(Guid userId, Guid businessId, int year, CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        var period = await _taxPeriods.GetYearAsync(businessId, year, cancellationToken);
+        if (period is null) return null;
+        var existing = await _declarations.GetCurrentByTaxPeriodAndFormAsync(period.Id, TaxFormCodes.Form02CnkdTncnQtt, cancellationToken);
+        return existing is null ? null : Map(existing, ReadFormSnapshot(existing));
+    }
+
     public async Task<QttDeclarationResponse> CreateAsync(
         Guid userId,
         Guid businessId,
         int year,
         CancellationToken cancellationToken = default)
+    {
+        await EnsureOwnershipAsync(businessId, userId, cancellationToken);
+        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await _transactionLock.AcquireOwnerYearLocksAsync(userId, [year], cancellationToken);
+            var result = await CreateCoreAsync(userId, businessId, year, cancellationToken);
+            await _unitOfWork.CommitTransactionAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task<QttDeclarationResponse> CreateCoreAsync(
+        Guid userId, Guid businessId, int year, CancellationToken cancellationToken)
     {
         var period = await _taxPeriods.GetYearAsync(
             businessId,
@@ -109,15 +268,15 @@ public sealed class QttDeclarationService : IQttDeclarationService
             cancellationToken) ?? throw new NotFoundException(
             "Chưa có bản tính quyết toán cho năm này.");
         await EnsureOwnershipAsync(period.BusinessId, userId, cancellationToken);
-        if (period.Status != TaxPeriodStatuses.Calculated)
-            throw new ConflictException("Kỳ năm phải được tính xong trước khi tạo hồ sơ QTT.");
-
         var existing = await _declarations.GetCurrentByTaxPeriodAndFormAsync(
             period.Id,
             TaxFormCodes.Form02CnkdTncnQtt,
             cancellationToken);
         if (existing is not null)
             return Map(existing, ReadFormSnapshot(existing));
+
+        if (period.Status != TaxPeriodStatuses.Calculated)
+            throw new ConflictException("Kỳ năm phải được tính xong trước khi tạo hồ sơ QTT.");
 
         var calculation = await _declarations.GetCurrentCalculationWithLinesAsync(
             period.Id,
@@ -213,7 +372,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
         if (declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
@@ -271,7 +430,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         var declaration = await _declarations.GetByIdAsync(
             declarationId,
             cancellationToken) ?? throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
-        if (declaration.TaxPeriod.BusinessId != businessId ||
+        if (!await _taxPeriods.BusinessBelongsToUserAsync(businessId, userId, cancellationToken) ||
             declaration.TaxPeriod.Business.OwnerId != userId)
             throw new NotFoundException("Không tìm thấy hồ sơ QTT.");
         if (declaration.FormCode != TaxFormCodes.Form02CnkdTncnQtt)
@@ -291,10 +450,11 @@ public sealed class QttDeclarationService : IQttDeclarationService
         if (snapshot.Indicators.Indicator19 > 0m &&
             declaration.Obligations.All(x => x.TaxType != TaxTypes.PersonalIncomeTax))
         {
-            declaration.Obligations.Add(CreatePitObligation(
+            var obligation = CreatePitObligation(
                 declaration,
                 snapshot.Indicators,
-                now));
+                now);
+            _declarations.AddObligation(obligation);
         }
 
         declaration.Status = TaxDeclarationStatuses.Generated;
@@ -553,6 +713,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         Status = declaration.Status,
         TaxpayerName = declaration.TaxpayerName,
         TaxCode = declaration.TaxCode,
+        TaxpayerAddress = snapshot.TaxpayerAddress,
         Indicators = snapshot.Indicators,
         InventoryTotals = snapshot.InventoryTotals,
         InventoryRows = snapshot.InventoryRows,

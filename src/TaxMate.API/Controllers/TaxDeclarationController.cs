@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO;
@@ -68,7 +68,7 @@ public class TaxDeclarationController : ControllerBase
             cancellationToken);
 
         return Ok(
-            ApiResponse<TaxDeclarationResponse>.Ok(
+            ApiResponse<TaxDeclarationResponse?>.Ok(
                 result,
                 "Tax declaration retrieved successfully.",
                 HttpContext.TraceIdentifier));
@@ -102,6 +102,23 @@ public class TaxDeclarationController : ControllerBase
             await _service.ExportAsync(
                 GetUserId(),
                 declarationId,
+                cancellationToken);
+
+        return File(
+            result.Content,
+            result.ContentType,
+            result.FileName);
+    }
+
+    [HttpGet("preview/{taxPeriodId:guid}/export")]
+    public async Task<IActionResult> ExportPreview(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken)
+    {
+        var result =
+            await _service.ExportPreviewAsync(
+                GetUserId(),
+                taxPeriodId,
                 cancellationToken);
 
         return File(

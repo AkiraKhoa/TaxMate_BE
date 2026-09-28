@@ -199,17 +199,21 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
             }
             else if (alert.ThresholdCode == RevenueThresholdCodes.Crossed1B)
             {
+                var hasExistingMethod = owner.PersonalIncomeTaxMethod is not null &&
+                                        owner.TaxMethodEffectiveYear.HasValue;
                 var method = review.RequiredTaxMethod ??
                     NormalizeSelectedMethod(request.PersonalIncomeTaxMethod,
                         review.AllowedTaxMethods);
                 owner.DeclaredRevenueBracket =
+                    method == PersonalIncomeTaxMethods.IncomeBased &&
                     projection.TotalRevenue > policy.IncomeBasedRequirementThreshold
                         ? RevenueBrackets.Over3BTo50B
                         : RevenueBrackets.Over1BTo3B;
                 owner.PersonalIncomeTaxMethod = method;
-                owner.TaxMethodEffectiveYear = methodLock.IsLocked
-                    ? methodLock.EffectiveYear
-                    : alert.Year;
+                if (!hasExistingMethod)
+                    owner.TaxMethodEffectiveYear = methodLock.IsLocked
+                        ? methodLock.EffectiveYear
+                        : alert.Year;
                 owner.CommencementPeriod = null;
                 owner.CommencementTaxYear = null;
                 owner.TaxProfileConfirmedAt = now;
@@ -472,13 +476,18 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
         var isCrossed1 = alert.ThresholdCode == RevenueThresholdCodes.Crossed1B;
         var isCrossed3 = alert.ThresholdCode == RevenueThresholdCodes.Crossed3B;
         var isCrossed50 = alert.ThresholdCode == RevenueThresholdCodes.Crossed50B;
-        var requiredMethod = isCrossed3 ||
+        // A 1B alert does not elect a new method for an already configured owner.
+        // Changes after crossing 3B or expiry of a lock use their dedicated flows.
+        var existingMethod = isCrossed1 && owner.TaxMethodEffectiveYear.HasValue
+            ? owner.PersonalIncomeTaxMethod
+            : null;
+        var requiredMethod = existingMethod ?? (isCrossed3 ||
             (isCrossed1 &&
              (currentRevenue > policy.IncomeBasedRequirementThreshold ||
               methodLock.IsLocked))
                 ? PersonalIncomeTaxMethods.IncomeBased
-                : null;
-        IReadOnlyList<string> allowedMethods = isCrossed1 &&
+                : null);
+        IReadOnlyList<string> allowedMethods = existingMethod is null && isCrossed1 &&
             currentRevenue <= policy.IncomeBasedRequirementThreshold &&
             !methodLock.IsLocked
                 ? SelectableMethods
@@ -493,16 +502,18 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
               canActivateDeferred)) &&
             (!outsideScope || isCrossed50);
 
-        var message = !isExceeded
+        var message = alert.Status == RevenueThresholdAlertStatuses.Resolved
+            ? "Cảnh báo đã được xử lý. Phương pháp hiện tại không thay đổi."
+            : !isExceeded
             ? "Doanh thu hiện không còn vượt mốc này; có thể đóng cảnh báo."
             : outsideScope && !isCrossed50
                 ? "Doanh thu đã vượt 50 tỷ đồng; hãy xử lý cảnh báo ngoài phạm vi hỗ trợ."
                 : isCrossed50
                     ? "Doanh thu đã vượt phạm vi TaxMate hỗ trợ lập hồ sơ thuế."
                     : deferredRevenueBased && currentYear <= alert.Year
-                        ? $"Năm {alert.Year} tiếp tục RevenueBased; IncomeBased bắt buộc từ năm {alert.Year + 1}."
+                        ? $"Năm {alert.Year} tiếp tục theo phương pháp Doanh thu; chuyển sang phương pháp Doanh thu - Chi phí từ năm {alert.Year + 1}."
                         : methodLock.IsLocked && isCrossed1
-                            ? $"IncomeBased còn ổn định đến hết năm {methodLock.LockedThroughYear}."
+                            ? $"Phương pháp Doanh thu - Chi phí còn ổn định đến hết năm {methodLock.LockedThroughYear}."
                             : "Hãy xác nhận phương pháp và nhóm doanh thu áp dụng.";
 
         return new RevenueThresholdReviewResponse
@@ -619,6 +630,26 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
             .Select(x => new AnnualRevenueConclusionIssue(x.Code, x.Message))
             .ToList();
 
+        // A historical conclusion must not rewrite a later election or filed year.
+        // Zero revenue itself remains valid; this guard is about lifecycle ordering.
+        var laterElection = owner.TaxMethodEffectiveYear > taxYear ||
+                            owner.CommencementTaxYear > taxYear;
+        var laterFiling = false;
+        for (var laterYear = taxYear + 1; laterYear <= CurrentBangkokYear(); laterYear++)
+        {
+            var laterStates = await _periods.GetOwnerQuarterlyFilingStatesAsync(
+                owner.Id, laterYear, cancellationToken);
+            if (laterStates.Any(x => x.HasCompletedIncomeBasedCalculation ||
+                                    x.HasCompletedRevenueBasedCalculation || x.HasSubmittedDeclaration))
+            {
+                laterFiling = true;
+                break;
+            }
+        }
+        if (laterElection || laterFiling)
+            issues.Add(new("LaterTaxProfileInUse",
+                "Đã có phương pháp hoặc hồ sơ thuế của năm sau. Không thể dùng kết luận năm cũ để thay đổi hồ sơ hiện tại."));
+
         if (!HasTaxYearEnded(taxYear))
             issues.Add(new(
                 "TaxYearNotEnded",
@@ -656,7 +687,7 @@ public sealed class OwnerTaxProfileService : IOwnerTaxProfileService
             TaxYear = taxYear,
             AnnualRevenue = projection.TotalRevenue,
             RevenueThreshold = policy.AnnualRevenueThreshold,
-            ShouldShow = shouldShow && !alreadyConfirmed,
+            ShouldShow = shouldShow && !alreadyConfirmed && !laterElection && !laterFiling,
             CanConfirm = !alreadyConfirmed && issues.Count == 0,
             AlreadyConfirmed = alreadyConfirmed,
             CurrentRevenueBracket = owner.DeclaredRevenueBracket,

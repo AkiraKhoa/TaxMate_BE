@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.Common;
+using TaxMate.Model.Common;
 using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
@@ -370,7 +370,7 @@ public class TaxPeriodService : ITaxPeriodService
 
         RejectTknPeriod(taxPeriod);
 
-        if (taxPeriod.Status != TaxPeriodStatuses.Closed)
+        if (taxPeriod.Status != TaxPeriodStatuses.Closed && taxPeriod.Status != TaxPeriodStatuses.Calculated)
         {
             throw new BadRequestException(
                 $"Tax period must be in Closed status. Current status: {taxPeriod.Status}.");
@@ -413,14 +413,24 @@ public class TaxPeriodService : ITaxPeriodService
                 "Hãy xác nhận nhóm doanh thu và phương pháp TNCN trước khi tính 01/CNKD.");
         }
         if (_thresholdAlerts is not null &&
-            (await _thresholdAlerts.FindAsync(x =>
+            owner.PersonalIncomeTaxMethod == PersonalIncomeTaxMethods.RevenueBased)
+        {
+            var deferredAlerts = await _thresholdAlerts.FindAsync(x =>
                 x.OwnerId == owner.Id &&
                 x.ThresholdCode == RevenueThresholdCodes.Crossed3B &&
                 x.Status == RevenueThresholdAlertStatuses.Acknowledged &&
-                x.Year < taxPeriod.Year)).Any())
-        {
-            throw new ConflictException(
-                "Phải xác nhận chuyển sang IncomeBased trước khi tính kỳ đầu năm mới.");
+                x.Year < taxPeriod.Year);
+            foreach (var alert in deferredAlerts)
+            {
+                var source = await _ownerRevenue.ProjectCalendarYearAsync(
+                    owner.Id, taxPeriod.BusinessId, alert.Year, cancellationToken);
+                ThrowRevenueBlockers(source.Blockers);
+                var sourcePolicy = await _taxPolicyService.GetEffectiveAsync(
+                    new DateOnly(alert.Year, 12, 31), cancellationToken);
+                if (source.TotalRevenue > sourcePolicy.IncomeBasedRequirementThreshold)
+                    throw new ConflictException(
+                        "Phải xác nhận chuyển sang phương pháp Doanh thu - Chi phí trước khi tính kỳ đầu năm mới.");
+            }
         }
 
         var annualProjection = await _ownerRevenue.ProjectCalendarYearAsync(
@@ -446,7 +456,10 @@ public class TaxPeriodService : ITaxPeriodService
         if (annualRevenue > taxPolicy.SupportedRevenueCeiling)
             throw new ConflictException(
                 "Doanh thu năm đã vượt 50 tỷ đồng, ngoài phạm vi lập hồ sơ của TaxMate.");
-        if (annualRevenue <= annualRevenueThreshold)
+        // A carried method still has quarterly obligations before annual review
+        // can move the owner to TKN. Preserve the existing quarterly formula.
+        var hasCarriedMethod = owner.TaxMethodEffectiveYear.Value < taxPeriod.Year;
+        if (annualRevenue <= annualRevenueThreshold && !hasCarriedMethod)
             throw new ConflictException(
                 "Doanh thu năm chưa vượt 1 tỷ đồng; hãy dùng 01/TKN-CNKD.");
 
@@ -477,17 +490,9 @@ public class TaxPeriodService : ITaxPeriodService
             throw new BadRequestException(
                 "Không có doanh thu kinh doanh trong cửa sổ tính thuế.");
 
-        var previousRevenue = calculationStart <= annualProjection.StartNaiveUtc
-            ? 0m
-            : (await _ownerRevenue.ProjectAsync(
-                anchorBusiness.OwnerId,
-                taxPeriod.BusinessId,
-                annualProjection.StartNaiveUtc,
-                calculationStart,
-                cancellationToken)).TotalRevenue;
         var remainingDeduction = taxMethod ==
                 PersonalIncomeTaxMethods.RevenueBased
-            ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
+            ? annualRevenueThreshold
             : 0m;
 
         // Phân bổ deduction cho PIT rate cao trước (phương án có lợi hơn).
@@ -859,21 +864,233 @@ public class TaxPeriodService : ITaxPeriodService
         };
     }
 
+    public async Task<TaxCalculationResponse> GetCalculationPreviewAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+
+        if (taxPeriod is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        await EnsureBusinessOwnershipAsync(
+            taxPeriod.BusinessId,
+            userId,
+            cancellationToken);
+
+        RejectTknPeriod(taxPeriod);
+
+        var anchorBusiness =
+            await _taxPeriodRepository.GetBusinessWithCategoryAsync(
+                taxPeriod.BusinessId,
+                cancellationToken);
+
+        if (anchorBusiness is null)
+        {
+            throw new NotFoundException("Business not found.");
+        }
+
+        var ownerBusinesses =
+            await _taxPeriodRepository
+                .GetBusinessesWithCategoriesByOwnerAsync(
+                    anchorBusiness.OwnerId,
+                    cancellationToken);
+
+        if (ownerBusinesses.Count == 0)
+        {
+            throw new BadRequestException(
+                "No active business profile exists for this owner.");
+        }
+
+        if (_ownerRevenue is null)
+            throw new InvalidOperationException(
+                "Owner revenue projector is not configured.");
+
+        var owner = anchorBusiness.Owner;
+        var taxMethod = owner.PersonalIncomeTaxMethod ?? PersonalIncomeTaxMethods.RevenueBased;
+        var effectiveYear = owner.TaxMethodEffectiveYear ?? taxPeriod.Year;
+
+        var annualProjection = await _ownerRevenue.ProjectCalendarYearAsync(
+            anchorBusiness.OwnerId,
+            taxPeriod.BusinessId,
+            taxPeriod.Year,
+            cancellationToken);
+
+        var annualRevenue = annualProjection.TotalRevenue;
+
+        var policyDate = DateOnly.FromDateTime(
+            taxPeriod.PeriodEndDate.AddDays(-1));
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (policyDate > today)
+        {
+            policyDate = today;
+        }
+
+        var taxPolicy = await _taxPolicyService.GetEffectiveAsync(
+            policyDate,
+            cancellationToken);
+        var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
+
+        var calculationStart = ResolveCalculationWindowStart(
+            taxPeriod,
+            annualProjection,
+            annualRevenueThreshold,
+            effectiveYear);
+
+        var periodProjection = await _ownerRevenue.ProjectAsync(
+            anchorBusiness.OwnerId,
+            taxPeriod.BusinessId,
+            calculationStart,
+            taxPeriod.PeriodEndDate,
+            cancellationToken);
+
+        var now = DateTime.UtcNow;
+
+        if (periodProjection.TotalRevenue <= 0m || periodProjection.Groups.Count == 0)
+        {
+            return new TaxCalculationResponse
+            {
+                TaxPeriodId = taxPeriod.Id,
+                TaxCalculationId = Guid.Empty,
+                Version = 0,
+                TaxMethod = taxMethod,
+                TaxMethodEffectiveYear = effectiveYear,
+                CalculationRuleVersion = "TT152-2025-01CNKD-preview",
+                TotalRevenue = 0m,
+                TotalTaxableRevenue = 0m,
+                TotalVatTaxAmount = 0m,
+                TotalPersonalIncomeTaxAmount = 0m,
+                TotalTaxBeforeExemption = 0m,
+                TotalExemptionAmount = 0m,
+                TotalTaxPayableAmount = 0m,
+                AnnualRevenueAtCalculation = annualRevenue,
+                ApplicableRevenueThreshold = annualRevenueThreshold,
+                RecommendedFormCode = TaxFormCodes.Form01Cnkd,
+                RemainingPitDeduction = 0m,
+                Status = "Preview",
+                CalculatedAt = now,
+                Lines = []
+            };
+        }
+
+        var remainingDeduction = taxMethod == PersonalIncomeTaxMethods.RevenueBased
+            ? annualRevenueThreshold
+            : 0m;
+
+        var pitDeductionByBusiness = new Dictionary<Guid, decimal>();
+        if (taxMethod == PersonalIncomeTaxMethods.RevenueBased)
+        {
+            var deductionToAllocate = remainingDeduction;
+            var pitRates = ownerBusinesses
+                .Where(x => x.MainCategory is not null)
+                .Select(x => x.MainCategory!)
+                .GroupBy(x => x.BusinessCategoryId)
+                .ToDictionary(x => x.Key, x => x.First().PitRate);
+
+            foreach (var item in periodProjection.Groups
+                         .OrderByDescending(x => pitRates.GetValueOrDefault(x.BusinessCategoryId)))
+            {
+                var allocated = Math.Min(item.TotalRevenue, deductionToAllocate);
+                pitDeductionByBusiness[item.BusinessCategoryId] = allocated;
+                deductionToAllocate = Math.Max(0m, deductionToAllocate - allocated);
+            }
+            remainingDeduction = deductionToAllocate;
+        }
+
+        var categoryById = ownerBusinesses
+            .Where(x => x.MainCategory is not null)
+            .Select(x => x.MainCategory!)
+            .GroupBy(x => x.BusinessCategoryId)
+            .ToDictionary(x => x.Key, x => x.First());
+
+        var displayItems = periodProjection.Groups
+            .OrderBy(x => x.BusinessCategoryCode)
+            .ToList();
+
+        var lines = new List<TaxCalculationLineResponse>();
+        decimal totalVat = 0m;
+        decimal totalPit = 0m;
+
+        foreach (var item in displayItems)
+        {
+            if (!categoryById.TryGetValue(item.BusinessCategoryId, out var category))
+                continue;
+
+            var revenue = item.TotalRevenue;
+            var vatTaxAmount = decimal.Round(revenue * item.VatRate / 100m, 2, MidpointRounding.AwayFromZero);
+            var pitDeductibleRevenue = taxMethod == PersonalIncomeTaxMethods.RevenueBased &&
+                pitDeductionByBusiness.TryGetValue(item.BusinessCategoryId, out var allocatedDeduction)
+                    ? allocatedDeduction
+                    : 0m;
+
+            var pitRevenue = Math.Max(0m, revenue - pitDeductibleRevenue);
+            var pitTaxAmount = decimal.Round(pitRevenue * category.PitRate / 100m, 2, MidpointRounding.AwayFromZero);
+
+            totalVat += vatTaxAmount;
+            totalPit += pitTaxAmount;
+
+            lines.Add(new TaxCalculationLineResponse
+            {
+                Id = Guid.NewGuid(),
+                BusinessCategoryId = category.BusinessCategoryId,
+                SectionCode = category.FormSectionCode ?? "I",
+                IndicatorCode = category.FormIndicatorCode ?? "d",
+                BusinessActivityCode = category.Code,
+                BusinessActivityName = category.Name,
+                TotalRevenue = revenue,
+                VatTaxableRevenue = revenue,
+                VatNonTaxableRevenue = 0m,
+                ZeroRatedVatRevenue = 0m,
+                VatTaxRate = item.VatRate,
+                VatTaxAmount = vatTaxAmount,
+                PersonalIncomeTaxableRevenue = revenue,
+                PersonalIncomeTaxDeductibleRevenue = pitDeductibleRevenue,
+                PersonalIncomeTaxRevenue = pitRevenue,
+                PersonalIncomeTaxRate = category.PitRate,
+                PersonalIncomeTaxAmount = pitTaxAmount
+            });
+        }
+
+        var totalTaxBeforeExemption = totalVat + totalPit;
+        var totalTaxPayable = totalTaxBeforeExemption;
+
+        return new TaxCalculationResponse
+        {
+            TaxPeriodId = taxPeriod.Id,
+            TaxCalculationId = Guid.Empty,
+            Version = 0,
+            TaxMethod = taxMethod,
+            TaxMethodEffectiveYear = effectiveYear,
+            CalculationRuleVersion = "TT152-2025-01CNKD-preview",
+            TotalRevenue = periodProjection.TotalRevenue,
+            TotalTaxableRevenue = periodProjection.TotalRevenue,
+            TotalVatTaxAmount = totalVat,
+            TotalPersonalIncomeTaxAmount = totalPit,
+            TotalTaxBeforeExemption = totalTaxBeforeExemption,
+            TotalExemptionAmount = 0m,
+            TotalTaxPayableAmount = totalTaxPayable,
+            AnnualRevenueAtCalculation = annualRevenue,
+            ApplicableRevenueThreshold = annualRevenueThreshold,
+            RecommendedFormCode = TaxFormCodes.Form01Cnkd,
+            RemainingPitDeduction = remainingDeduction,
+            Status = "Preview",
+            CalculatedAt = now,
+            Lines = lines
+        };
+    }
+
     private static DateTime ResolveCalculationWindowStart(
         TaxPeriod period,
         OwnerRevenueProjection annual,
         decimal threshold,
         int methodEffectiveYear)
     {
-        if (!period.Quarter.HasValue || methodEffectiveYear != period.Year)
-            return period.PeriodStartDate;
-
-        var crossingQuarter = ResolveFirstCrossingQuarter(annual, threshold);
-        if (!crossingQuarter.HasValue)
-            return period.PeriodStartDate;
-        return crossingQuarter.Value == period.Quarter.Value
-            ? annual.StartNaiveUtc
-            : period.PeriodStartDate;
+        return period.PeriodStartDate;
     }
 
     private static int? ResolveFirstCrossingQuarter(
@@ -912,5 +1129,43 @@ public class TaxPeriodService : ITaxPeriodService
             throw new BadRequestException(
                 "Use the dedicated TKN workflow for this tax period.");
         }
+    }
+
+    public async Task<int> CancelDraftsAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var identity = await _taxPeriodRepository.GetIdentityAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (identity is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        if (identity.OwnerId != userId)
+        {
+            throw new ForbiddenException(
+                "You do not have permission to access this business.");
+        }
+
+        var period = await _taxPeriodRepository.GetCanonicalByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+        if (period is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        if (period.Status != TaxPeriodStatuses.Open)
+        {
+            throw new BadRequestException(
+                $"Tax period must be in Open status to cancel drafts. Current status: {period.Status}.");
+        }
+
+        return await _taxPeriodRepository.CancelDraftTransactionsAsync(
+            taxPeriodId,
+            cancellationToken);
     }
 }

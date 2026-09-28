@@ -45,6 +45,17 @@ public class TaxBookController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [HttpGet("qtt/export-preview")]
+    public async Task<IActionResult> ExportQttPreview(
+        Guid businessId,
+        [FromQuery] int year,
+        CancellationToken cancellationToken)
+    {
+        var result = await _taxBookService.ExportQttPreviewAsync(
+            GetUserId(), businessId, year, cancellationToken);
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
     [HttpPost("qtt/declarations/{declarationId:guid}/confirm")]
     public async Task<IActionResult> ConfirmQttDeclaration(
         Guid businessId,
@@ -59,6 +70,15 @@ public class TaxBookController : ControllerBase
             result,
             "Đã xác nhận và khóa hồ sơ quyết toán TNCN.",
             HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("qtt/declaration")]
+    public async Task<IActionResult> GetQttDeclaration(Guid businessId, [FromQuery] int year,
+        [FromServices] IQttDeclarationService service, CancellationToken cancellationToken)
+    {
+        if (year < 2000 || year > 9998) return BadRequest("Invalid year.");
+        var result = await service.GetAsync(GetUserId(), businessId, year, cancellationToken);
+        return Ok(ApiResponse<QttDeclarationResponse?>.Ok(result, "QTT loaded", HttpContext.TraceIdentifier));
     }
 
     [HttpPost("qtt/declaration")]

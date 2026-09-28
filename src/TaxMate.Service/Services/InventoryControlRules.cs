@@ -7,6 +7,21 @@ namespace TaxMate.Service.Services;
 
 internal static class InventoryControlRules
 {
+    internal static string Version(IEnumerable<Product> products, IEnumerable<Ingredient> ingredients,
+        IEnumerable<InventoryMovement> movements)
+    {
+        var snapshot = new
+        {
+            Items = MapItems(products, ingredients).OrderBy(x => x.ProductId).ThenBy(x => x.IngredientId),
+            Movements = movements.OrderBy(x => x.InventoryMovementId).Select(x => new
+            {
+                x.InventoryMovementId, x.ProductId, x.IngredientId, x.Quantity,
+                x.TotalValue, x.MovementType, x.OccurredAt
+            })
+        };
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(snapshot)));
+    }
     internal static InventoryItemKey GetKey(Guid? productId, Guid? ingredientId)
     {
         if (productId.HasValue == ingredientId.HasValue ||

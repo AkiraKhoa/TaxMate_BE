@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.Documents.Tax;
+using TaxMate.Model.Documents.Tax;
 using TaxMate.Model.DTO.TaxDeclaration;
 
 namespace TaxMate.Service.Interfaces;
@@ -16,7 +16,7 @@ public interface ITaxDeclarationService
         Guid declarationId,
         CancellationToken cancellationToken = default);
 
-    Task<TaxDeclarationResponse> GetByTaxPeriodAsync(
+    Task<TaxDeclarationResponse?> GetByTaxPeriodAsync(
         Guid userId,
         Guid taxPeriodId,
         CancellationToken cancellationToken = default);
@@ -30,5 +30,10 @@ public interface ITaxDeclarationService
     Task<TaxDeclarationGeneratedFile> ExportAsync(
         Guid userId,
         Guid declarationId,
+        CancellationToken cancellationToken = default);
+
+    Task<TaxDeclarationGeneratedFile> ExportPreviewAsync(
+        Guid userId,
+        Guid taxPeriodId,
         CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TaxMate.Model.Common;
 using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
@@ -231,17 +231,18 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             cancellationToken);
     }
 
-    public Task<TaxPeriod?> GetYearAsync(
+    public async Task<TaxPeriod?> GetYearAsync(
         Guid businessId,
         int year,
         CancellationToken cancellationToken = default)
     {
-        return _dbContext.TaxPeriods.FirstOrDefaultAsync(
-            x =>
-                x.BusinessId == businessId &&
-                x.PeriodType == TaxPeriodTypes.Yearly &&
-                x.Year == year,
-            cancellationToken);
+        var ownerId = await GetOwnerIdByBusinessAsync(businessId, cancellationToken);
+        if (!ownerId.HasValue) return null;
+        return await _dbContext.TaxPeriods
+            .Where(x => x.Business.OwnerId == ownerId.Value &&
+                x.PeriodType == TaxPeriodTypes.Yearly && x.Year == year)
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public Task<TaxPeriod?> GetTknAsync(
@@ -267,12 +268,14 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             int year,
             CancellationToken cancellationToken = default)
     {
-        return await _dbContext.TaxPeriods.AsNoTracking()
+        var periods = await _dbContext.TaxPeriods.AsNoTracking()
             .Where(x =>
                 x.Business.OwnerId == ownerId &&
                 x.PeriodType == TaxPeriodTypes.Quarterly &&
                 x.Year == year &&
                 x.Quarter.HasValue)
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
             .Select(x => new OwnerQuarterlyFilingState(
                 x.Id,
                 x.Quarter!.Value,
@@ -288,10 +291,16 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 x.TaxDeclarations.Any(declaration =>
                     declaration.IsCurrent &&
                     declaration.Status == TaxDeclarationStatuses.Submitted &&
-                    declaration.FormCode == TaxFormCodes.Form01Cnkd)))
-            .OrderBy(x => x.Quarter)
-            .ThenBy(x => x.TaxPeriodId)
+                    declaration.FormCode == TaxFormCodes.Form01Cnkd),
+                x.BusinessId,
+                x.Business.BusinessName))
             .ToListAsync(cancellationToken);
+
+        return periods
+            .GroupBy(x => x.Quarter)
+            .Select(group => group.First())
+            .OrderBy(x => x.Quarter)
+            .ToList();
     }
 
     public async Task<TaxPeriodIdentity?> GetIdentityAsync(
@@ -317,6 +326,74 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 ownerId.Value,
                 period.Year)
             : null;
+    }
+
+    private async Task<List<TaxPeriodBusinessBreakdown>> GetBusinessBreakdownsAsync(
+        List<Guid> businessIds,
+        DateTime startDate,
+        DateTime endExclusive,
+        CancellationToken cancellationToken)
+    {
+        var businessProfiles = await _dbContext.BusinessProfiles
+            .AsNoTracking()
+            .Where(x => businessIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.BusinessName })
+            .ToListAsync(cancellationToken);
+
+        var perBusinessTransactions = await _dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction =>
+                businessIds.Contains(transaction.BusinessId) &&
+                transaction.TransactionDate >= startDate &&
+                transaction.TransactionDate < endExclusive &&
+                transaction.TransactionType == TransactionTypes.Sale)
+            .GroupBy(transaction => transaction.BusinessId)
+            .Select(group => new
+            {
+                BusinessId = group.Key,
+                TransactionCount = group.Count(),
+                PaidTransactionCount = group.Count(transaction =>
+                    transaction.Status == "Completed"),
+                UnpaidTransactionCount = group.Count(transaction =>
+                    transaction.Status != "Completed" &&
+                    transaction.Status != "Cancelled"),
+                MissingInvoiceCount = group.Count(transaction =>
+                    transaction.Status == "Completed" &&
+                    transaction.Invoice == null),
+                Revenue = group.Where(transaction => transaction.Status == "Completed").Sum(t => (decimal?)t.TotalAmount) ?? 0m
+            })
+            .ToListAsync(cancellationToken);
+
+        var perBusinessExpenses = await _dbContext.Expenses
+            .AsNoTracking()
+            .Where(expense =>
+                businessIds.Contains(expense.BusinessId) &&
+                expense.ExpenseDate >= startDate &&
+                expense.ExpenseDate < endExclusive)
+            .GroupBy(expense => expense.BusinessId)
+            .Select(group => new
+            {
+                BusinessId = group.Key,
+                ExpenseCount = group.Count()
+            })
+            .ToListAsync(cancellationToken);
+
+        return businessProfiles.Select(bp =>
+        {
+            var tx = perBusinessTransactions.FirstOrDefault(t => t.BusinessId == bp.Id);
+            var exp = perBusinessExpenses.FirstOrDefault(e => e.BusinessId == bp.Id);
+            return new TaxPeriodBusinessBreakdown
+            {
+                BusinessId = bp.Id,
+                BusinessName = bp.BusinessName,
+                TransactionCount = tx?.TransactionCount ?? 0,
+                PaidTransactionCount = tx?.PaidTransactionCount ?? 0,
+                UnpaidTransactionCount = tx?.UnpaidTransactionCount ?? 0,
+                MissingInvoiceCount = tx?.MissingInvoiceCount ?? 0,
+                ExpenseCount = exp?.ExpenseCount ?? 0,
+                Revenue = tx?.Revenue ?? 0m
+            };
+        }).ToList();
     }
 
     public async Task<TaxPeriodDetailResponse?> GetDetailAsync(
@@ -363,7 +440,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 PaidTransactionCount = group.Count(transaction =>
                     transaction.Status == "Completed"),
                 UnpaidTransactionCount = group.Count(transaction =>
-                    transaction.Status != "Completed")
+                    transaction.Status != "Completed" &&
+                    transaction.Status != "Cancelled")
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -375,7 +453,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 transaction.TransactionDate < endExclusive &&
                 transaction.TransactionType == TransactionTypes.Sale)
             .CountAsync(
-                transaction => transaction.Invoice == null,
+                transaction => transaction.Status == "Completed" && transaction.Invoice == null,
                 cancellationToken);
 
         var expenseSummary = await _dbContext.Expenses
@@ -391,6 +469,12 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                 TotalExpense = group.Sum(expense => expense.Amount)
             })
             .FirstOrDefaultAsync(cancellationToken);
+
+        var businessBreakdowns = await GetBusinessBreakdownsAsync(
+            businessIds,
+            startDate,
+            endExclusive,
+            cancellationToken);
 
         var transactionCount =
             transactionSummary?.TransactionCount ?? 0;
@@ -445,7 +529,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             PaidDate = period.PaidDate,
             ClosedAt = period.ClosedAt,
             CalculatedAt = period.CalculatedAt,
-            SubmittedAt = period.SubmittedAt
+            SubmittedAt = period.SubmittedAt,
+            BusinessBreakdowns = businessBreakdowns
         };
     }
 
@@ -533,7 +618,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
 
         var missingInvoiceCount = await transactions
             .CountAsync(
-                transaction => transaction.Invoice == null,
+                transaction => transaction.Status == "Completed" && transaction.Invoice == null,
                 cancellationToken);
 
         var expensesQuery = _dbContext.Expenses
@@ -604,6 +689,12 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                     ? "Warning"
                     : "Good";
 
+        var businessBreakdowns = await GetBusinessBreakdownsAsync(
+            businessIds,
+            startDate,
+            endExclusive,
+            cancellationToken);
+
         return new TaxPeriodPreviewResponse
         {
             TaxPeriodId = period.Id,
@@ -622,7 +713,8 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
             ExpenseCount = expenseCount,
             DataCheckStatus = dataCheckStatus,
             CanClose = transactionCount > 0,
-            Warnings = warnings
+            Warnings = warnings,
+            BusinessBreakdowns = businessBreakdowns
         };
     }
 
@@ -631,7 +723,7 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
     {
         return _dbContext.SaveChangesAsync(cancellationToken);
     }
-    
+
     public async Task<int> GetNextCalculationVersionAsync(
         Guid taxPeriodId,
         CancellationToken cancellationToken = default)
@@ -880,5 +972,38 @@ public class TaxPeriodRepository : GenericRepository<TaxPeriod>, ITaxPeriodRepos
                        x => (decimal?)x.TotalAmount,
                        cancellationToken)
                ?? 0m;
+    }
+
+    public async Task<int> CancelDraftTransactionsAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var period = await GetCanonicalByIdAsync(taxPeriodId, cancellationToken);
+        if (period == null) return 0;
+
+        var ownerId = await GetOwnerIdByBusinessAsync(period.BusinessId, cancellationToken);
+        if (ownerId == null) return 0;
+
+        var businessIds = await _dbContext.BusinessProfiles
+            .AsNoTracking()
+            .Where(b => b.OwnerId == ownerId)
+            .Select(b => b.Id)
+            .ToListAsync(cancellationToken);
+
+        var startDate = period.PeriodStartDate;
+        var endExclusive = period.PeriodEndDate;
+
+        var affectedRows = await _dbContext.Transactions
+            .Where(tx =>
+                businessIds.Contains(tx.BusinessId) &&
+                tx.Status == "Draft" &&
+                tx.TransactionDate >= startDate &&
+                tx.TransactionDate < endExclusive)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(t => t.Status, "Cancelled")
+                .SetProperty(t => t.UpdatedAt, DateTime.UtcNow),
+                cancellationToken);
+
+        return affectedRows;
     }
 }

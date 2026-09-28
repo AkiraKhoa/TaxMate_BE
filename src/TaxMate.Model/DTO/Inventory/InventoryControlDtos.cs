@@ -45,6 +45,9 @@ public sealed class InitializeInventoryRequest
 
 public sealed class ReconcileInventoryRequest
 {
+    public string? ExpectedVersion { get; set; }
+
+    // Kept for older clients; the server always replaces this with its own time.
     public DateTime OccurredAt { get; set; }
 
     [Required]
@@ -75,6 +78,7 @@ public sealed class InventoryControlItemResponse
 
 public sealed class InventoryInitializationPreviewResponse
 {
+    public string Version { get; set; } = string.Empty;
     public Guid BusinessId { get; set; }
 
     public bool IsInitialized { get; set; }

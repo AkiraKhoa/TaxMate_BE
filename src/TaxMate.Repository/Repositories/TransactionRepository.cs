@@ -35,15 +35,50 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null)
     {
         var query = _dbSet
             .Include(x => x.TransactionItems)
             .Where(x => x.BusinessId == businessId);
 
+
+        if (startDate.HasValue) query = query.Where(x => x.TransactionDate >= startDate.Value);
+        if (endDate.HasValue) query = query.Where(x => x.TransactionDate < endDate.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x => x.TransactionCode.ToLower().Contains(term) ||
+                (x.InvoiceId != null && x.InvoiceId.ToLower().Contains(term)));
+        }
+        if (excludeEmptyDrafts) query = query.Where(x => x.Status != "Draft" || x.TransactionItems.Any());
+
         if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(x => x.Status == status);
+            if (string.Equals(status, "Unpaid", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.Status != "Completed" && x.Status != "Cancelled");
+            }
+            else
+            {
+                query = query.Where(x => x.Status == status);
+            }
+        }
+
+        if (hasInvoice.HasValue)
+        {
+            if (hasInvoice.Value)
+            {
+                query = query.Where(x => x.InvoiceId != null && x.InvoiceId != "");
+            }
+            else
+            {
+                query = query.Where(x => x.InvoiceId == null || x.InvoiceId == "");
+            }
         }
 
         if (!string.IsNullOrEmpty(paymentMethod))
@@ -74,13 +109,48 @@ public class TransactionRepository : GenericRepository<Transaction>, ITransactio
         string? status = null,
         string? paymentMethod = null,
         decimal? minAmount = null,
-        decimal? maxAmount = null)
+        decimal? maxAmount = null,
+        DateTime? startDate = null,
+        DateTime? endDate = null,
+        string? search = null,
+        bool excludeEmptyDrafts = false,
+        bool? hasInvoice = null)
     {
         var query = _dbSet.Where(x => x.BusinessId == businessId);
 
+
+        if (startDate.HasValue) query = query.Where(x => x.TransactionDate >= startDate.Value);
+        if (endDate.HasValue) query = query.Where(x => x.TransactionDate < endDate.Value);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(x => x.TransactionCode.ToLower().Contains(term) ||
+                (x.InvoiceId != null && x.InvoiceId.ToLower().Contains(term)));
+        }
+        if (excludeEmptyDrafts) query = query.Where(x => x.Status != "Draft" || x.TransactionItems.Any());
+
         if (!string.IsNullOrEmpty(status))
         {
-            query = query.Where(x => x.Status == status);
+            if (string.Equals(status, "Unpaid", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(x => x.Status != "Completed" && x.Status != "Cancelled");
+            }
+            else
+            {
+                query = query.Where(x => x.Status == status);
+            }
+        }
+
+        if (hasInvoice.HasValue)
+        {
+            if (hasInvoice.Value)
+            {
+                query = query.Where(x => x.InvoiceId != null && x.InvoiceId != "");
+            }
+            else
+            {
+                query = query.Where(x => x.InvoiceId == null || x.InvoiceId == "");
+            }
         }
 
         if (!string.IsNullOrEmpty(paymentMethod))

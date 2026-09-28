@@ -1,4 +1,4 @@
-﻿using TaxMate.Model.Common;
+using TaxMate.Model.Common;
 using System.Text.Json;
 using TaxMate.Model.Data;
 using TaxMate.Model.Documents.Tax;
@@ -18,16 +18,19 @@ public class TaxDeclarationService : ITaxDeclarationService
     private readonly ITaxDeclarationRepository _taxDeclarationRepository;
     private readonly ITaxDeclarationDocumentGenerator _documentGenerator;
     private readonly ITknDeclarationDocumentGenerator _tknDocumentGenerator;
+    private readonly IOwnerRevenueProjector? _ownerRevenue;
     
     public TaxDeclarationService(ITaxPeriodRepository taxPeriodRepository,
         ITaxDeclarationRepository taxDeclarationRepository,
         ITaxDeclarationDocumentGenerator documentGenerator,
-        ITknDeclarationDocumentGenerator tknDocumentGenerator)
+        ITknDeclarationDocumentGenerator tknDocumentGenerator,
+        IOwnerRevenueProjector? ownerRevenue = null)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxDeclarationRepository = taxDeclarationRepository;
         _documentGenerator = documentGenerator;
         _tknDocumentGenerator = tknDocumentGenerator;
+        _ownerRevenue = ownerRevenue;
     }
     
     public async Task<TaxDeclarationResponse> CreateAsync(
@@ -322,41 +325,6 @@ public class TaxDeclarationService : ITaxDeclarationService
             declaration.TaxPeriod.BusinessId,
             userId,
             cancellationToken);
-
-        return MapDeclaration(declaration);
-    }
-
-    public async Task<TaxDeclarationResponse> GetByTaxPeriodAsync(
-        Guid userId,
-        Guid taxPeriodId,
-        CancellationToken cancellationToken = default)
-    {
-        var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
-            taxPeriodId,
-            cancellationToken);
-
-        if (taxPeriod is null)
-        {
-            throw new NotFoundException(
-                "Tax period not found.");
-        }
-
-        await EnsureBusinessOwnershipAsync(
-            taxPeriod.BusinessId,
-            userId,
-            cancellationToken);
-
-        var declaration =
-            await _taxDeclarationRepository
-                .GetCurrentByTaxPeriodAsync(
-                    taxPeriodId,
-                    cancellationToken);
-
-        if (declaration is null)
-        {
-            throw new NotFoundException(
-                "Tax declaration not found.");
-        }
 
         return MapDeclaration(declaration);
     }
@@ -802,6 +770,252 @@ public class TaxDeclarationService : ITaxDeclarationService
             formModel,
             cancellationToken);
     }
+
+    public async Task<TaxDeclarationResponse?> GetByTaxPeriodAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+
+        if (taxPeriod is null)
+        {
+            throw new NotFoundException(
+                "Tax period not found.");
+        }
+
+        await EnsureBusinessOwnershipAsync(
+            taxPeriod.BusinessId,
+            userId,
+            cancellationToken);
+
+        var declaration =
+            await _taxDeclarationRepository
+                .GetCurrentByTaxPeriodAsync(
+                    taxPeriodId,
+                    cancellationToken);
+
+        if (declaration is null)
+        {
+            return null;
+        }
+
+        return MapDeclaration(declaration);
+    }
+
+    public async Task<TaxDeclarationGeneratedFile> ExportPreviewAsync(
+        Guid userId,
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default)
+    {
+        var taxPeriod = await _taxPeriodRepository.GetByIdAsync(
+            taxPeriodId,
+            cancellationToken);
+
+        if (taxPeriod is null)
+        {
+            throw new NotFoundException("Tax period not found.");
+        }
+
+        await EnsureBusinessOwnershipAsync(
+            taxPeriod.BusinessId,
+            userId,
+            cancellationToken);
+
+        var existing = await _taxDeclarationRepository.GetCurrentByTaxPeriodAsync(
+            taxPeriodId,
+            cancellationToken);
+
+        if (existing is not null &&
+            existing.Status is not TaxDeclarationStatuses.Superseded)
+        {
+            return await ExportAsync(userId, existing.Id, cancellationToken);
+        }
+
+        var business = await _taxPeriodRepository.GetBusinessWithCategoryAsync(
+            taxPeriod.BusinessId,
+            cancellationToken) ?? throw new NotFoundException("Business not found.");
+
+        var ownerBusinesses = await _taxPeriodRepository
+            .GetBusinessesWithCategoriesByOwnerAsync(
+                business.OwnerId,
+                cancellationToken);
+
+        var calculation = await _taxDeclarationRepository
+            .GetCurrentCalculationWithLinesAsync(
+                taxPeriodId,
+                cancellationToken);
+
+        if (taxPeriod.PeriodType == TaxPeriodTypes.Tkn)
+        {
+            var selector = taxPeriod.FilingWindow switch
+            {
+                TknFilingWindows.FirstHalf => "FirstHalf",
+                TknFilingWindows.SecondHalf => "SecondHalf",
+                _ => "Year"
+            };
+
+            List<Form01TknCnkd2026LineSnapshot> sectionALines;
+            decimal annualRevenue;
+
+            if (calculation is not null && calculation.Lines.Count > 0)
+            {
+                annualRevenue = calculation.AnnualRevenueAtCalculation > 0m
+                    ? calculation.AnnualRevenueAtCalculation
+                    : calculation.TotalRevenue;
+
+                sectionALines = calculation.Lines.Select(x => new Form01TknCnkd2026LineSnapshot(
+                    x.SectionCode ?? "I",
+                    "08",
+                    x.BusinessActivityCode ?? "HD1",
+                    x.BusinessActivityName ?? "Kinh doanh",
+                    business.Id,
+                    business.BusinessLocationCode,
+                    x.TotalRevenue,
+                    x.VatNonTaxableRevenue,
+                    x.ZeroRatedVatRevenue,
+                    x.VatTaxAmount,
+                    x.PersonalIncomeTaxableRevenue,
+                    x.PersonalIncomeTaxDeductibleRevenue,
+                    x.PersonalIncomeTaxAmount,
+                    x.DisplayOrder)).ToList();
+            }
+            else if (_ownerRevenue is not null)
+            {
+                var projection = await _ownerRevenue.ProjectAsync(
+                    userId,
+                    taxPeriod.BusinessId,
+                    taxPeriod.PeriodStartDate,
+                    taxPeriod.PeriodEndDate,
+                    cancellationToken);
+
+                annualRevenue = projection.TotalRevenue;
+                var order = 1;
+                sectionALines = projection.Groups
+                    .OrderBy(x => x.BusinessCategoryCode)
+                    .Select(g => new Form01TknCnkd2026LineSnapshot(
+                        "I",
+                        "08",
+                        g.BusinessCategoryCode,
+                        g.BusinessCategoryName,
+                        business.Id,
+                        business.BusinessLocationCode,
+                        g.TotalRevenue,
+                        g.TotalRevenue,
+                        0m,
+                        0m,
+                        0m,
+                        0m,
+                        0m,
+                        order++
+                    )).ToList();
+            }
+            else
+            {
+                annualRevenue = taxPeriod.TotalRevenue;
+                sectionALines = [];
+            }
+
+            var tknSnapshot = new Form01TknCnkd2026Snapshot
+            {
+                DeclarationId = Guid.Empty,
+                DeclarationCode = $"01-TKN-PREVIEW-{taxPeriod.Year}",
+                DeclarationVersion = 1,
+                DeclarationType = "Initial",
+                SupplementNumber = null,
+                GeneratedAt = DateTime.UtcNow,
+                PeriodSelector = selector,
+                Year = taxPeriod.Year,
+                WindowStart = taxPeriod.PeriodStartDate,
+                WindowEnd = taxPeriod.PeriodEndDate,
+                DueDate = taxPeriod.DueDate,
+                IsNewBusinessAtOrBelowOneBillion = selector != "Year",
+                TaxpayerName = business.Owner?.FullName ?? business.BusinessName,
+                TaxCode = business.Owner?.TaxCode ?? "0123456789",
+                TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
+                AnnualRevenueAtGeneration = annualRevenue,
+                ApplicableThreshold = 100000000m,
+                CalculationRuleVersion = "2026.01",
+                SectionALines = sectionALines
+            };
+
+            var file = await _tknDocumentGenerator.GenerateAsync(
+                tknSnapshot,
+                cancellationToken);
+
+            return new TaxDeclarationGeneratedFile
+            {
+                Content = file.Content,
+                FileName = $"01-TKN-CNKD_XEM-TRUOC_{taxPeriod.Year}.docx",
+                ContentType = file.ContentType
+            };
+        }
+
+        var mockDeclaration = new TaxDeclaration
+        {
+            Id = Guid.Empty,
+            TaxPeriodId = taxPeriod.Id,
+            TaxPeriod = taxPeriod,
+            FormCode = TaxFormCodes.Form01Cnkd,
+            DeclarationCode = $"01-CNKD-PREVIEW-{taxPeriod.Year}-Q{taxPeriod.Quarter}",
+            Version = 1,
+            DeclarationType = TaxDeclarationTypes.Initial,
+            Status = TaxDeclarationStatuses.Draft,
+            TaxpayerName = business.BusinessName,
+            TaxCode = business.Owner?.TaxCode ?? "0123456789",
+            TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
+            TotalRevenue = calculation?.TotalRevenue ?? taxPeriod.TotalRevenue,
+            TotalVatTaxAmount = calculation?.TotalVatTaxAmount ?? 0m,
+            TotalPersonalIncomeTaxAmount = calculation?.TotalPersonalIncomeTaxAmount ?? 0m,
+            VatExemptionAmount = 0m,
+            PersonalIncomeTaxExemptionAmount = 0m,
+            VatPayableAmount = calculation?.TotalVatTaxAmount ?? 0m,
+            PersonalIncomeTaxPayableAmount = calculation?.TotalPersonalIncomeTaxAmount ?? 0m,
+            TotalTaxPayableAmount = calculation?.TotalTaxPayableAmount ?? 0m,
+            GeneratedAt = DateTime.UtcNow,
+            Lines = calculation?.Lines.Select(source => new TaxDeclarationLine
+            {
+                Id = Guid.NewGuid(),
+                SectionCode = source.SectionCode,
+                IndicatorCode = source.IndicatorCode,
+                BusinessActivityCode = source.BusinessActivityCode,
+                BusinessActivityName = source.BusinessActivityName,
+                BusinessLocationId = source.BusinessLocationId,
+                BusinessLocationCode = source.BusinessLocationCode,
+                TotalRevenue = source.TotalRevenue,
+                VatTaxableRevenue = source.VatTaxableRevenue,
+                VatNonTaxableRevenue = source.VatNonTaxableRevenue,
+                ZeroRatedVatRevenue = source.ZeroRatedVatRevenue,
+                VatTaxRate = source.VatTaxRate,
+                VatTaxAmount = source.VatTaxAmount,
+                PersonalIncomeTaxableRevenue = source.PersonalIncomeTaxableRevenue,
+                PersonalIncomeTaxDeductibleRevenue = source.PersonalIncomeTaxDeductibleRevenue,
+                PersonalIncomeTaxRevenue = source.PersonalIncomeTaxRevenue,
+                PersonalIncomeTaxRate = source.PersonalIncomeTaxRate,
+                PersonalIncomeTaxAmount = source.PersonalIncomeTaxAmount,
+                DisplayOrder = source.DisplayOrder,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            }).ToList() ?? []
+        };
+
+        var formModel = Form01Cnkd2026Mapper.Map(
+            mockDeclaration,
+            ownerBusinesses);
+
+        var docx = await _documentGenerator.GenerateAsync(
+            formModel,
+            cancellationToken);
+
+        return new TaxDeclarationGeneratedFile
+        {
+            Content = docx.Content,
+            FileName = $"01-CNKD_XEM-TRUOC_{taxPeriod.Year}_Q{taxPeriod.Quarter}.docx",
+            ContentType = docx.ContentType
+        };
+    }
     
     private static string ResolveHouseholdChapterCode(
         string? taxAuthorityLevel)
@@ -834,7 +1048,7 @@ public class TaxDeclarationService : ITaxDeclarationService
         {
             throw new BadRequestException(
                 $"Invalid tax authority level: {business.TaxAuthorityLevel}.");
-        }
+    }
 
         if (string.IsNullOrWhiteSpace(
                 business.TaxAdministrationAreaCode))

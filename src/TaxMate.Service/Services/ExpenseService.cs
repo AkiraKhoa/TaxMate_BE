@@ -18,6 +18,7 @@ public class ExpenseService : IExpenseService
     private readonly IGenericRepository<BusinessProfile> _businessProfiles;
     private readonly IPaymentAccountService _paymentAccounts;
     private readonly IMoneyMovementService _moneyMovements;
+    private readonly IMoneyMovementRepository _moneyMovementRepo;
     private readonly ITaxPeriodMutationGuard _periodGuard;
     private readonly IMapper _mapper;
 
@@ -28,6 +29,7 @@ public class ExpenseService : IExpenseService
         IGenericRepository<BusinessProfile> businessProfiles,
         IPaymentAccountService paymentAccounts,
         IMoneyMovementService moneyMovements,
+        IMoneyMovementRepository moneyMovementRepo,
         ITaxPeriodMutationGuard periodGuard,
         IMapper mapper)
     {
@@ -37,6 +39,7 @@ public class ExpenseService : IExpenseService
         _businessProfiles = businessProfiles;
         _paymentAccounts = paymentAccounts;
         _moneyMovements = moneyMovements;
+        _moneyMovementRepo = moneyMovementRepo;
         _periodGuard = periodGuard;
         _mapper = mapper;
     }
@@ -120,7 +123,18 @@ public class ExpenseService : IExpenseService
             await EnsureBusinessOwnerAsync(entity.BusinessId, ownerId);
             await EnsureCategoryIsValidAsync(request.ExpenseCategoryId, entity.BusinessId);
             await GuardUpdateDatesAsync(ownerId, entity.BusinessId, entity.ExpenseDate, request.ExpenseDate, entity.PaidDate, request.PaidDate);
-            var payment = await ResolvePaymentAsync(ownerId, entity.BusinessId, request.PaidDate, request.PaymentMethod, request.PaymentAccountId);
+
+            var paymentAccountId = request.PaymentAccountId;
+            if (!paymentAccountId.HasValue && string.Equals(request.PaymentMethod?.Trim(), PaymentMethods.Transfer, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingMovement = await _moneyMovementRepo.GetBySourceForWriteAsync(MoneyMovementTypes.ExpenseOut, entity.ExpenseId);
+                if (existingMovement != null)
+                {
+                    paymentAccountId = existingMovement.PaymentAccountId;
+                }
+            }
+
+            var payment = await ResolvePaymentAsync(ownerId, entity.BusinessId, request.PaidDate, request.PaymentMethod, paymentAccountId);
 
             entity.ExpenseCategoryId = request.ExpenseCategoryId;
             entity.ExpenseTitle = request.ExpenseTitle.Trim();

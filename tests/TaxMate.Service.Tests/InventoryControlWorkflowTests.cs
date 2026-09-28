@@ -170,6 +170,7 @@ public class InventoryControlWorkflowTests
             business.Id,
             new ReconcileInventoryRequest
             {
+                ExpectedVersion = await CurrentVersion(business.Id),
                 OccurredAt = new DateTime(2026, 8, 20),
                 DocumentNumber = "KK-01",
                 Description = "Kiểm kho bật lại",
@@ -191,6 +192,8 @@ public class InventoryControlWorkflowTests
             enableStockTracking: true);
 
         Assert.True(business.IsStockTrackingEnabled);
+        Assert.All(staged, x => Assert.InRange(x.OccurredAt,
+            DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1)));
         Assert.Equal(9m, product.StockQuantity);
         Assert.Equal(2m, ingredient.StockQuantity);
         Assert.Equal(1, result.AdjustmentInCount);
@@ -225,7 +228,7 @@ public class InventoryControlWorkflowTests
             CreateAdjustmentService().ReconcileAsync(
                 ownerId,
                 business.Id,
-                Reconcile(product.Id, actual: 2m, value: null),
+                Reconcile(product.Id, actual: 2m, value: null, version: CurrentVersion(business.Id).GetAwaiter().GetResult()),
                 enableStockTracking: true));
 
         Assert.Contains("giá trị điều chỉnh tăng", exception.Message);
@@ -248,7 +251,7 @@ public class InventoryControlWorkflowTests
             CreateAdjustmentService().ReconcileAsync(
                 ownerId,
                 business.Id,
-                Reconcile(product.Id, actual: -1m, value: null),
+                Reconcile(product.Id, actual: -1m, value: null, version: CurrentVersion(business.Id).GetAwaiter().GetResult()),
                 enableStockTracking: false));
 
         _movements.Verify(x => x.StageAdjustmentAsync(
@@ -471,11 +474,34 @@ public class InventoryControlWorkflowTests
         Description = "Opening"
     };
 
+    [Fact]
+    public async Task Reconcile_StaleVersionDoesNotWriteOrEnableTracking()
+    {
+        var (ownerId, business) = SetupOwnedBusiness(enabled: false);
+        var product = Product(business.Id, stock: 10m);
+        SetupActiveItems(business.Id, [product], []);
+        _controls.Setup(x => x.GetMovementsAsync(business.Id, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Movement(business.Id, product.Id, 10m)]);
+        await Assert.ThrowsAsync<ConflictException>(() => CreateAdjustmentService().ReconcileAsync(
+            ownerId, business.Id, Reconcile(product.Id, 9m, null, "stale"), true));
+        Assert.False(business.IsStockTrackingEnabled);
+        Assert.Equal(10m, product.StockQuantity);
+        _movements.Verify(x => x.StageAdjustmentAsync(It.IsAny<StageInventoryAdjustmentCommand>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private async Task<string> CurrentVersion(Guid businessId) => InventoryControlRules.Version(
+        await _controls.Object.GetActiveProductsAsync(businessId, true),
+        await _controls.Object.GetActiveIngredientsAsync(businessId, true),
+        await _controls.Object.GetMovementsAsync(businessId, true));
+
     private static ReconcileInventoryRequest Reconcile(
         Guid productId,
         decimal actual,
-        decimal? value) => new()
+        decimal? value, string version) => new()
     {
+        ExpectedVersion = version,
         OccurredAt = new DateTime(2026, 8, 20),
         DocumentNumber = "KK-01",
         Description = "Stocktake",
