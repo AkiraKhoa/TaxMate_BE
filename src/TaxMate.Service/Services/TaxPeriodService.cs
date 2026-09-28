@@ -2,6 +2,7 @@ using TaxMate.Model.Common;
 using TaxMate.Model.DTO.TaxPeriod;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
+using TaxMate.Service.Common;
 using TaxMate.Service.Interfaces;
 using System.Text.Json;
 using BadRequestException = TaxMate.Service.Exceptions.BadRequestException;
@@ -493,9 +494,24 @@ public class TaxPeriodService : ITaxPeriodService
             throw new BadRequestException(
                 "Không có doanh thu kinh doanh trong cửa sổ tính thuế.");
 
+        var poolStartUtc = ResolvePoolStartUtc(
+            taxPeriod,
+            annualProjection,
+            firstCrossingQuarter,
+            owner.TaxMethodEffectiveYear.Value);
+
+        var previousRevenue = calculationStart <= poolStartUtc
+            ? 0m
+            : (await _ownerRevenue.ProjectAsync(
+                anchorBusiness.OwnerId,
+                taxPeriod.BusinessId,
+                poolStartUtc,
+                calculationStart,
+                cancellationToken)).TotalRevenue;
+
         var remainingDeduction = taxMethod ==
                 PersonalIncomeTaxMethods.RevenueBased
-            ? annualRevenueThreshold
+            ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
             : 0m;
 
         // Phân bổ deduction cho PIT rate cao trước (phương án có lợi hơn).
@@ -939,6 +955,26 @@ public class TaxPeriodService : ITaxPeriodService
             cancellationToken);
         var annualRevenueThreshold = taxPolicy.AnnualRevenueThreshold;
 
+        if (annualRevenue > taxPolicy.SupportedRevenueCeiling)
+            throw new ConflictException(
+                "Doanh thu năm đã vượt 50 tỷ đồng, ngoài phạm vi lập hồ sơ của TaxMate.");
+
+        var hasCarriedMethod = effectiveYear < taxPeriod.Year;
+        if (annualRevenue <= annualRevenueThreshold && !hasCarriedMethod)
+            throw new ConflictException(
+                "Doanh thu năm chưa vượt 1 tỷ đồng; hãy dùng 01/TKN-CNKD.");
+
+        var firstCrossingQuarter = ResolveFirstCrossingQuarter(
+            annualProjection, annualRevenueThreshold);
+        if (taxPeriod.Quarter.HasValue &&
+            effectiveYear == taxPeriod.Year &&
+            firstCrossingQuarter.HasValue &&
+            taxPeriod.Quarter.Value < firstCrossingQuarter.Value)
+        {
+            throw new ConflictException(
+                $"01/CNKD bắt đầu từ quý {firstCrossingQuarter}; các quý trước đó không áp dụng.");
+        }
+
         var calculationStart = ResolveCalculationWindowStart(
             taxPeriod,
             annualProjection,
@@ -981,8 +1017,23 @@ public class TaxPeriodService : ITaxPeriodService
             };
         }
 
+        var poolStartUtc = ResolvePoolStartUtc(
+            taxPeriod,
+            annualProjection,
+            firstCrossingQuarter,
+            effectiveYear);
+
+        var previousRevenue = calculationStart <= poolStartUtc
+            ? 0m
+            : (await _ownerRevenue.ProjectAsync(
+                anchorBusiness.OwnerId,
+                taxPeriod.BusinessId,
+                poolStartUtc,
+                calculationStart,
+                cancellationToken)).TotalRevenue;
+
         var remainingDeduction = taxMethod == PersonalIncomeTaxMethods.RevenueBased
-            ? annualRevenueThreshold
+            ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
             : 0m;
 
         var pitDeductionByBusiness = new Dictionary<Guid, decimal>();
@@ -1085,6 +1136,28 @@ public class TaxPeriodService : ITaxPeriodService
             CalculatedAt = now,
             Lines = lines
         };
+    }
+
+    private static DateTime ResolvePoolStartUtc(
+        TaxPeriod taxPeriod,
+        OwnerRevenueProjection annualProjection,
+        int? firstCrossingQuarter,
+        int taxMethodEffectiveYear)
+    {
+        if (taxMethodEffectiveYear < taxPeriod.Year)
+        {
+            return annualProjection.StartNaiveUtc;
+        }
+
+        if (firstCrossingQuarter.HasValue)
+        {
+            var (startNaiveUtc, _) = BangkokBusinessTime.GetQuarterNaiveUtc(
+                taxPeriod.Year,
+                firstCrossingQuarter.Value);
+            return startNaiveUtc;
+        }
+
+        return annualProjection.StartNaiveUtc;
     }
 
     private static DateTime ResolveCalculationWindowStart(
