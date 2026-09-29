@@ -28,8 +28,8 @@ public sealed record OwnerRevenueGroup(
 }
 
 public sealed record OwnerRevenueLine(
-    Guid BusinessCategoryId,
-    string BusinessCategoryCode,
+    Guid? BusinessCategoryId,
+    string? BusinessCategoryCode,
     Guid SourceId,
     string SourceType,
     string DocumentNumber,
