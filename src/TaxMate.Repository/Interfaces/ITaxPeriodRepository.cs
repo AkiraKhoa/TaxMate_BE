@@ -159,4 +159,15 @@ public interface ITaxPeriodRepository : IGenericRepository<TaxPeriod>
         DateTime periodStart,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<TaxPayment>> GetPaymentsByPeriodIdAsync(
+        Guid taxPeriodId,
+        CancellationToken cancellationToken = default);
+
+    Task AddTaxPaymentsAsync(
+        IEnumerable<TaxPayment> payments,
+        CancellationToken cancellationToken = default);
+
+    Task RemoveTaxPaymentsAsync(
+        IEnumerable<TaxPayment> payments,
+        CancellationToken cancellationToken = default);
 }

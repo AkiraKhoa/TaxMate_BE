@@ -178,10 +178,9 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
             .ToArray();
 
         var lines = qualifyingTransactions
-            .Where(HasBusinessCategory)
             .Select(x => new OwnerRevenueLine(
-                x.BusinessCategoryId!.Value,
-                x.BusinessCategoryCode!,
+                x.BusinessCategoryId,
+                x.BusinessCategoryCode ?? "CHUA_PHAN_LOAI",
                 x.TransactionId,
                 "Transaction",
                 x.InvoiceNumber ?? AccountingDocumentNumber.FromSource(
@@ -190,10 +189,10 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                 $"Doanh thu đơn hàng {x.TransactionCode}",
                 x.Amount))
             .Concat(qualifyingManualIncomes
-                .Where(x => x.Amount > 0m && HasBusinessCategory(x))
+                .Where(x => x.Amount > 0m)
                 .Select(x => new OwnerRevenueLine(
-                    x.BusinessCategoryId!.Value,
-                    x.BusinessCategoryCode!,
+                    x.BusinessCategoryId,
+                    x.BusinessCategoryCode ?? "CHUA_PHAN_LOAI",
                     x.IncomeId,
                     "ManualIncome",
                     AccountingDocumentNumber.FromSource("PT", x.IncomeId),
@@ -211,14 +210,14 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                 OwnerRevenueBlockerCodes.MissingInvoice,
                 x.BusinessId,
                 x.TransactionId,
-                "Giao dịch hoàn tất chưa có hóa đơn."))
+                "Giao dịch bán hàng hoàn tất chưa có hóa đơn."))
             .Concat(qualifyingTransactions
                 .Where(x => !HasBusinessCategory(x))
                 .Select(x => new OwnerRevenueBlocker(
                     OwnerRevenueBlockerCodes.MissingBusinessCategory,
                     x.BusinessId,
                     x.TransactionId,
-                    "Cửa hàng chưa có ngành nghề để phân loại doanh thu S2b.")))
+                    "Giao dịch bán hàng chưa có ngành nghề để phân loại doanh thu S2b.")))
             .Concat(qualifyingManualIncomes
                 .Where(x => x.Amount <= 0m)
                 .Select(x => new OwnerRevenueBlocker(
@@ -232,7 +231,7 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                     OwnerRevenueBlockerCodes.MissingBusinessCategory,
                     x.BusinessId,
                     x.IncomeId,
-                    "Cửa hàng chưa có ngành nghề để phân loại doanh thu S2b.")))
+                    "Khoản thu nhập ngoài chưa có ngành nghề để phân loại doanh thu S2b.")))
             .OrderBy(x => x.Code)
             .ThenBy(x => x.BusinessId)
             .ThenBy(x => x.SourceId)
