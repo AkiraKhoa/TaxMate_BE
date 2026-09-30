@@ -93,6 +93,13 @@ public class AnnualTaxAggregateServiceTests
     public async Task PreviewAsync_WhenAll4QuartersAreClosed_CanClose()
     {
         // All 4 quarters closed/calculated/submitted
+        _taxPeriods.Setup(x => x.GetBusinessesWithCategoriesByOwnerAsync(_ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BusinessProfile
+            {
+                Id = _businessId,
+                OwnerId = _ownerId,
+                MainCategoryId = BusinessCategoryIds.ServiceStore
+            }]);
         _taxPeriods.Setup(x => x.GetOwnerQuarterlyFilingStatesAsync(_ownerId, Year, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new OwnerQuarterlyFilingState(Guid.NewGuid(), 1, TaxPeriodStatuses.Closed, true, false, true),
@@ -112,6 +119,7 @@ public class AnnualTaxAggregateServiceTests
         var preview = await service.PreviewAsync(_ownerId, _businessId, Year);
 
         Assert.DoesNotContain(preview.HardBlockers, b => b.Code.StartsWith("Quarter") && b.Code.EndsWith("NotClosed"));
+        Assert.DoesNotContain(preview.HardBlockers, b => b.Code == InventoryBookBlockerCodes.NegativeInventory);
         Assert.True(preview.CanClose);
     }
 

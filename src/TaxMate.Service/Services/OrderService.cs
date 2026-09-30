@@ -491,7 +491,7 @@ public class OrderService : IOrderService
             }
             else
             {
-                await CompleteOrderAsync(order, TransactionStatus.Draft, paidAt);
+                await CompleteOrderAsync(order, TransactionStatus.Draft, paidAt, businessProfile.MainCategoryId);
             }
 
             foreach (var paymentEntry in request.Payments)
@@ -777,7 +777,7 @@ public class OrderService : IOrderService
                 ?? throw new NotFoundException("Business profile not found.");
             var paidAt = UtcNow;
             await _taxPeriodGuard.EnsureCanCreateAsync(businessProfile.OwnerId, order.BusinessId, paidAt);
-            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment, paidAt);
+            await CompleteOrderAsync(order, TransactionStatus.AwaitingPayment, paidAt, businessProfile.MainCategoryId);
 
             foreach (var payment in order.Payments)
             {
@@ -880,7 +880,11 @@ public class OrderService : IOrderService
         }
     }
 
-    private async Task CompleteOrderAsync(Transaction order, string expectedStatus, DateTime paidAt)
+    private async Task CompleteOrderAsync(
+        Transaction order,
+        string expectedStatus,
+        DateTime paidAt,
+        Guid? mainCategoryId)
     {
         var transitioned = await _transactions.TryTransitionStatusAsync(
             order.TransactionId,
@@ -893,13 +897,16 @@ public class OrderService : IOrderService
 
         order.Status = TransactionStatus.Completed;
         order.CompletedAt = DateTime.SpecifyKind(paidAt, DateTimeKind.Unspecified);
-        await DeductInventoryForCompletedOrderAsync(order);
+        await DeductInventoryForCompletedOrderAsync(order, mainCategoryId);
     }
 
     private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
 
-    private async Task DeductInventoryForCompletedOrderAsync(Transaction order)
+    private async Task DeductInventoryForCompletedOrderAsync(Transaction order, Guid? mainCategoryId)
     {
+        if (mainCategoryId == BusinessCategoryIds.ServiceStore)
+            return;
+
         var soldQuantitiesByProduct = order.TransactionItems
             .Where(x => x.ProductId.HasValue && x.Quantity > 0)
             .GroupBy(x => x.ProductId!.Value)
