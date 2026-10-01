@@ -215,23 +215,127 @@ public class TaxProfileTransitionRegressionTests
     }
 
     [Fact]
-    public async Task CrossingQuarter_CalculatesOnlyQuarterRevenueMinusFullThreshold()
+    public async Task CrossingQuarter_NewAccount_FourQuarters_CorrectPoolConsumption()
     {
-        // Q1 = 500M, Q2 = 400M, Q3 = 300M -> Annual = 1,200M (crosses 1B in Q3), Q3 own revenue = 300M
-        var f = new Fixture(300_000_000m);
+        // Q1 = 600M, Q2 = 300M, Q3 = 500M, Q4 = 700M -> Annual = 2,100M (crosses 1B in Q3)
+        var f = new Fixture(500_000_000m);
         f.Owner.PersonalIncomeTaxMethod = PersonalIncomeTaxMethods.RevenueBased;
         f.Owner.TaxMethodEffectiveYear = 2026;
         f.Period.Year = 2026;
+        f.SetFourQuartersCrossingInQuarter3();
+
+        // Q1 & Q2 should throw ConflictException when calculating or previewing 01/CNKD
+        f.Period.Quarter = 1;
+        f.Period.PeriodStartDate = new DateTime(2025, 12, 31, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 3, 31, 17, 0, 0);
+        await Assert.ThrowsAsync<ConflictException>(() => f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id));
+        await Assert.ThrowsAsync<ConflictException>(() => f.QuarterService().GetCalculationPreviewAsync(f.Owner.Id, f.Period.Id));
+
+        f.Period.Quarter = 2;
+        f.Period.PeriodStartDate = new DateTime(2026, 3, 31, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 6, 30, 17, 0, 0);
+        await Assert.ThrowsAsync<ConflictException>(() => f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id));
+        await Assert.ThrowsAsync<ConflictException>(() => f.QuarterService().GetCalculationPreviewAsync(f.Owner.Id, f.Period.Id));
+
+        // Q3 (Crossing quarter, revenue = 500M) -> gets full 1B pool, deduction = 500M, remaining = 500M, PIT = 0
         f.Period.Quarter = 3;
         f.Period.PeriodStartDate = new DateTime(2026, 6, 30, 17, 0, 0);
         f.Period.PeriodEndDate = new DateTime(2026, 9, 30, 17, 0, 0);
-        f.SetAnnualCrossingInQuarter3();
 
-        var result = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        var resultQ3 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(500_000_000m, resultQ3.TotalRevenue);
+        Assert.Equal(5_000_000m, resultQ3.TotalVatTaxAmount); // 500M * 1%
+        Assert.Equal(0m, resultQ3.TotalPersonalIncomeTaxAmount); // 500M - 500M deducted = 0
+        Assert.Equal(500_000_000m, resultQ3.RemainingPitDeduction); // 1B - 500M = 500M
 
-        Assert.Equal(300_000_000m, result.TotalRevenue);
-        Assert.Equal(3_000_000m, result.TotalVatTaxAmount);
-        Assert.Equal(0m, result.TotalPersonalIncomeTaxAmount);
+        var previewQ3 = await f.QuarterService().GetCalculationPreviewAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(500_000_000m, previewQ3.TotalRevenue);
+        Assert.Equal(5_000_000m, previewQ3.TotalVatTaxAmount);
+        Assert.Equal(0m, previewQ3.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(500_000_000m, previewQ3.RemainingPitDeduction);
+
+        // Q4 (Subsequent quarter, revenue = 700M) -> previous revenue in pool window (Q3) = 500M, remaining pool = 500M
+        // Deducts 500M -> PIT base = 700M - 500M = 200M -> PIT = 200M * 0.5% = 1,000,000đ, remaining pool = 0
+        f.Period.Quarter = 4;
+        f.Period.PeriodStartDate = new DateTime(2026, 9, 30, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 12, 31, 17, 0, 0);
+
+        var resultQ4 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(700_000_000m, resultQ4.TotalRevenue);
+        Assert.Equal(7_000_000m, resultQ4.TotalVatTaxAmount); // 700M * 1%
+        Assert.Equal(1_000_000m, resultQ4.TotalPersonalIncomeTaxAmount); // (700M - 500M) * 0.5%
+        Assert.Equal(0m, resultQ4.RemainingPitDeduction);
+
+        var previewQ4 = await f.QuarterService().GetCalculationPreviewAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(700_000_000m, previewQ4.TotalRevenue);
+        Assert.Equal(7_000_000m, previewQ4.TotalVatTaxAmount);
+        Assert.Equal(1_000_000m, previewQ4.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(0m, previewQ4.RemainingPitDeduction);
+    }
+
+    [Fact]
+    public async Task CarriedMethod_OldAccount_FourQuarters_CorrectPoolConsumptionAndYearIndependence()
+    {
+        // Old account: elected in 2025, calculating 2026
+        // Q1 = 600M, Q2 = 700M, Q3 = 500M, Q4 = 400M -> Annual 2,200M
+        var f = new Fixture(600_000_000m);
+        f.Owner.PersonalIncomeTaxMethod = PersonalIncomeTaxMethods.RevenueBased;
+        f.Owner.TaxMethodEffectiveYear = 2025; // Carried method from previous year
+        f.Period.Year = 2026;
+        f.SetFourQuartersCarriedMethod();
+
+        // Q1: revenue = 600M -> pool 1B -> deduct 600M -> PIT = 0, remaining = 400M
+        f.Period.Quarter = 1;
+        f.Period.PeriodStartDate = new DateTime(2025, 12, 31, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 3, 31, 17, 0, 0);
+
+        var resultQ1 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(600_000_000m, resultQ1.TotalRevenue);
+        Assert.Equal(6_000_000m, resultQ1.TotalVatTaxAmount);
+        Assert.Equal(0m, resultQ1.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(400_000_000m, resultQ1.RemainingPitDeduction);
+
+        // Q2: revenue = 700M -> previous revenue (Q1) = 600M -> pool remaining = 400M
+        // Deduct 400M -> PIT base = 300M -> PIT = 300M * 0.5% = 1.5M, remaining = 0
+        f.Period.Quarter = 2;
+        f.Period.PeriodStartDate = new DateTime(2026, 3, 31, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 6, 30, 17, 0, 0);
+
+        var resultQ2 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(700_000_000m, resultQ2.TotalRevenue);
+        Assert.Equal(7_000_000m, resultQ2.TotalVatTaxAmount);
+        Assert.Equal(1_500_000m, resultQ2.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(0m, resultQ2.RemainingPitDeduction);
+
+        // Q3: revenue = 500M -> previous revenue (Q1+Q2) = 1,300M -> pool remaining = 0
+        // PIT base = 500M -> PIT = 500M * 0.5% = 2.5M, remaining = 0
+        f.Period.Quarter = 3;
+        f.Period.PeriodStartDate = new DateTime(2026, 6, 30, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 9, 30, 17, 0, 0);
+
+        var resultQ3 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(500_000_000m, resultQ3.TotalRevenue);
+        Assert.Equal(5_000_000m, resultQ3.TotalVatTaxAmount);
+        Assert.Equal(2_500_000m, resultQ3.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(0m, resultQ3.RemainingPitDeduction);
+
+        // Q4: revenue = 400M -> previous revenue (Q1+Q2+Q3) = 1,800M -> pool remaining = 0
+        // PIT base = 400M -> PIT = 400M * 0.5% = 2.0M, remaining = 0
+        f.Period.Quarter = 4;
+        f.Period.PeriodStartDate = new DateTime(2026, 9, 30, 17, 0, 0);
+        f.Period.PeriodEndDate = new DateTime(2026, 12, 31, 17, 0, 0);
+
+        var resultQ4 = await f.QuarterService().CalculateAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(400_000_000m, resultQ4.TotalRevenue);
+        Assert.Equal(4_000_000m, resultQ4.TotalVatTaxAmount);
+        Assert.Equal(2_000_000m, resultQ4.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(0m, resultQ4.RemainingPitDeduction);
+
+        var previewQ4 = await f.QuarterService().GetCalculationPreviewAsync(f.Owner.Id, f.Period.Id);
+        Assert.Equal(400_000_000m, previewQ4.TotalRevenue);
+        Assert.Equal(4_000_000m, previewQ4.TotalVatTaxAmount);
+        Assert.Equal(2_000_000m, previewQ4.TotalPersonalIncomeTaxAmount);
+        Assert.Equal(0m, previewQ4.RemainingPitDeduction);
     }
 
     private sealed class Fixture
@@ -242,6 +346,7 @@ public class TaxProfileTransitionRegressionTests
         public BusinessProfile Business;
         public TaxPeriod Period;
         public List<RevenueThresholdAlert> Alerts = [];
+        public List<OwnerRevenueLine> AnnualLines = [];
         public int ClockYear = 2027;
         private readonly Mock<ITaxPeriodRepository> periods = new();
         private readonly Mock<IUserRepository> users = new();
@@ -268,8 +373,24 @@ public class TaxProfileTransitionRegressionTests
             revenue.Setup(x => x.ProjectCalendarYearAsync(Owner.Id, Business.Id, It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new OwnerRevenueProjection(Owner.Id, new DateTime(2025,12,31,17,0,0), new DateTime(2026,12,31,17,0,0), total, 0m, []));
             revenue.Setup(x => x.ProjectAsync(Owner.Id, Business.Id, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new OwnerRevenueProjection(Owner.Id, Period.PeriodStartDate, Period.PeriodEndDate, total, 0m, []) {
-                    Groups = [new OwnerRevenueGroup(Business.MainCategory.BusinessCategoryId, "DIST_GOODS", "Goods", 1m, total, 0m)] });
+                .ReturnsAsync((Guid oId, Guid bId, DateTime start, DateTime end, CancellationToken ct) =>
+                {
+                    if (AnnualLines.Count > 0)
+                    {
+                        var matchingLines = AnnualLines.Where(l => l.DocumentDate >= start && l.DocumentDate < end).ToList();
+                        var rev = matchingLines.Sum(l => l.Amount);
+                        return new OwnerRevenueProjection(Owner.Id, start, end, rev, 0m, [])
+                        {
+                            Groups = rev > 0
+                                ? [new OwnerRevenueGroup(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", "Goods", 1m, rev, 0m)]
+                                : []
+                        };
+                    }
+                    return new OwnerRevenueProjection(Owner.Id, start, end, total, 0m, [])
+                    {
+                        Groups = [new OwnerRevenueGroup(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", "Goods", 1m, total, 0m)]
+                    };
+                });
             policy.Setup(x => x.GetEffectiveAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync(new EffectiveTaxPolicyResponse {
                 AnnualRevenueThreshold = 1_000_000_000m, IncomeBasedRequirementThreshold = 3_000_000_000m, SupportedRevenueCeiling = 50_000_000_000m });
             alerts.Setup(x => x.FindAsync(It.IsAny<Expression<Func<RevenueThresholdAlert,bool>>>()))
@@ -280,16 +401,40 @@ public class TaxProfileTransitionRegressionTests
         }
         public void ReturnEvaluatedAlerts() => evaluator.Setup(x => x.EvaluateAsync(
             Owner.Id, Business.Id, It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync(Alerts);
-        public void SetAnnualCrossingInQuarter3() => revenue.Setup(x => x.ProjectCalendarYearAsync(
-            Owner.Id, Business.Id, 2026, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OwnerRevenueProjection(Owner.Id, new DateTime(2025, 12, 31, 17, 0, 0), new DateTime(2026, 12, 31, 17, 0, 0), 1_200_000_000m, 0m, [])
-            {
-                Lines = [
-                    new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q1", new DateTime(2026, 2, 10, 5, 0, 0), "Q1", 500_000_000m),
-                    new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q2", new DateTime(2026, 5, 10, 5, 0, 0), "Q2", 400_000_000m),
-                    new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q3", new DateTime(2026, 8, 10, 5, 0, 0), "Q3", 300_000_000m)
-                ]
-            });
+        public void SetFourQuartersCrossingInQuarter3()
+        {
+            AnnualLines =
+            [
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q1", new DateTime(2026, 2, 10, 5, 0, 0), "Q1", 600_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q2", new DateTime(2026, 5, 10, 5, 0, 0), "Q2", 300_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q3", new DateTime(2026, 8, 10, 5, 0, 0), "Q3", 500_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q4", new DateTime(2026, 11, 10, 5, 0, 0), "Q4", 700_000_000m)
+            ];
+
+            revenue.Setup(x => x.ProjectCalendarYearAsync(Owner.Id, Business.Id, 2026, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OwnerRevenueProjection(Owner.Id, new DateTime(2025, 12, 31, 17, 0, 0), new DateTime(2026, 12, 31, 17, 0, 0), 2_100_000_000m, 0m, [])
+                {
+                    Lines = AnnualLines
+                });
+        }
+
+        public void SetFourQuartersCarriedMethod()
+        {
+            AnnualLines =
+            [
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q1", new DateTime(2026, 2, 10, 5, 0, 0), "Q1", 600_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q2", new DateTime(2026, 5, 10, 5, 0, 0), "Q2", 700_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q3", new DateTime(2026, 8, 10, 5, 0, 0), "Q3", 500_000_000m),
+                new OwnerRevenueLine(Business.MainCategory!.BusinessCategoryId, "DIST_GOODS", Guid.NewGuid(), "Order", "Q4", new DateTime(2026, 11, 10, 5, 0, 0), "Q4", 400_000_000m)
+            ];
+
+            revenue.Setup(x => x.ProjectCalendarYearAsync(Owner.Id, Business.Id, 2026, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OwnerRevenueProjection(Owner.Id, new DateTime(2025, 12, 31, 17, 0, 0), new DateTime(2026, 12, 31, 17, 0, 0), 2_200_000_000m, 0m, [])
+                {
+                    Lines = AnnualLines
+                });
+        }
+
         public void CompleteQuarters(string method) => periods.Setup(x => x.GetOwnerQuarterlyFilingStatesAsync(
                 Owner.Id, 2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Enumerable.Range(1, 4).Select(q => new OwnerQuarterlyFilingState(Guid.NewGuid(), q,
