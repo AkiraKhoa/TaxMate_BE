@@ -348,6 +348,26 @@ public class TaxBookService : ITaxBookService
         var user = await _users.GetByIdAsync(userId)
             ?? throw new NotFoundException("User not found.");
 
+        var annualRevenue = await _ownerRevenueProjector.ProjectCalendarYearAsync(
+            userId,
+            businessId,
+            year,
+            cancellationToken);
+
+        // Match QTT's annual owner-wide rate; the amount uses this store's quarterly income.
+        var roundedAnnualRevenue = decimal.Round(annualRevenue.TotalRevenue, 0, MidpointRounding.AwayFromZero);
+        var pitRate = roundedAnnualRevenue switch
+        {
+            <= 1_000_000_000m => 0m,
+            <= 3_000_000_000m => 15m,
+            <= 50_000_000_000m => 17m,
+            _ => throw new ConflictException("Doanh thu năm trên 50 tỷ đồng, ngoài phạm vi TaxMate hỗ trợ.")
+        };
+        var pitAmount = decimal.Round(
+            Math.Max(book.NetIncome, 0m) * pitRate / 100m,
+            0,
+            MidpointRounding.AwayFromZero);
+
         return await _s2cDocumentGenerator.GenerateAsync(
             new S2cDocumentModel
             {
@@ -367,7 +387,9 @@ public class TaxBookService : ITaxBookService
                 DepreciationCost = 0m,
                 PurchasedServicesCost = book.PurchasedServicesCost,
                 LoanInterestCost = 0m,
-                OtherDirectCost = book.OtherDirectCost
+                OtherDirectCost = book.OtherDirectCost,
+                PitRate = pitRate,
+                PitAmount = pitAmount
             },
             cancellationToken);
     }

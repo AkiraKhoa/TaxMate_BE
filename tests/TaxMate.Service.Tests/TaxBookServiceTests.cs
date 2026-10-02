@@ -1,5 +1,8 @@
 using Moq;
+using System.Globalization;
 using TaxMate.Model.Common;
+using TaxMate.Model.Documents.Tax;
+using TaxMate.Model.DTO.Expense;
 using TaxMate.Model.Entities;
 using TaxMate.Repository.Interfaces;
 using TaxMate.Service.Exceptions;
@@ -157,4 +160,157 @@ public class TaxBookServiceTests
             _service.CreateQttDeclarationAsync(_userId, _businessId, 2026));
         Assert.Contains("Thu nhập tính thuế", ex.Message);
     }
+
+    [Theory]
+    [InlineData("1000000000", 0, 0)]
+    [InlineData("1000000001", 15, 65_957_610)]
+    [InlineData("3000000000", 15, 65_957_610)]
+    [InlineData("3000000001", 17, 74_751_958)]
+    [InlineData("50000000000", 17, 74_751_958)]
+    [InlineData("3000000000.49", 15, 65_957_610)]
+    [InlineData("3000000000.5", 17, 74_751_958)]
+    public async Task ExportS2c_UsesOwnerAnnualRevenueRateOnSelectedQuarterIncome(
+        string annualRevenue, int expectedRate, int expectedAmount)
+    {
+        var book = new S2cBookProjection
+        {
+            BusinessId = _businessId,
+            TotalRevenue = 705_525_000m,
+            MaterialCost = 237_007_600m,
+            PurchasedServicesCost = 28_800_000m
+        };
+        SetUpS2cExport(book);
+        _revenueProjector.Setup(x => x.ProjectCalendarYearAsync(
+                _userId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AnnualRevenue(decimal.Parse(annualRevenue, CultureInfo.InvariantCulture)));
+
+        S2cDocumentModel? exported = null;
+        _s2cDoc.Setup(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(), It.IsAny<CancellationToken>()))
+            .Callback<S2cDocumentModel, CancellationToken>((model, _) => exported = model);
+
+        await _service.ExportS2cAsync(_userId, _businessId, 2026, 4);
+
+        Assert.NotNull(exported);
+        Assert.Equal(2026, exported.Year);
+        Assert.Equal(4, exported.Quarter);
+        Assert.Equal(book.TotalRevenue, exported.Revenue);
+        Assert.Equal(book.TotalExpense, exported.TotalExpense);
+        Assert.Equal(439_717_400m, exported.NetIncome);
+        Assert.Equal((decimal)expectedRate, exported.PitRate);
+        Assert.Equal((decimal)expectedAmount, exported.PitAmount);
+        _revenueProjector.Verify(x => x.ProjectCalendarYearAsync(
+            _userId, _businessId, 2026, It.IsAny<CancellationToken>()), Times.Once);
+        _revenueProjector.Verify(x => x.ProjectBusinessAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("100", "200", 0)]
+    [InlineData("10", "0", 2)]
+    [InlineData("3.34", "0", 1)]
+    public async Task ExportS2c_ClampsLossToZeroAndRoundsTaxAwayFromZero(
+        string revenue, string cost, int expectedAmount)
+    {
+        var book = new S2cBookProjection
+        {
+            BusinessId = _businessId,
+            TotalRevenue = decimal.Parse(revenue, CultureInfo.InvariantCulture),
+            OtherDirectCost = decimal.Parse(cost, CultureInfo.InvariantCulture)
+        };
+        SetUpS2cExport(book);
+        _revenueProjector.Setup(x => x.ProjectCalendarYearAsync(
+                _userId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AnnualRevenue(2_000_000_000m));
+
+        S2cDocumentModel? exported = null;
+        _s2cDoc.Setup(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(), It.IsAny<CancellationToken>()))
+            .Callback<S2cDocumentModel, CancellationToken>((model, _) => exported = model);
+
+        await _service.ExportS2cAsync(_userId, _businessId, 2026, 4);
+
+        Assert.NotNull(exported);
+        Assert.Equal(book.NetIncome, exported.NetIncome);
+        Assert.Equal(15m, exported.PitRate);
+        Assert.Equal((decimal)expectedAmount, exported.PitAmount);
+    }
+
+    [Fact]
+    public async Task ExportS2c_ReprojectsAnnualRevenueOnEachExport()
+    {
+        SetUpS2cExport(new S2cBookProjection { BusinessId = _businessId, TotalRevenue = 100m });
+        _revenueProjector.SetupSequence(x => x.ProjectCalendarYearAsync(
+                _userId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AnnualRevenue(2_000_000_000m))
+            .ReturnsAsync(AnnualRevenue(4_000_000_000m));
+        var exports = new List<S2cDocumentModel>();
+        _s2cDoc.Setup(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(), It.IsAny<CancellationToken>()))
+            .Callback<S2cDocumentModel, CancellationToken>((model, _) => exports.Add(model));
+
+        await _service.ExportS2cAsync(_userId, _businessId, 2026, 4);
+        await _service.ExportS2cAsync(_userId, _businessId, 2026, 4);
+
+        Assert.Equal(2, exports.Count);
+        Assert.Equal(15m, exports[0].PitRate);
+        Assert.Equal(15m, exports[0].PitAmount);
+        Assert.Equal(17m, exports[1].PitRate);
+        Assert.Equal(17m, exports[1].PitAmount);
+    }
+
+    [Fact]
+    public async Task ExportS2c_WhenAnnualInvoiceMetadataHasBlockers_UsesKnownAnnualRevenue()
+    {
+        SetUpS2cExport(new S2cBookProjection { BusinessId = _businessId, TotalRevenue = 100m });
+        _revenueProjector.Setup(x => x.ProjectCalendarYearAsync(
+                _userId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OwnerRevenueProjection(_userId, DateTime.MinValue, DateTime.MaxValue,
+                2_000_000_000m, 0m,
+                [new OwnerRevenueBlocker(OwnerRevenueBlockerCodes.MissingInvoice,
+                    Guid.NewGuid(), Guid.NewGuid(), "Thiếu hóa đơn ở cửa hàng khác.")]));
+        S2cDocumentModel? exported = null;
+        _s2cDoc.Setup(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(), It.IsAny<CancellationToken>()))
+            .Callback<S2cDocumentModel, CancellationToken>((model, _) => exported = model);
+
+        await _service.ExportS2cAsync(_userId, _businessId, 2026, 4);
+
+        Assert.NotNull(exported);
+        Assert.Equal(15m, exported.PitRate);
+        Assert.Equal(15m, exported.PitAmount);
+        _s2cDoc.Verify(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExportS2c_WhenOwnerAnnualRevenueExceedsSupportedScope_DoesNotGenerateDocument()
+    {
+        SetUpS2cExport(new S2cBookProjection { BusinessId = _businessId, TotalRevenue = 100m });
+        _revenueProjector.Setup(x => x.ProjectCalendarYearAsync(
+                _userId, _businessId, 2026, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AnnualRevenue(50_000_000_001m));
+
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            _service.ExportS2cAsync(_userId, _businessId, 2026, 4));
+
+        _s2cDoc.Verify(x => x.GenerateAsync(It.IsAny<S2cDocumentModel>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private void SetUpS2cExport(S2cBookProjection book)
+    {
+        _businessProfiles.Setup(x => x.GetByIdAsync(_businessId))
+            .ReturnsAsync(new BusinessProfile { Id = _businessId, OwnerId = _userId });
+        _users.Setup(x => x.GetByIdAsync(_userId))
+            .ReturnsAsync(new User
+            {
+                Id = _userId,
+                DeclaredRevenueBracket = RevenueBrackets.Over1BTo3B,
+                PersonalIncomeTaxMethod = PersonalIncomeTaxMethods.IncomeBased
+            });
+        _s2cProjector.Setup(x => x.ProjectQuarterAsync(_userId, _businessId, 2026, 4,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(book);
+    }
+
+    private OwnerRevenueProjection AnnualRevenue(decimal revenue) =>
+        new(_userId, DateTime.MinValue, DateTime.MaxValue, revenue, 0m, []);
 }
