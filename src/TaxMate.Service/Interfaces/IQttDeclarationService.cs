@@ -20,7 +20,8 @@ public interface IQttDeclarationService
         Guid userId,
         Guid businessId,
         int year,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        QttPreviewAllocationRequest? allocation = null);
 
     Task<QttDeclarationResponse?> GetAsync(Guid userId, Guid businessId, int year, CancellationToken cancellationToken = default);
 

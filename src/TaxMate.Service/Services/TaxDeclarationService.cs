@@ -19,18 +19,21 @@ public class TaxDeclarationService : ITaxDeclarationService
     private readonly ITaxDeclarationDocumentGenerator _documentGenerator;
     private readonly ITknDeclarationDocumentGenerator _tknDocumentGenerator;
     private readonly IOwnerRevenueProjector? _ownerRevenue;
+    private readonly ITaxPeriodService? _taxPeriodService;
     
     public TaxDeclarationService(ITaxPeriodRepository taxPeriodRepository,
         ITaxDeclarationRepository taxDeclarationRepository,
         ITaxDeclarationDocumentGenerator documentGenerator,
         ITknDeclarationDocumentGenerator tknDocumentGenerator,
-        IOwnerRevenueProjector? ownerRevenue = null)
+        IOwnerRevenueProjector? ownerRevenue = null,
+        ITaxPeriodService? taxPeriodService = null)
     {
         _taxPeriodRepository = taxPeriodRepository;
         _taxDeclarationRepository = taxDeclarationRepository;
         _documentGenerator = documentGenerator;
         _tknDocumentGenerator = tknDocumentGenerator;
         _ownerRevenue = ownerRevenue;
+        _taxPeriodService = taxPeriodService;
     }
     
     public async Task<TaxDeclarationResponse> CreateAsync(
@@ -557,7 +560,7 @@ public class TaxDeclarationService : ITaxDeclarationService
                     "UNKNOWN"
             };
 
-        return $"TK-{period.Year}-{periodPart}-V{version:00}";
+        return $"TK-{period.Year}-{periodPart}-V{version:00}-{Convert.ToBase64String(period.Id.ToByteArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
     }
     
     private static TaxDeclarationResponse MapDeclaration(
@@ -843,13 +846,10 @@ public class TaxDeclarationService : ITaxDeclarationService
                 business.OwnerId,
                 cancellationToken);
 
-        var calculation = await _taxDeclarationRepository
-            .GetCurrentCalculationWithLinesAsync(
-                taxPeriodId,
-                cancellationToken);
-
         if (taxPeriod.PeriodType == TaxPeriodTypes.Tkn)
         {
+            var calculation = await _taxDeclarationRepository
+                .GetCurrentCalculationWithLinesAsync(taxPeriodId, cancellationToken);
             var selector = taxPeriod.FilingWindow switch
             {
                 TknFilingWindows.FirstHalf => "FirstHalf",
@@ -953,6 +953,10 @@ public class TaxDeclarationService : ITaxDeclarationService
             };
         }
 
+        var preview = await (_taxPeriodService
+            ?? throw new InvalidOperationException("Tax period preview service is not configured."))
+            .GetCalculationPreviewAsync(userId, taxPeriodId, cancellationToken);
+
         var mockDeclaration = new TaxDeclaration
         {
             Id = Guid.Empty,
@@ -966,16 +970,17 @@ public class TaxDeclarationService : ITaxDeclarationService
             TaxpayerName = business.BusinessName,
             TaxCode = business.Owner?.TaxCode ?? "0123456789",
             TaxpayerAddress = business.Address ?? "Địa chỉ kinh doanh",
-            TotalRevenue = calculation?.TotalRevenue ?? taxPeriod.TotalRevenue,
-            TotalVatTaxAmount = calculation?.TotalVatTaxAmount ?? 0m,
-            TotalPersonalIncomeTaxAmount = calculation?.TotalPersonalIncomeTaxAmount ?? 0m,
+            TotalRevenue = preview.TotalRevenue,
+            TotalVatTaxAmount = preview.TotalVatTaxAmount,
+            TotalPersonalIncomeTaxAmount = preview.TotalPersonalIncomeTaxAmount,
             VatExemptionAmount = 0m,
             PersonalIncomeTaxExemptionAmount = 0m,
-            VatPayableAmount = calculation?.TotalVatTaxAmount ?? 0m,
-            PersonalIncomeTaxPayableAmount = calculation?.TotalPersonalIncomeTaxAmount ?? 0m,
-            TotalTaxPayableAmount = calculation?.TotalTaxPayableAmount ?? 0m,
+            VatPayableAmount = preview.TotalVatTaxAmount,
+            PersonalIncomeTaxPayableAmount = preview.TotalPersonalIncomeTaxAmount,
+            TotalTaxPayableAmount = preview.TotalTaxPayableAmount,
+            RemainingPitDeduction = preview.RemainingPitDeduction,
             GeneratedAt = DateTime.UtcNow,
-            Lines = calculation?.Lines.Select(source => new TaxDeclarationLine
+            Lines = preview.Lines.Select((source, index) => new TaxDeclarationLine
             {
                 Id = Guid.NewGuid(),
                 SectionCode = source.SectionCode,
@@ -995,10 +1000,10 @@ public class TaxDeclarationService : ITaxDeclarationService
                 PersonalIncomeTaxRevenue = source.PersonalIncomeTaxRevenue,
                 PersonalIncomeTaxRate = source.PersonalIncomeTaxRate,
                 PersonalIncomeTaxAmount = source.PersonalIncomeTaxAmount,
-                DisplayOrder = source.DisplayOrder,
+                DisplayOrder = index + 1,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
-            }).ToList() ?? []
+            }).ToList()
         };
 
         var formModel = Form01Cnkd2026Mapper.Map(

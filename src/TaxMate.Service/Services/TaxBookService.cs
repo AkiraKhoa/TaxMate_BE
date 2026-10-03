@@ -148,14 +148,16 @@ public class TaxBookService : ITaxBookService
         Guid userId,
         Guid businessId,
         int year,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        QttPreviewAllocationRequest? allocation = null)
     {
         await EnsureIncomeBasedEligibleAsync(userId, businessId, cancellationToken);
         return await _qttDeclarationService.ExportPreviewAsync(
             userId,
             businessId,
             year,
-            cancellationToken);
+            cancellationToken,
+            allocation);
     }
 
     public async Task<IReadOnlyList<QttOffsetObligationOption>> GetQttOffsetObligationsAsync(

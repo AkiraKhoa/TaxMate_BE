@@ -1,4 +1,4 @@
-﻿namespace TaxMate.Model.DTO.TaxPeriod;
+namespace TaxMate.Model.DTO.TaxPeriod;
 
 public class TaxCalculationResponse
 {
@@ -45,6 +45,10 @@ public class TaxCalculationResponse
 
 public class TaxCalculationLineResponse
 {
+    public Guid? BusinessLocationId { get; set; }
+
+    public string? BusinessLocationCode { get; set; }
+
     public Guid Id { get; set; }
 
     public Guid? BusinessCategoryId { get; set; }

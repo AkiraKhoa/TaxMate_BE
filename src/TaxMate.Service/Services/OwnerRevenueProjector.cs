@@ -138,10 +138,11 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
             .Where(x => x.Amount > 0m)
             .Sum(x => x.Amount);
 
-        var groups = qualifyingTransactions
+        var locationGroups = qualifyingTransactions
             .Where(HasBusinessCategory)
             .Select(x => new
             {
+                x.BusinessId,
                 x.BusinessCategoryId,
                 x.BusinessCategoryCode,
                 x.BusinessCategoryName,
@@ -153,6 +154,7 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                 .Where(x => x.Amount > 0m && HasBusinessCategory(x))
                 .Select(x => new
                 {
+                    x.BusinessId,
                     x.BusinessCategoryId,
                     x.BusinessCategoryCode,
                     x.BusinessCategoryName,
@@ -162,6 +164,7 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                 }))
             .GroupBy(x => new
             {
+                x.BusinessId,
                 CategoryId = x.BusinessCategoryId!.Value,
                 Code = x.BusinessCategoryCode!,
                 Name = x.BusinessCategoryName!,
@@ -173,7 +176,7 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
                 x.Key.Name,
                 x.Key.Rate,
                 x.Sum(y => y.CompletedRevenue),
-                x.Sum(y => y.ManualRevenue)))
+                x.Sum(y => y.ManualRevenue)) { BusinessId = x.Key.BusinessId })
             .OrderBy(x => x.BusinessCategoryCode)
             .ToArray();
 
@@ -245,7 +248,13 @@ public sealed class OwnerRevenueProjector : IOwnerRevenueProjector
             manualBusinessRevenue,
             blockers)
         {
-            Groups = groups,
+            LocationGroups = locationGroups,
+            Groups = locationGroups
+                .GroupBy(x => new { x.BusinessCategoryId, x.BusinessCategoryCode, x.BusinessCategoryName, x.VatRate })
+                .Select(x => new OwnerRevenueGroup(
+                    x.Key.BusinessCategoryId, x.Key.BusinessCategoryCode, x.Key.BusinessCategoryName, x.Key.VatRate,
+                    x.Sum(y => y.CompletedTransactionRevenue), x.Sum(y => y.ManualBusinessRevenue)))
+                .ToArray(),
             Lines = lines
         };
     }

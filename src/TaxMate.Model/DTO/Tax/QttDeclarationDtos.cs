@@ -19,12 +19,16 @@ public sealed class QttDeclarationResponse
     public IReadOnlyList<QttOffsetItemSnapshot> OffsetItems { get; init; } = [];
 }
 
-public sealed class UpdateQttOverpaymentAllocationRequest
+public class QttPreviewAllocationRequest
 {
     public decimal RefundAmount { get; init; }
     public decimal OffsetAmount { get; init; }
     public Guid? RefundPaymentAccountId { get; init; }
     public IReadOnlyList<QttOffsetAllocationItemRequest> OffsetItems { get; init; } = [];
+}
+
+public sealed class UpdateQttOverpaymentAllocationRequest : QttPreviewAllocationRequest
+{
     public int ExpectedRevision { get; init; }
 }
 

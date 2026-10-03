@@ -56,6 +56,18 @@ public class TaxBookController : ControllerBase
         return File(result.Content, result.ContentType, result.FileName);
     }
 
+    [HttpPost("qtt/export-preview")]
+    public async Task<IActionResult> ExportQttPreviewWithAllocation(
+        Guid businessId,
+        [FromQuery] int year,
+        [FromBody] QttPreviewAllocationRequest allocation,
+        CancellationToken cancellationToken)
+    {
+        var result = await _taxBookService.ExportQttPreviewAsync(
+            GetUserId(), businessId, year, cancellationToken, allocation);
+        return File(result.Content, result.ContentType, result.FileName);
+    }
+
     [HttpPost("qtt/declarations/{declarationId:guid}/confirm")]
     public async Task<IActionResult> ConfirmQttDeclaration(
         Guid businessId,
