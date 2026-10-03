@@ -21,6 +21,8 @@ public sealed record OwnerRevenueGroup(
     decimal CompletedTransactionRevenue,
     decimal ManualBusinessRevenue)
 {
+    public Guid? BusinessId { get; init; }
+
     public decimal TotalRevenue =>
         CompletedTransactionRevenue + ManualBusinessRevenue;
 
@@ -46,6 +48,7 @@ public sealed record OwnerRevenueProjection(
     IReadOnlyList<OwnerRevenueBlocker> Blockers)
 {
     public IReadOnlyList<OwnerRevenueGroup> Groups { get; init; } = [];
+    public IReadOnlyList<OwnerRevenueGroup> LocationGroups { get; init; } = [];
     public IReadOnlyList<OwnerRevenueLine> Lines { get; init; } = [];
 
     public decimal TotalRevenue =>

@@ -89,14 +89,15 @@ public sealed class QttDeclarationService : IQttDeclarationService
         Guid userId,
         Guid businessId,
         int year,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        QttPreviewAllocationRequest? allocation = null)
     {
         await EnsureOwnershipAsync(businessId, userId, cancellationToken);
         var business = await _taxPeriods.GetBusinessWithCategoryAsync(businessId, cancellationToken)
             ?? throw new NotFoundException("Business profile not found.");
 
         var period = await _taxPeriods.GetYearAsync(businessId, year, cancellationToken);
-        var existing = period is null
+        var existing = period is null || allocation is not null
             ? null
             : await _declarations.GetCurrentByTaxPeriodAndFormAsync(
                 period.Id,
@@ -111,6 +112,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
         }
 
         QttFormSnapshot snapshot;
+        IReadOnlyList<QttPaymentSupportDocumentRow> paymentSupportRows = [];
         var now = DateTime.UtcNow;
 
         if (existing is not null)
@@ -124,7 +126,7 @@ public sealed class QttDeclarationService : IQttDeclarationService
             QttInventoryTotals31To34? inventoryTotals = null;
             IReadOnlyList<QttInventoryRow> inventoryRows = [];
 
-            if (period is not null)
+            if (period is not null && allocation is null)
             {
                 // Tier 2: Current TaxCalculation exists in DB
                 var calculation = await _declarations.GetCurrentCalculationWithLinesAsync(
@@ -147,8 +149,6 @@ public sealed class QttDeclarationService : IQttDeclarationService
                     }
                 }
             }
-
-            IReadOnlyList<QttPaymentSupportDocumentRow> paymentSupportRows = [];
 
             if (indicators is null && _annualTaxAggregate is not null && _qttCalculationEngine is not null)
             {
@@ -210,29 +210,17 @@ public sealed class QttDeclarationService : IQttDeclarationService
                 CreatedAt = now
             };
 
-            var file = await _documentGenerator.GenerateAsync(
-                new QttDocumentModel
-                {
-                    Snapshot = snapshot,
-                    ExportDate = DateTime.Now,
-                    PaymentSupportRows = paymentSupportRows
-                },
-                cancellationToken);
-
-            return new TaxDeclarationGeneratedFile
-            {
-                Content = file.Content,
-                FileName = $"02-CNKD-TNCN-QTT_XEM-TRUOC_{snapshot.TaxCode}_{year}.docx",
-                ContentType = file.ContentType
-            };
         }
+
+        if (allocation is not null)
+            snapshot = await ApplyAllocationAsync(userId, businessId, snapshot, allocation, cancellationToken);
 
         var defaultFile = await _documentGenerator.GenerateAsync(
             new QttDocumentModel
             {
                 Snapshot = snapshot,
                 ExportDate = DateTime.Now,
-                PaymentSupportRows = []
+                PaymentSupportRows = paymentSupportRows
             },
             cancellationToken);
 
@@ -419,41 +407,10 @@ public sealed class QttDeclarationService : IQttDeclarationService
             throw new ConflictException("Hồ sơ không phải 02/CNKD-TNCN-QTT.");
         if (declaration.Status != TaxDeclarationStatuses.Draft)
             throw new ConflictException("Chỉ hồ sơ nháp mới được thay đổi cách xử lý tiền nộp thừa.");
-        if (request.RefundAmount < 0m || request.OffsetAmount < 0m)
-            throw new BadRequestException("Số hoàn và số bù trừ không được âm.");
-
         var snapshot = ReadFormSnapshot(declaration);
         if (request.ExpectedRevision != snapshot.DraftRevision)
             throw new ConflictException("Hồ sơ đã được cập nhật ở nơi khác. Hãy tải lại trước khi lưu.");
-        var overpaid = snapshot.Indicators.Indicator20;
-        if (request.RefundAmount + request.OffsetAmount > overpaid)
-            throw new BadRequestException("Tổng số hoàn và bù trừ không được vượt số PIT đã nộp thừa.");
-
-        var refundAccount = await ResolveRefundAccountAsync(
-            userId,
-            businessId,
-            request.RefundAmount,
-            request.RefundPaymentAccountId,
-            cancellationToken);
-        var offsetItems = await ResolveOffsetItemsAsync(
-            userId,
-            request.OffsetAmount,
-            request.OffsetItems,
-            cancellationToken);
-
-        var allocated = request.RefundAmount + request.OffsetAmount;
-        var indicators = snapshot.Indicators with
-        {
-            Indicator21 = allocated,
-            Indicator22 = request.RefundAmount,
-            Indicator23 = request.OffsetAmount,
-            Indicator24 = overpaid - allocated
-        };
-        var updated = CopyWithAllocation(
-            snapshot,
-            indicators,
-            refundAccount,
-            offsetItems);
+        var updated = await ApplyAllocationAsync(userId, businessId, snapshot, request, cancellationToken);
         declaration.FormDataJson = JsonSerializer.Serialize(updated, JsonOptions);
         declaration.UpdatedAt = DateTime.UtcNow;
         await _declarations.SaveChangesAsync(cancellationToken);
@@ -522,6 +479,46 @@ public sealed class QttDeclarationService : IQttDeclarationService
                 declaration.FormDataJson,
                 JsonOptions) ?? throw new ConflictException("Snapshot hồ sơ QTT không đọc được.")
             : throw new ConflictException("Hồ sơ QTT chưa có snapshot.");
+
+    private async Task<QttFormSnapshot> ApplyAllocationAsync(
+        Guid userId,
+        Guid businessId,
+        QttFormSnapshot snapshot,
+        QttPreviewAllocationRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.RefundAmount < 0m || request.OffsetAmount < 0m)
+            throw new BadRequestException("Số hoàn và số bù trừ không được âm.");
+        var overpaid = snapshot.Indicators.Indicator20;
+        if (request.RefundAmount + request.OffsetAmount > overpaid)
+            throw new BadRequestException("Tổng số hoàn và bù trừ không được vượt số PIT đã nộp thừa.");
+
+        var refundAccount = await ResolveRefundAccountAsync(
+            userId,
+            businessId,
+            request.RefundAmount,
+            request.RefundPaymentAccountId,
+            cancellationToken);
+        var offsetItems = await ResolveOffsetItemsAsync(
+            userId,
+            request.OffsetAmount,
+            request.OffsetItems,
+            cancellationToken);
+
+        var allocated = request.RefundAmount + request.OffsetAmount;
+        var indicators = snapshot.Indicators with
+        {
+            Indicator21 = allocated,
+            Indicator22 = request.RefundAmount,
+            Indicator23 = request.OffsetAmount,
+            Indicator24 = overpaid - allocated
+        };
+        return CopyWithAllocation(
+            snapshot,
+            indicators,
+            refundAccount,
+            offsetItems);
+    }
 
     private async Task<QttRefundAccountSnapshot?> ResolveRefundAccountAsync(
         Guid userId,

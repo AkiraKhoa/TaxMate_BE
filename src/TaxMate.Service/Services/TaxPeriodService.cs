@@ -515,8 +515,10 @@ public class TaxPeriodService : ITaxPeriodService
             : 0m;
 
         // Phân bổ deduction cho PIT rate cao trước (phương án có lợi hơn).
+        var locationGroups = periodProjection.LocationGroups.Count > 0
+            ? periodProjection.LocationGroups : periodProjection.Groups;
         var pitDeductionByBusiness =
-            new Dictionary<Guid, decimal>();
+            new Dictionary<(Guid? BusinessId, Guid CategoryId), decimal>();
 
         if (taxMethod == PersonalIncomeTaxMethods.RevenueBased)
         {
@@ -528,7 +530,7 @@ public class TaxPeriodService : ITaxPeriodService
                 .Select(x => x.MainCategory!)
                 .GroupBy(x => x.BusinessCategoryId)
                 .ToDictionary(x => x.Key, x => x.First().PitRate);
-            foreach (var item in periodProjection.Groups
+            foreach (var item in locationGroups
                          .OrderByDescending(x => pitRates.GetValueOrDefault(
                              x.BusinessCategoryId)))
             {
@@ -537,7 +539,7 @@ public class TaxPeriodService : ITaxPeriodService
                         item.TotalRevenue,
                         deductionToAllocate);
 
-                pitDeductionByBusiness[item.BusinessCategoryId] =
+                pitDeductionByBusiness[(item.BusinessId, item.BusinessCategoryId)] =
                     allocated;
 
                 deductionToAllocate =
@@ -618,7 +620,7 @@ public class TaxPeriodService : ITaxPeriodService
             .Select(x => x.MainCategory!)
             .GroupBy(x => x.BusinessCategoryId)
             .ToDictionary(x => x.Key, x => x.First());
-        var displayItems = periodProjection.Groups
+        var displayItems = locationGroups
             .OrderBy(x => x.BusinessCategoryCode)
             .ToList();
 
@@ -640,7 +642,7 @@ public class TaxPeriodService : ITaxPeriodService
             var pitDeductibleRevenue =
                 taxMethod == PersonalIncomeTaxMethods.RevenueBased &&
                 pitDeductionByBusiness.TryGetValue(
-                    item.BusinessCategoryId,
+                    (item.BusinessId, item.BusinessCategoryId),
                     out var allocatedDeduction)
                     ? allocatedDeduction
                     : 0m;
@@ -662,9 +664,10 @@ public class TaxPeriodService : ITaxPeriodService
                     TaxCalculationId =
                         calculation.Id,
 
-                    BusinessLocationId = null,
+                    BusinessLocationId = item.BusinessId ?? taxPeriod.BusinessId,
 
-                    BusinessLocationCode = null,
+                    BusinessLocationCode = ownerBusinesses.FirstOrDefault(x =>
+                        x.Id == (item.BusinessId ?? taxPeriod.BusinessId))?.BusinessLocationCode,
 
                     BusinessCategoryId =
                         category.BusinessCategoryId,
@@ -830,6 +833,9 @@ public class TaxPeriodService : ITaxPeriodService
                         {
                             Id =
                                 line.Id,
+
+                            BusinessLocationId = line.BusinessLocationId,
+                            BusinessLocationCode = line.BusinessLocationCode,
 
                             BusinessCategoryId =
                                 line.BusinessCategoryId,
@@ -1036,7 +1042,9 @@ public class TaxPeriodService : ITaxPeriodService
             ? Math.Max(0m, annualRevenueThreshold - previousRevenue)
             : 0m;
 
-        var pitDeductionByBusiness = new Dictionary<Guid, decimal>();
+        var locationGroups = periodProjection.LocationGroups.Count > 0
+            ? periodProjection.LocationGroups : periodProjection.Groups;
+        var pitDeductionByBusiness = new Dictionary<(Guid? BusinessId, Guid CategoryId), decimal>();
         if (taxMethod == PersonalIncomeTaxMethods.RevenueBased)
         {
             var deductionToAllocate = remainingDeduction;
@@ -1046,11 +1054,11 @@ public class TaxPeriodService : ITaxPeriodService
                 .GroupBy(x => x.BusinessCategoryId)
                 .ToDictionary(x => x.Key, x => x.First().PitRate);
 
-            foreach (var item in periodProjection.Groups
+            foreach (var item in locationGroups
                          .OrderByDescending(x => pitRates.GetValueOrDefault(x.BusinessCategoryId)))
             {
                 var allocated = Math.Min(item.TotalRevenue, deductionToAllocate);
-                pitDeductionByBusiness[item.BusinessCategoryId] = allocated;
+                pitDeductionByBusiness[(item.BusinessId, item.BusinessCategoryId)] = allocated;
                 deductionToAllocate = Math.Max(0m, deductionToAllocate - allocated);
             }
             remainingDeduction = deductionToAllocate;
@@ -1062,7 +1070,7 @@ public class TaxPeriodService : ITaxPeriodService
             .GroupBy(x => x.BusinessCategoryId)
             .ToDictionary(x => x.Key, x => x.First());
 
-        var displayItems = periodProjection.Groups
+        var displayItems = locationGroups
             .OrderBy(x => x.BusinessCategoryCode)
             .ToList();
 
@@ -1078,7 +1086,7 @@ public class TaxPeriodService : ITaxPeriodService
             var revenue = item.TotalRevenue;
             var vatTaxAmount = decimal.Round(revenue * item.VatRate / 100m, 2, MidpointRounding.AwayFromZero);
             var pitDeductibleRevenue = taxMethod == PersonalIncomeTaxMethods.RevenueBased &&
-                pitDeductionByBusiness.TryGetValue(item.BusinessCategoryId, out var allocatedDeduction)
+                pitDeductionByBusiness.TryGetValue((item.BusinessId, item.BusinessCategoryId), out var allocatedDeduction)
                     ? allocatedDeduction
                     : 0m;
 
@@ -1091,6 +1099,9 @@ public class TaxPeriodService : ITaxPeriodService
             lines.Add(new TaxCalculationLineResponse
             {
                 Id = Guid.NewGuid(),
+                BusinessLocationId = item.BusinessId ?? taxPeriod.BusinessId,
+                BusinessLocationCode = ownerBusinesses.FirstOrDefault(x =>
+                    x.Id == (item.BusinessId ?? taxPeriod.BusinessId))?.BusinessLocationCode,
                 BusinessCategoryId = category.BusinessCategoryId,
                 SectionCode = category.FormSectionCode ?? "I",
                 IndicatorCode = category.FormIndicatorCode ?? "d",
